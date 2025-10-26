@@ -1,0 +1,124 @@
+// src/pages/student/checkout-paid.tsx
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { createOrder, verifyPayment } from '../../services/paymentsService';
+
+declare global {
+  interface Window {
+    Razorpay?: any;
+  }
+}
+
+async function loadRazorpayScript(): Promise<void> {
+  if (window.Razorpay) return;
+  await new Promise<void>((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load Razorpay.'));
+    document.body.appendChild(s);
+  });
+}
+
+export default function StudentCheckoutPaid() {
+  const [sp] = useSearchParams();
+  const navigate = useNavigate();
+  const tutorId = sp.get('tutorId') || '';
+  const tokens = Number(sp.get('tokens') || '0');
+
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const canProceed = useMemo(
+    () => Boolean(tutorId) && Number.isFinite(tokens) && tokens > 0,
+    [tutorId, tokens]
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      if (!canProceed) {
+        setErr('Missing tutorId or tokens.');
+        return;
+      }
+
+      try {
+        setBusy(true);
+        setErr(null);
+
+        // 1) Ask backend for order
+        const order = await createOrder({ tutorId, tokens });
+
+        // 2) Ensure Razorpay is available
+        await loadRazorpayScript();
+
+        const key = order.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+        if (!key) throw new Error('Missing Razorpay key (VITE_RAZORPAY_KEY_ID).');
+
+        // 3) Open Razorpay checkout
+        const options = {
+          key,
+          order_id: order.orderId,
+          amount: order.amount,          // in paise
+          currency: order.currency || 'INR',
+          name: 'Tunect',
+          description: 'Token purchase',
+          notes: { tutorId, tokens: String(tokens), paymentId: order.paymentId },
+          theme: { color: '#047857' },
+
+          handler: async (response: any) => {
+            try {
+              const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = response;
+              const verification = await verifyPayment({
+                razorpay_order_id,
+                razorpay_payment_id,
+                razorpay_signature,
+              });
+              if (verification?.ok) {
+                navigate(`/student/payment/success?orderId=${order.orderId}`, { replace: true });
+              } else {
+                navigate(`/student/payment/failure?orderId=${order.orderId}`, { replace: true });
+              }
+            } catch (e) {
+              navigate(`/student/payment/failure?orderId=${order.orderId}`, { replace: true });
+            }
+          },
+
+          modal: {
+            ondismiss: () => {
+              navigate(`/student/cart?tutorId=${tutorId}&tokens=${tokens}`, { replace: true });
+            },
+          },
+        };
+
+        if (!mounted) return;
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      } catch (e: any) {
+        if (mounted) setErr(e?.message || 'Could not start checkout.');
+      } finally {
+        if (mounted) setBusy(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [canProceed, tutorId, tokens, navigate]);
+
+  return (
+    <main className="container mx-auto px-4 py-12">
+      <h1 className="text-2xl font-semibold mb-2">Redirecting to payment…</h1>
+      <p className="text-slate-600">Please wait while we open Razorpay.</p>
+      {busy && <div className="mt-4 h-4 w-4 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />}
+      {err && (
+        <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {err}
+        </div>
+      )}
+    </main>
+  );
+}

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tunect - Global Tutoring Platform</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+   
+    body {
+      font-family: 'Arial', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Hero Section Styles */
+    .hero {
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+      animation: float 20s infinite linear;
+    }
+
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-20px); }
+      100% { transform: translateY(0px); }
+    }
+
+    .hero-container {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 60px 40px;
+      border-radius: 20px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.2);
+      animation: slideUp 1s ease-out;
+      position: relative;
+      z-index: 2;
+      max-width: 600px;
+      margin: 0 20px;
+    }
+
+    @keyframes slideUp {
+      0% { opacity: 0; transform: translateY(50px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero h1 {
+      font-size: 3.5rem;
+      color: #0066cc;
+      margin-bottom: 20px;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .hero-subtitle {
+      font-size: 1.3rem;
+      color: #555;
+      margin-bottom: 30px;
+      font-weight: 300;
+    }
+
+    .cta-button {
+      display: inline-block;
+      padding: 15px 35px;
+      background: linear-gradient(45deg, #0066cc, #4a90e2);
+      color: white;
+      text-decoration: none;
+      border-radius: 50px;
+      font-weight: bold;
+      font-size: 1.1rem;
+      transition: all 0.3s ease;
+      box-shadow: 0 10px 20px rgba(0, 102, 204, 0.3);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+
+    .cta-button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 30px rgba(0, 102, 204, 0.4);
+    }
+
+    .scroll-indicator {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      font-size: 0.9rem;
+      animation: bounce 2s infinite;
+    }
+
+    @keyframes bounce {
+      0%, 20%, 50%, 80%, 100% { transform: translateX(-50%) translateY(0); }
+      40% { transform: translateX(-50%) translateY(-10px); }
+      60% { transform: translateX(-50%) translateY(-5px); }
+    }
+
+    /* Navigation Styles */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 15px 0;
+      z-index: 1000;
+      transform: translateY(-100%);
+      transition: transform 0.3s ease;
+      box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    nav.visible { transform: translateY(0); }
+
+    nav .nav-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+    }
+
+    nav .logo {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #0066cc;
+    }
+
+    nav .nav-links {
+      display: flex;
+      gap: 30px;
+    }
+
+    nav a {
+      color: #333;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s ease;
+      position: relative;
+    }
+
+    nav a::after {
+      content: '';
+      position: absolute;
+      bottom: -5px;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: #0066cc;
+      transition: width 0.3s ease;
+    }
+
+    nav a:hover::after { width: 100%; }
+    nav a:hover { color: #0066cc; }
+
+    /* Content Sections */
+    .content {
+      background: #f8f9fa;
+      min-height: 100vh;
+    }
+
+    .section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 80px 20px;
+    }
+
+    .section-container {
+      background: white;
+      padding: 50px;
+      border-radius: 20px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+      margin-bottom: 40px;
+      transition: transform 0.3s ease;
+    }
+
+    .section-container:hover { transform: translateY(-5px); }
+
+    h1 {
+      color: #0066cc;
+      font-size: 2.5rem;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    h3 {
+      color: #333;
+      font-size: 1.5rem;
+      margin: 30px 0 20px 0;
+    }
+
+    p {
+      font-size: 1.1rem;
+      margin-bottom: 20px;
+      color: #555;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    ul li {
+      padding: 15px 0;
+      font-size: 1.1rem;
+      color: #555;
+      border-bottom: 1px solid #eee;
+      transition: all 0.3s ease;
+    }
+
+    ul li:hover {
+      background: #f8f9fa;
+      padding-left: 20px;
+      border-radius: 10px;
+    }
+
+    ul li:last-child { border-bottom: none; }
+
+    /* Pricing Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 30px;
+      border-radius: 15px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    th, td {
+      padding: 20px;
+      text-align: center;
+      font-size: 1.1rem;
+    }
+
+    th {
+      background: linear-gradient(45deg, #0066cc, #4a90e2);
+      color: white;
+      font-weight: bold;
+    }
+
+    td {
+      background: white;
+      border-bottom: 1px solid #eee;
+      transition: background 0.3s ease;
+    }
+
+    tr:hover td { background: #f8f9fa; }
+    tr:last-child td { border-bottom: none; }
+
+    .note {
+      margin-top: 20px;
+      font-size: 1rem;
+      color: #444;
+      font-style: italic;
+      text-align: center;
+      padding: 20px;
+      background: #ffffff; /* Solid white */
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 2.5rem; }
+      .hero-subtitle { font-size: 1.1rem; }
+      .hero-container { padding: 40px 20px; margin: 0 10px; }
+      .section-container { padding: 30px 20px; }
+      .nav-links { flex-direction: column; gap: 15px; }
+      h1 { font-size: 2rem; }
+      table { font-size: 0.9rem; }
+      th, td { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-container">
+      <h1>Tunect 🚀</h1>
+      <p class="hero-subtitle">Global Tutoring Platform - Connecting Students & Tutors Worldwide</p>
+      <p>We are building something amazing. Get ready for personalized one-on-one learning!</p>
+      <a href="#about" class="cta-button">Discover More</a>
+    </div>
+    <div class="scroll-indicator">↓ Scroll to explore ↓</div>
+  </section>
+
+  <!-- Navigation -->
+  <nav id="navbar">
+    <div class="nav-content">
+      <div class="logo">Tunect</div>
+      <div class="nav-links">
+        <a href="#hero">Home</a>
+        <a href="#about">About Us</a>
+        <a href="#pricing">Pricing</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Content Sections -->
+  <div class="content">
+    <div class="section" id="about">
+      <div class="section-container">
+        <h1>About Tunect</h1>
+        <p>At Tunect, we believe that education should have no boundaries. Our mission is simple – to create a global space where students and tutors connect seamlessly for personalized one-on-one learning.</p>
+        <p>We understand that every learner is unique, and so is every teacher. That's why Tunect brings together qualified, verified tutors from around the world and matches them with students who are eager to learn, grow, and succeed.</p>
+       
+        <h3>What makes us different?</h3>
+        <ul>
+          <li><strong>🌍 Global Reach:</strong> Tutors and students connect across countries and time zones.</li>
+          <li><strong>🎯 One-on-One Sessions:</strong> No crowded classrooms, just focused, private tutoring.</li>
+          <li><strong>🔒 Verified & Trusted Tutors:</strong> Every tutor on Tunect goes through a strict verification process to ensure safety and quality.</li>
+          <li><strong>🚀 Flexible Learning:</strong> Students can choose when, what, and how they learn – and tutors can teach on their own schedule.</li>
+        </ul>
+       
+        <p>We aim to organize the tutoring world the way platforms organized their industries – by making it transparent, reliable, and accessible.</p>
+        <p>Whether you're a student seeking clarity or a tutor looking to share knowledge, Tunect is the bridge that connects your goals with the right opportunities.</p>
+        <p><em>✨ Learning. Connecting. Growing – that's Tunect.</em></p>
+      </div>
+    </div>
+
+    <div class="section" id="pricing">
+      <div class="section-container">
+        <h1>Pricing</h1>
+        <p>At Tunect, tutors set their own rates in INR based on subject, grade level, and expertise. Students can view a tutor's pricing on their profile before booking.</p>
+        
+        <h3>How It Works</h3>
+        <ul>
+          <li><strong>1. Tutor Sets the Price</strong> – Each tutor decides their own hourly/session rate.</li>
+          <li><strong>2. Student Books a Session</strong> – The student pays the full session fee at the time of booking via Razorpay.</li>
+          <li><strong>3. Secure Payment Hold</strong> – The payment is held securely by Tunect until the booked session is completed.</li>
+          <li><strong>4. Tutor Payout</strong> – After successful session completion, the payment is released to the tutor's bank account (minus platform commission/service fees).</li>
+        </ul>
+
+        <h3>Sample Pricing (Illustrative Only)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th>Grade Level</th>
+              <th>Session Duration</th>
+              <th>Example Price (INR)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Mathematics</td>
+              <td>Grade 8–10</td>
+              <td>60 mins</td>
+              <td>₹500</td>
+            </tr>
+            <tr>
+              <td>Physics</td>
+              <td>Grade 9–12</td>
+              <td>60 mins</td>
+              <td>₹600</td>
+            </tr>
+            <tr>
+              <td>Computer Science</td>
+              <td>Grade 6–10</td>
+              <td>60 mins</td>
+              <td>₹550</td>
+            </tr>
+            <tr>
+              <td>English</td>
+              <td>Grade 6–12</td>
+              <td>60 mins</td>
+              <td>₹450</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="note">
+          All prices shown are in Indian Rupees (INR) and are for illustration purposes only. Actual rates vary by tutor and are displayed on each tutor’s profile. Payments are only disbursed to tutors after successful completion of the booked session.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    window.addEventListener('scroll', function() {
+      const navbar = document.getElementById('navbar');
+      const heroHeight = window.innerHeight;
+      if (window.scrollY > heroHeight * 0.8) {
+        navbar.classList.add('visible');
+      } else {
+        navbar.classList.remove('visible');
+      }
+    });
+
+    const observerOptions = { threshold: 0.1, rootMargin: '0px 0px -50px 0px' };
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.style.opacity = '1';
+          entry.target.style.transform = 'translateY(0)';
+        }
+      });
+    }, observerOptions);
+
+    document.querySelectorAll('.section-container').forEach(container => {
+      container.style.opacity = '0';
+      container.style.transform = 'translateY(30px)';
+      container.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+      observer.observe(container);
+    });
+  </script>
+
+</body>
+</html>

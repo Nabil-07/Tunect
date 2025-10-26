@@ -1,0 +1,617 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/* =========================
+   Core Users & Roles
+   ========================= */
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  password      String
+  role          Role?          // Make role optional
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  avatarUrl     String?
+  name          String?
+  phone         String?        @unique
+  hasChosenRole Boolean        @default(false)
+
+  messagesSent  Message[]      @relation("UserToMessages")
+  oauthAccounts OAuthAccount[] @relation("UserToOAuthAccounts")
+  otpCodes      OtpCode[]
+  payments      Payment[]      @relation("UserToPayments")
+  student       Student?       @relation("UserToStudent")
+  tutor         Tutor?         @relation("UserToTutor")
+
+  // Reconciliation
+  bankImportsUploaded      BankImport[]      @relation("UserToBankImports")
+  gatewayImportsUploaded   GatewayImport[]   @relation("UserToGatewayImports")
+  reconAdjustmentsCreated  ReconAdjustment[] @relation("UserToReconAdjustments")
+
+  @@index([email])
+}
+
+model Tutor {
+  id         String      @id @default(uuid())
+  userId     String      @unique
+  bio        String?
+  subjects   String[]    @default([])
+  createdAt  DateTime    @default(now())
+  hourlyRate Int         @default(0)
+  updatedAt  DateTime    @updatedAt
+  status     TutorStatus @default(PENDING)
+  country    String?
+  isTrending Boolean     @default(false)
+  tutorTid   String?     @unique(map: "tutor_tid_unique") @map("tutor_tid")
+
+  slots                AvailabilitySlot[]
+  bookings             Booking[]
+  conversationsAsTutor Conversation[] @relation("TutorConversations")
+  kycDocs              KycDocument[]
+  kycApplications     TutorKycApplication[]
+  payouts              Payout[]
+  reviews              Review[]
+  tokenLedger          TokenLedger[]
+  user                 User           @relation("UserToTutor", fields: [userId], references: [id], onDelete: Cascade)
+  balances             TutorTokenBalance[]
+  wallet               TutorWallet?
+  walletLedger         TutorWalletLedger[]
+  sessions             Session[]      @relation("TutorToSessions") // ✅ FIXED
+
+  @@index([status, updatedAt])
+  @@index([isTrending, updatedAt])
+  @@index([userId])
+}
+
+model Student {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  grade     String?
+  tokens    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  studentSid String? @unique(map: "student_sid_unique") @map("student_sid")
+
+  bookings               Booking[]
+  conversationsAsStudent Conversation[] @relation("StudentConversations")
+  reviews                Review[]
+  user                   User           @relation("UserToStudent", fields: [userId], references: [id], onDelete: Cascade)
+  tokenLedger            TokenLedger[]
+  balances               TutorTokenBalance[]
+  sessions               Session[]      @relation("StudentToSessions") // ✅ FIXED
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+/* =========================
+   Session Tracking
+   ========================= */
+
+model Session {
+  id         String   @id @default(cuid())
+  tutorId    String
+  studentId  String
+  startTime  DateTime
+  endTime    DateTime
+  createdAt  DateTime @default(now())
+
+  tutor    Tutor   @relation("TutorToSessions", fields: [tutorId], references: [id])
+  student  Student @relation("StudentToSessions", fields: [studentId], references: [id])
+}
+
+/* =========================
+   Bookings / Schedules
+   ========================= */
+
+model Booking {
+  id            String        @id @default(uuid())
+  tutorId       String
+  studentId     String
+
+  // Times are nullable so you can create a demo booking before a slot is chosen
+  startTime     DateTime?
+  endTime       DateTime?
+
+  status        BookingStatus @default(PENDING)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  isDemo        Boolean       @default(false)
+  tokensCharged Decimal       @default(0.00) @db.Decimal(18, 2)
+
+  editsUsed     Int           @default(0)
+  
+
+  student       Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor         Tutor               @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  conversations Conversation[]      @relation("BookingToConversation")
+  reminders     Reminder[]
+  review        Review?
+  tokenLedgers  TokenLedger[]
+  walletLedger  TutorWalletLedger[] @relation("BookingToWalletLedger")
+
+  @@index([tutorId, startTime, endTime])
+  @@index([studentId, startTime, endTime])
+  @@index([status, startTime])
+}
+
+
+model Reminder {
+  id        String   @id @default(uuid())
+  bookingId String
+  kind      String
+  sentAt    DateTime @default(now())
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, kind])
+  @@index([sentAt])
+}
+
+model AvailabilitySlot {
+  id        String   @id @default(uuid())
+  tutorId   String
+  startTime DateTime
+  endTime   DateTime
+  title     String?
+  createdAt DateTime @default(now())
+  tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@unique([tutorId, startTime, endTime])
+  @@index([tutorId, startTime])
+  @@index([tutorId, endTime])
+}
+
+// Application-level KYC (structured form)
+enum KycAppStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  NEEDS_MORE_INFO
+  APPROVED
+  REJECTED
+}
+
+model TutorKycApplication {
+  id             String        @id @default(uuid())
+  tutorId        String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  status         KycAppStatus  @default(SUBMITTED)
+  rejectionCount Int           @default(0)
+  reapplyAfter   DateTime?
+  notes          String?
+
+  // Personal
+  fullName   String
+  dob        DateTime
+  phone      String
+  country    String
+  address1   String
+  address2   String?
+  city       String
+  state      String?
+  postalCode String?
+
+  // Bank common
+  bankAccountHolder String
+  bankName          String
+  bankBranch        String?
+
+  // India
+  accountNumber String?
+  ifsc          String?
+  upiId         String?
+  aadhaarNumber String?
+
+  // UAE
+  iban  String?
+  swift String?
+
+  tutor Tutor @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId, status, updatedAt])
+}
+
+/* =========================
+   Payments / Wallets
+   ========================= */
+
+model Payment {
+  id                String          @id @default(cuid())
+  currency          String          @default("INR")
+  status            PaymentStatus   @default(PENDING)
+  createdAt         DateTime        @default(now())
+  amountInMinor     Int
+  metadata          Json?
+  providerOrderId   String?
+  providerPaymentId String?
+  providerSignature String?
+  tokensPurchased   Int             @default(0)
+  updatedAt         DateTime        @updatedAt
+  userId            String
+  provider          PaymentProvider
+  user              User            @relation("UserToPayments", fields: [userId], references: [id], onDelete: Cascade)
+  refunds           Refund[]
+  ledgerEntries     TokenLedger[]
+
+  // ✅ Back-relations to raw reconciliation txns
+  bankTxns          BankTxn[]       @relation("PaymentToBankTxns")
+  gatewayTxns       GatewayTxn[]    @relation("PaymentToGatewayTxns")
+
+  @@index([userId, status, createdAt])
+  @@index([userId])
+}
+
+model Refund {
+  id               String   @id @default(cuid())
+  paymentId        String
+  amountInMinor    Int
+  providerRefundId String?
+  reason           String?
+  createdAt        DateTime @default(now())
+  payment          Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+}
+
+model TokenLedger {
+  id        String      @id @default(uuid())
+  studentId String
+  delta     Decimal     @db.Decimal(10, 2)
+  reason    TokenReason
+  bookingId String?
+  paymentId String?
+  createdAt DateTime    @default(now())
+  tutorId   String?
+
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  student Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor   Tutor?   @relation(fields: [tutorId], references: [id], onDelete: SetNull)
+
+  @@index([studentId, createdAt])
+  @@index([tutorId])
+  @@index([bookingId])
+  @@index([paymentId])
+}
+
+model TutorTokenBalance {
+  id        String  @id @default(uuid())
+  studentId String
+  tutorId   String
+  balance   Decimal @db.Decimal(10, 2)
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor   @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, tutorId])
+  @@index([studentId, tutorId])
+}
+
+model TutorWallet {
+  tutorId   String   @id
+  balance   Decimal  @default(0.0) @db.Decimal(18, 2)
+  updatedAt DateTime @updatedAt
+  tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+}
+
+model TutorWalletLedger {
+  id        String       @id @default(cuid())
+  tutorId   String
+  bookingId String?
+  delta     Decimal      @db.Decimal(18, 2)
+  reason    WalletReason
+  note      String?
+  createdAt DateTime     @default(now())
+
+  booking Booking? @relation("BookingToWalletLedger", fields: [bookingId], references: [id], onDelete: SetNull)
+  tutor   Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId, createdAt])
+  @@index([bookingId])
+}
+
+model Payout {
+  id        String       @id @default(cuid())
+  tutorId   String
+  amount    Decimal      @db.Decimal(18, 2)
+  status    PayoutStatus @default(PENDING)
+  reference String?
+  createdAt DateTime     @default(now())
+  paidAt    DateTime?
+  tutor     Tutor        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId, createdAt])
+}
+
+/* =========================
+   Conversations / Messages
+   ========================= */
+
+model Conversation {
+  id        String   @id @default(cuid())
+  studentId String
+  tutorId   String
+  bookingId String?
+  createdAt DateTime @default(now())
+
+  booking  Booking?  @relation("BookingToConversation", fields: [bookingId], references: [id], onDelete: SetNull)
+  student  Student   @relation("StudentConversations", fields: [studentId], references: [id], onDelete: Cascade)
+  tutor    Tutor     @relation("TutorConversations", fields: [tutorId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([studentId, tutorId, bookingId])
+  @@index([studentId, tutorId, createdAt])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  text           String   @db.VarChar(2000)
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("UserToMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+/* =========================
+   Reviews / KYC / OAuth / OTP
+   ========================= */
+
+model Review {
+  id        String   @id @default(uuid())
+  tutorId   String
+  studentId String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  bookingId String   @unique
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor   Tutor   @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId, createdAt])
+  @@index([studentId, createdAt])
+}
+
+model KycDocument {
+  id        String    @id @default(uuid())
+  tutorId   String
+  docType   String
+  url       String
+  status    KycStatus @default(PENDING)
+  notes     String?
+  createdAt DateTime  @default(now())
+  tutor     Tutor     @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId, status, createdAt])
+}
+
+model OAuthAccount {
+  id             String   @id @default(uuid())
+  userId         String
+  provider       String
+  providerUserId String   @unique
+  email          String
+  createdAt      DateTime @default(now())
+  user           User     @relation("UserToOAuthAccounts", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, provider])
+}
+
+model OtpCode {
+  id         String     @id @default(cuid())
+  userId     String
+  purpose    OtpPurpose @default(PASSWORD_RESET)
+  channel    OtpChannel
+  target     String
+  code       String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([target, purpose, expiresAt])
+  @@index([code, target])
+}
+
+/* =========================
+   Reconciliation Models
+   ========================= */
+
+/// Who uploaded what, when (bank)
+model BankImport {
+  id          String   @id @default(cuid())
+  filename    String
+  uploadedBy  String?
+  uploadedAt  DateTime @default(now())
+  rowCount    Int      @default(0)
+  notes       String?
+
+  // 🔁 back to User.bankImportsUploaded
+  uploader    User?    @relation("UserToBankImports", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  txns        BankTxn[]
+
+  @@index([uploadedAt])
+}
+
+/// Raw bank statement rows (credits/debits)
+model BankTxn {
+  id          String   @id @default(cuid())
+  importId    String
+  txnDate     DateTime
+  valueDate   DateTime?
+  narration   String?
+  ref         String?
+  amount      Decimal  @db.Decimal(18, 2) // +credit / -debit
+  balance     Decimal? @db.Decimal(18, 2)
+  currency    String   @default("INR")
+  accountNo   String?
+  hash        String   // dedup hash
+
+  // Optional linkage to Payment if you detect it
+  paymentId   String?
+  // 🔁 back to Payment.bankTxns
+  payment     Payment? @relation("PaymentToBankTxns", fields: [paymentId], references: [id], onDelete: SetNull)
+
+  import      BankImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([txnDate])
+  @@index([ref])
+  @@index([paymentId])
+  @@unique([hash]) // prevents duplicate re-ingest of same row
+}
+
+/// Gateway report upload (Razorpay/Stripe)
+model GatewayImport {
+  id          String   @id @default(cuid())
+  provider    PaymentProvider
+  filename    String
+  uploadedBy  String?
+  uploadedAt  DateTime @default(now())
+  rowCount    Int      @default(0)
+  notes       String?
+
+  // 🔁 back to User.gatewayImportsUploaded
+  uploader    User?    @relation("UserToGatewayImports", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  txns        GatewayTxn[]
+
+  @@index([provider, uploadedAt])
+}
+
+/// Raw gateway transactions (orders/payments/settlements)
+model GatewayTxn {
+  id            String   @id @default(cuid())
+  importId      String
+  provider      PaymentProvider
+  event         String?        // e.g., "payment.captured", "settlement"
+  txnDate       DateTime
+  ref           String?        // providerPaymentId/orderId/settlementRef
+  description   String?
+  amount        Decimal        @db.Decimal(18, 2) // +credit / -debit (post-fee if settlement)
+  fee           Decimal?       @db.Decimal(18, 2)
+  tax           Decimal?       @db.Decimal(18, 2)
+  currency      String         @default("INR")
+  hash          String
+
+  // Optional linkage to Payment if known
+  paymentId     String?
+  // 🔁 back to Payment.gatewayTxns
+  payment       Payment?       @relation("PaymentToGatewayTxns", fields: [paymentId], references: [id], onDelete: SetNull)
+
+  import        GatewayImport  @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([txnDate])
+  @@index([ref])
+  @@index([paymentId])
+  @@unique([hash])
+}
+
+/// Manual recon adjustments created from Admin UI
+model ReconAdjustment {
+  id          String      @id @default(cuid())
+  date        DateTime
+  ref         String?
+  side        ReconSide
+  amount      Decimal     @db.Decimal(18, 2)
+  reason      String
+  createdAt   DateTime    @default(now())
+  createdBy   String?
+
+  // 🔁 back to User.reconAdjustmentsCreated
+  creator     User?       @relation("UserToReconAdjustments", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@index([ref])
+  @@index([side, date])
+}
+
+
+
+/* =========================
+   Enums
+   ========================= */
+
+enum ReconSide {
+  BANK
+  GATEWAY
+}
+
+enum Role {
+  ADMIN
+  TUTOR
+  STUDENT
+}
+
+enum TutorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELED
+   PENDING_SLOT   // ✅ new status
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+enum PaymentProvider {
+  RAZORPAY
+}
+
+enum TokenReason {
+  BOOKING
+  REFUND
+  ADMIN_ADJUSTMENT
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WalletReason {
+  BOOKING_EARNED
+  ADJUSTMENT
+  PAYOUT
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+enum OtpChannel {
+  EMAIL
+  SMS
+}
+
+enum OtpPurpose {
+  PASSWORD_RESET
+}
