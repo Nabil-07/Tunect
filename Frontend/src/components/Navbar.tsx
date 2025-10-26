@@ -1,0 +1,378 @@
+// src/components/Navbar.tsx
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Menu, X, LogIn, UserPlus, ChevronDown, LogOut, User, Settings, KeyRound,
+} from 'lucide-react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import NotificationBell from './NotificationBell'; // ✅ ADDED
+
+/* ---------------- helpers ---------------- */
+function normalizeRole(r?: string): 'student' | 'tutor' | 'admin' {
+  const up = String(r || '').toUpperCase();
+  if (up === 'ADMIN') return 'admin';
+  if (up === 'TUTOR') return 'tutor';
+  return 'student';
+}
+function roleDashboard(role?: 'student' | 'tutor' | 'admin') {
+  if (role === 'tutor') return '/tutor/dashboard';
+  if (role === 'admin') return '/admin/dashboard';
+  return '/student/dashboard';
+}
+
+/* -------- public menus (before login) -------- */
+const PUBLIC_MAIN = [
+  { to: '/', label: 'Home' },
+  { to: '/find-tutors', label: 'Find Tutor' },
+  { to: '/become-tutor', label: 'Become a Tutor' },
+  { to: '/how-it-works', label: 'How it Works' },
+];
+const PUBLIC_EXTRA = [
+  { to: '/about', label: 'About' },
+  { to: '/pricing', label: 'Pricing' },
+  { to: '/support', label: 'Support' },
+];
+
+/* -------- role menus (after login) -------- */
+const STUDENT_CENTER = [
+  { to: '/', label: 'Home' },
+  { to: '/find-tutors', label: 'Find Tutor' },
+  { to: '/student/bookings', label: 'Bookings' },
+  { to: '/student/messages', label: 'Messages' },
+  { to: '/support', label: 'Support' },
+];
+
+const ADMIN_CENTER = [
+  { to: '/', label: 'Home' },
+  { to: '/admin/tutors', label: 'Tutors' },
+  { to: '/admin/students', label: 'Students' },
+  { to: '/support', label: 'Support' },
+];
+
+export default function Navbar() {
+  const { user, logout } = useAuth();
+  const nav = useNavigate();
+  const location = useLocation();
+
+  const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [extraOpen, setExtraOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const extraRef = useRef<HTMLDivElement | null>(null);
+
+  const isAuthed = !!user?.id;
+  const role: 'student' | 'tutor' | 'admin' = useMemo(
+    () => normalizeRole(user?.role),
+    [user?.role],
+  );
+
+  // Tutor KYC/application status (kept from your earlier logic)
+  const rawTutorStatus = (user as any)?.tutorStatus as string | undefined;
+  const kycSubmittedFlag = (user as any)?.kycSubmitted ?? false;
+  const SUBMITTED_STATUSES = new Set(['submitted', 'under_review', 'approved', 'verified']);
+  const showBecomeTutorForTutor =
+    role === 'tutor' && !kycSubmittedFlag && !SUBMITTED_STATUSES.has(rawTutorStatus || '');
+
+  // CENTER MENU (before login uses PUBLIC, after login uses role-specific)
+  const centerNav = useMemo(() => {
+    if (!isAuthed) return PUBLIC_MAIN;
+
+    if (role === 'student') return STUDENT_CENTER;
+
+    if (role === 'tutor') {
+      return [
+        { to: '/', label: 'Home' },
+        { to: '/tutor/dashboard', label: 'Dashboard' },
+        { to: '/tutor/availability', label: 'Availability' },
+        { to: '/tutor/messages', label: 'Messages' },
+        { to: '/tutor/sessions', label: 'Sessions' },
+      ];
+    }
+
+    // admin
+    return ADMIN_CENTER;
+  }, [isAuthed, role, showBecomeTutorForTutor]);
+
+  // housekeeping
+  useEffect(() => { setOpen(false); setMenuOpen(false); setExtraOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (menuOpen && menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (extraOpen && extraRef.current && !extraRef.current.contains(e.target as Node)) setExtraOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [menuOpen, extraOpen]);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') { setMenuOpen(false); setExtraOpen(false); } }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  /* DISPLAY NAME */
+  const displayName = (user?.name || user?.email || 'User').trim();
+  const avatarSeed = displayName || 'U';
+  const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
+
+  const handleLogout = useCallback(() => {
+    try {
+      logout?.();
+    } finally {
+      setMenuOpen(false);
+      setExtraOpen(false);
+      nav('/login');
+    }
+  }, [logout, nav]);
+
+  return (
+    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b border-slate-100">
+      <nav className="container mx-auto max-w-7xl px-3 sm:px-4 md:px-6 flex h-16 items-center gap-4">
+        {/* Brand with real logo */}
+        <button
+          type="button"
+          onClick={() => nav(isAuthed ? roleDashboard(role) : '/')}
+          className="flex items-center gap-2"
+          aria-label="Go to home"
+        >
+          <img
+            src="/tunect_logo_hd.png"
+            alt="Tunect Logo"
+            className="h-10 w-auto object-contain"
+          />
+        </button>
+
+        {/* CENTER menus */}
+        <div className="flex-1 flex justify-center overflow-visible">
+          <div className="hidden md:flex items-center gap-1 flex-wrap">
+            {centerNav.map((n) => (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                className={({ isActive }) =>
+                  `px-3 py-2 rounded-xl text-sm font-medium transition ${
+                    isActive ? 'text-ocean-800 bg-ocean-50' : 'text-slate-600 hover:text-ink'
+                  }`
+                }
+              >
+                {n.label}
+              </NavLink>
+            ))}
+
+            {/* Public "Extra" dropdown (About, Pricing, Support) */}
+            {!isAuthed && (
+              <div className="relative" ref={extraRef}>
+                <button
+                  type="button"
+                  onClick={() => setExtraOpen((v) => !v)}
+                  className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
+                >
+                  Extra <ChevronDown size={16} className="text-slate-500" />
+                </button>
+                {extraOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-none border border-slate-200 bg-white shadow-md p-0 z-50 overflow-hidden">
+                    {PUBLIC_EXTRA.map((n) => (
+                      <Link
+                        key={n.to}
+                        to={n.to}
+                        className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors"
+                        onClick={() => setExtraOpen(false)}
+                      >
+                        {n.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tutor-only Extra dropdown (post-login) */}
+            {isAuthed && role === 'tutor' && (
+              <div className="relative" ref={extraRef}>
+                <button
+                  type="button"
+                  onClick={() => setExtraOpen((v) => !v)}
+                  className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
+                >
+                  Extra <ChevronDown size={16} className="text-slate-500" />
+                </button>
+                {extraOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-none border border-slate-200 bg-white shadow-md p-0 z-50 overflow-hidden">
+                    <Link to="/tutor/profile" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Profile</Link>
+                    <Link to="/find-tutors" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Find Tutor</Link>
+                    <Link to="/become-tutor" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>
+                      Become a Tutor {showBecomeTutorForTutor ? '' : '(KYC)'}
+                    </Link>
+                    <Link to="/support" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Support</Link>
+                    <Link to="/tutor/earnings" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Total earnings</Link>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT actions */}
+        <div className="hidden md:flex items-center gap-4">
+          {isAuthed && <NotificationBell />} {/* ✅ ADDED */}
+          {!isAuthed ? (
+            <>
+              <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-ink">
+                Login
+              </Link>
+              <Link to="/signup" className="text-sm font-medium text-ocean-600 hover:text-ocean-800">
+                Sign Up
+              </Link>
+            </>
+          ) : (
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen((v) => !v); }}
+                className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-slate-100"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                aria-label="Open user menu"
+              >
+                <img src={avatarUrl} alt="avatar" className="w-8 h-8 rounded-xl object-cover" />
+                <span className="text-sm font-medium hidden lg:inline max-w-[12rem] truncate">{displayName}</span>
+                <ChevronDown size={16} className="text-slate-500" />
+              </button>
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-56 rounded-2xl border border-slate-100 bg-white shadow-soft p-2 z-50"
+                >
+                  <Link
+                    to={roleDashboard(role)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <span className="inline-block w-4" />
+                    <span>Dashboard</span>
+                  </Link>
+                  <Link
+                    to={role === 'tutor' ? '/tutor/profile' : '/student/profile'}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <User size={16} />
+                    <span>Edit details</span>
+                  </Link>
+                  <Link
+                    to="/account"
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <Settings size={16} />
+                    <span>Manage account</span>
+                  </Link>
+                  <Link
+                    to="/account/security"
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <KeyRound size={16} />
+                    <span>Password &amp; security</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="mt-1 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut size={16} />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Mobile trigger */}
+        <button
+          className="md:hidden ml-auto p-2 rounded-xl hover:bg-slate-100"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Toggle menu"
+        >
+          {open ? <X /> : <Menu />}
+        </button>
+      </nav>
+
+      {/* Mobile drawer */}
+      {open && (
+        <div className="md:hidden border-t border-slate-100 bg-white">
+          <div className="container mx-auto max-w-7xl px-3 sm:px-4 md:px-6 py-2 flex flex-col gap-1">
+            {centerNav.map((n) => (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                className={({ isActive }) =>
+                  `block px-3 py-2 rounded-xl text-sm font-medium ${
+                    isActive ? 'text-ocean-800 bg-ocean-50' : 'text-slate-700 hover:bg-slate-50'
+                  }`
+                }
+                onClick={() => setOpen(false)}
+              >
+                {n.label}
+              </NavLink>
+            ))}
+
+            {/* Public Extra on mobile */}
+            {!isAuthed && (
+              <>
+                <hr className="my-2" />
+                <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Extra</div>
+                {PUBLIC_EXTRA.map((n) => (
+                  <NavLink
+                    key={n.to}
+                    to={n.to}
+                    className="btn-ghost"
+                    onClick={() => setOpen(false)}
+                  >
+                    {n.label}
+                  </NavLink>
+                ))}
+              </>
+            )}
+
+            {/* Tutor Extra on mobile */}
+            {isAuthed && role === 'tutor' && (
+              <>
+                <hr className="my-2" />
+                <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Extra</div>
+                <NavLink to="/tutor/profile" className="btn-ghost" onClick={() => setOpen(false)}>Profile</NavLink>
+                <NavLink to="/find-tutors" className="btn-ghost" onClick={() => setOpen(false)}>Find Tutor</NavLink>
+                <NavLink to="/become-tutor" className="btn-ghost" onClick={() => setOpen(false)}>
+                  Become a Tutor {showBecomeTutorForTutor ? '' : '(KYC)'}
+                </NavLink>
+                <NavLink to="/support" className="btn-ghost" onClick={() => setOpen(false)}>Support</NavLink>
+                <NavLink to="/tutor/earnings" className="btn-ghost" onClick={() => setOpen(false)}>Total earnings</NavLink>
+              </>
+            )}
+
+            <hr className="my-2" />
+
+            {!isAuthed ? (
+              <div className="flex gap-2">
+                <Link to="/login" className="btn-ghost flex-1" onClick={() => setOpen(false)}>
+                  <LogIn size={18} /> Login
+                </Link>
+                <Link to="/signup" className="btn-accent flex-1" onClick={() => setOpen(false)}>
+                  <UserPlus size={18} /> Sign Up
+                </Link>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { handleLogout(); setOpen(false); }}
+                className="mt-2 inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-red-600 hover:bg-red-50"
+              >
+                <LogOut size={18} /> Logout
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </header>
+  );
+}

@@ -1,0 +1,282 @@
+// src/App.tsx
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+
+import MainLayout from './layouts/MainLayout';
+import DashboardLayout from './layouts/DashboardLayout';
+import { setAuthHeader, readToken } from './lib/apiClient';
+
+function Spinner() {
+  return (
+    <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">
+      Loading…
+    </div>
+  );
+}
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [pathname]);
+  return null;
+}
+
+type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
+
+const getStoredRoleUpper = (): RoleApi | null => {
+  const r = localStorage.getItem('role');
+  return r ? (r.toUpperCase() as RoleApi) : null;
+};
+
+const isAuthed = () => !!readToken() && localStorage.getItem('auth_ok') === '1';
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  if (!isAuthed()) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
+  if (!isAuthed()) return <>{children}</>;
+  const role = getStoredRoleUpper();
+  if (!role) return <Navigate to="/choose-role" replace />;
+  const target =
+    role === 'ADMIN' ? '/admin/dashboard' :
+    role === 'TUTOR' ? '/tutor/dashboard' :
+    '/student/dashboard';
+  return <Navigate to={target} replace />;
+}
+
+// ✅ RoleRoute
+function RoleRoute({
+  role: requiredLower,
+  children,
+}: {
+  role: 'student' | 'tutor' | 'admin';
+  children: React.ReactNode;
+}) {
+  const role = getStoredRoleUpper();
+  const location = useLocation();
+
+  if (!role) {
+    if (location.pathname !== '/choose-role') {
+      return <Navigate to="/choose-role" replace />;
+    }
+    return <>{children}</>;
+  }
+
+  const requiredUpper = requiredLower.toUpperCase() as RoleApi;
+  if (role !== requiredUpper) {
+    if (role === 'ADMIN') return <Navigate to="/admin/dashboard" replace />;
+    if (role === 'TUTOR') return <Navigate to="/tutor/dashboard" replace />;
+    return <Navigate to="/student/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+/** Public Pages */
+import Login from './pages/login';
+import Signup from './pages/signup';
+
+const HomePage = lazy(() => import('./pages/index'));
+const Pricing = lazy(() => import('./pages/pricing'));
+const HowItWorks = lazy(() => import('./pages/how-it-works'));
+const FindTutors = lazy(() => import('./pages/find-tutors'));
+const BecomeTutor = lazy(() => import('./pages/become-tutor'));
+const TutorPublicProfile = lazy(() => import('./pages/tutor/public-profile'));
+
+const About = lazy(() => import('./pages/about'));
+const Privacy = lazy(() => import('./pages/privacy'));
+const Terms = lazy(() => import('./pages/terms'));
+
+const ForgotPassword = lazy(() => import('./pages/forgot-password'));
+const ResetPassword = ForgotPassword;
+
+const AuthCallback = lazy(() => import('./pages/auth-callback'));
+
+/** Student */
+const StudentDashboard = lazy(() => import('./pages/student/dashboard'));
+const StudentProfile = lazy(() => import('./pages/student/profile'));
+const StudentBookings = lazy(() => import('./pages/student/bookings'));
+const StudentChat = lazy(() => import('./pages/student/chat'));
+const ReviewSession = lazy(() => import('./pages/student/review-session'));
+const Cart = lazy(() => import('./pages/student/cart'));
+const DemoCheckout = lazy(() => import('./pages/student/checkout')); // FREE demo checkout (existing)
+const StudentCheckoutPaid = lazy(() => import('./pages/student/checkout-paid')); // NEW paid checkout
+const PaymentSuccess = lazy(() => import('./pages/student/payment-success'));    // NEW
+const PaymentFailure = lazy(() => import('./pages/student/payment-failure'));    // NEW
+
+/** Tutor */
+const TutorDashboard = lazy(() => import('./pages/tutor/dashboard'));
+const TutorProfile = lazy(() => import('./pages/tutor/profile'));
+const Kyc = lazy(() => import('./pages/tutor/kyc-upload'));
+const Availability = lazy(() => import('./pages/tutor/availability'));
+const SkillTest = lazy(() => import('./pages/tutor/skill-test'));
+const TutorSessions = lazy(() => import('./pages/tutor/sessions'));
+const TutorChat = lazy(() => import('./pages/tutor/chat'));
+const TutorEarnings = lazy(() => import('./pages/tutor/earnings'));
+
+/** Admin */
+const AdminDashboard = lazy(() => import('./pages/admin/dashboard'));
+const TutorList = lazy(() => import('./pages/admin/tutors'));
+const StudentList = lazy(() => import('./pages/admin/students'));
+const KycVerification = lazy(() => import('./pages/admin/kyc-verification'));
+const AdminReports = lazy(() => import('./pages/admin/reports'));
+const AdminMessages = lazy(() => import('./pages/admin/messages'));
+const AdminReviews = lazy(() => import('./pages/admin/reviews'));
+const AdminFinanceRecon = lazy(() => import('./pages/admin/finance/recon'));
+
+/** Role chooser */
+const ChooseRole = lazy(() => import('./pages/choose-role'));
+
+const NotFound = () => (
+  <div className="container mx-auto px-4 py-16 text-center">
+    <h1 className="text-2xl font-semibold">404 — Page not found</h1>
+    <p className="mt-2 text-slate-600">The page you’re looking for doesn’t exist.</p>
+  </div>
+);
+
+export default function App() {
+  const navigate = useNavigate();
+  const hasNavigatedRef = useRef(false);
+
+  useEffect(() => {
+    setAuthHeader(readToken() || null);
+  }, []);
+
+  useEffect(() => {
+    const onUnauthorized = () => {
+      hasNavigatedRef.current = false;
+      navigate('/login', { replace: true });
+    };
+
+    const onLogin = () => {
+      if (hasNavigatedRef.current) return;
+      hasNavigatedRef.current = true;
+
+      const role = getStoredRoleUpper();
+      if (!role) {
+        navigate('/choose-role', { replace: true });
+        return;
+      }
+
+      const target =
+        role === 'ADMIN' ? '/admin/dashboard' :
+        role === 'TUTOR' ? '/tutor/dashboard' :
+        '/student/dashboard';
+
+      if (window.location.pathname !== target) {
+        navigate(target, { replace: true });
+      }
+    };
+
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    window.addEventListener('auth:login', onLogin);
+    return () => {
+      window.removeEventListener('auth:unauthorized', onUnauthorized);
+      window.removeEventListener('auth:login', onLogin);
+    };
+  }, [navigate]);
+
+  return (
+    <Suspense fallback={<Spinner />}>
+      <ScrollToTop />
+      <Routes>
+        {/* Public Pages */}
+        <Route element={<MainLayout />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+          <Route path="/signup" element={<PublicOnlyRoute><Signup /></PublicOnlyRoute>} />
+          <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/how-it-works" element={<HowItWorks />} />
+          <Route path="/find-tutors" element={<FindTutors />} />
+          <Route path="/become-tutor" element={<BecomeTutor />} />
+          <Route path="/tutor/:id" element={<TutorPublicProfile />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/tutors" element={<Navigate to="/find-tutors" replace />} />
+          <Route path="/become-a-tutor" element={<Navigate to="/become-tutor" replace />} />
+        </Route>
+
+        {/* Role Chooser */}
+        <Route path="/choose-role" element={<ProtectedRoute><ChooseRole /></ProtectedRoute>} />
+
+        {/* Student Dashboard */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <RoleRoute role="student">
+                <DashboardLayout role="student" />
+              </RoleRoute>
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/student/dashboard" element={<StudentDashboard />} />
+          <Route path="/student/profile" element={<StudentProfile />} />
+          <Route path="/student/bookings" element={<StudentBookings />} />
+          <Route path="/student/messages" element={<StudentChat />} />
+          <Route path="/student/chat" element={<StudentChat />} />
+          <Route path="/student/review-session" element={<ReviewSession />} />
+          <Route path="/student/cart" element={<Cart />} />
+
+          {/* Free DEMO checkout (existing) */}
+          <Route path="/student/demo-checkout" element={<DemoCheckout />} />
+
+          {/* NEW paid checkout flow + result pages */}
+          <Route path="/student/checkout" element={<StudentCheckoutPaid />} />
+          <Route path="/student/payment/success" element={<PaymentSuccess />} />
+          <Route path="/student/payment/failure" element={<PaymentFailure />} />
+        </Route>
+
+        {/* Tutor Dashboard */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <RoleRoute role="tutor">
+                <DashboardLayout role="tutor" />
+              </RoleRoute>
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/tutor/dashboard" element={<TutorDashboard />} />
+          <Route path="/tutor/profile" element={<TutorProfile />} />
+          <Route path="/tutor/kyc" element={<Kyc />} />
+          <Route path="/tutor/availability" element={<Availability />} />
+          <Route path="/tutor/skill-test" element={<SkillTest />} />
+          <Route path="/tutor/sessions" element={<TutorSessions />} />
+          <Route path="/tutor/messages" element={<TutorChat />} />
+          <Route path="/tutor/chat" element={<TutorChat />} />
+          <Route path="/tutor/earnings" element={<TutorEarnings />} />
+        </Route>
+
+        {/* Admin Dashboard */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <RoleRoute role="admin">
+                <DashboardLayout role="admin" />
+              </RoleRoute>
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/tutors" element={<TutorList />} />
+          <Route path="/admin/students" element={<StudentList />} />
+          <Route path="/admin/kyc-verification" element={<KycVerification />} />
+          <Route path="/admin/reports" element={<AdminReports />} />
+          <Route path="/admin/messages" element={<AdminMessages />} />
+          <Route path="/admin/reviews" element={<AdminReviews />} />
+          <Route path="/admin/finance/recon" element={<AdminFinanceRecon />} />
+        </Route>
+
+        {/* 404 Fallback */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
+  );
+}
