@@ -180,11 +180,26 @@ export class AuthService {
       user = await this.prisma.user.create({
         data: {
           email: p.email.toLowerCase(),
+          name: p.name || p.email.split('@')[0], // ✅ Store name from Google OAuth
+          avatarUrl: p.avatarUrl, // ✅ Store avatar from Google OAuth
           password: '',       // OAuth user (no password)
           role: null,         // No default role assigned
           hasChosenRole: false, // New users must choose a role
         },
       });
+    } else {
+      // Update existing user with name and avatar if not already set
+      if (!user.name && p.name) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            name: p.name,
+            avatarUrl: p.avatarUrl || null,
+          },
+        });
+        user.name = p.name;
+        user.avatarUrl = p.avatarUrl || null;
+      }
     }
 
     // 3) Link OAuth account

@@ -1,6 +1,7 @@
 // src/layouts/MainLayout.tsx
 import { Outlet } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import Breadcrumbs from '../components/Breadcrumbs';
 import Footer from '../components/Footer';
 
 export default function MainLayout() {
@@ -8,6 +9,7 @@ export default function MainLayout() {
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
+      <Breadcrumbs />
       <main className="flex-1">
         <Outlet />
       </main>

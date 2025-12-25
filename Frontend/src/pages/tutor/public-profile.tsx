@@ -7,6 +7,7 @@ import { useDisplayCurrency } from '../../hooks/useDisplayCurrency';
 import { formatCurrency } from '../../utils/currency';
 import BuyTokensButton from '../../components/BuyTokensButton';
 import { createDemoBooking } from '../../services/bookingsService';
+import { useAuth } from '../../contexts/AuthContext';
 
 type BookableSlot = { startTime: string; endTime: string };
 
@@ -28,6 +29,7 @@ function sameDay(a: Date, b: Date) { return a.toDateString() === b.toDateString(
 export default function TutorPublicProfile() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const { user } = useAuth();
   const isDemoIntent = useMemo(
     () => new URLSearchParams(location.search).get('demo') === '1',
     [location.search],
@@ -137,6 +139,13 @@ export default function TutorPublicProfile() {
 
   async function bookSlot(slot: BookableSlot) {
     if (!id) return;
+    
+    if (user?.role === 'TUTOR') {
+      setToast('Tutor accounts cannot book demos or slots with other tutors');
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
     try {
       setBusy(true);
 

@@ -26,6 +26,8 @@ import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { AssignDemoSlotDto } from './dto/assign-demo-slot.dto';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
+import { CreateGroupBookingDto, JoinGroupBookingDto } from './dto/group-booking.dto';
+import { ConvertToGroupSessionDto } from './dto/convert-to-group.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -152,14 +154,29 @@ export class BookingsController {
   })
   @ApiParam({ name: 'tutorId', required: true, description: 'Tutor ID' })
   @Get('demo-status/:tutorId')
-  @Roles(Role.STUDENT, Role.ADMIN)
-  @UseGuards(RolesGuard)
   async demoStatus(
     @CurrentUser('sub') userId: string,
     @Param('tutorId') tutorId: string,
   ) {
     const used = await this.service.hasUsedDemo(userId, tutorId);
     return { used };
+  }
+
+  @ApiOperation({
+    summary: 'Check demo status for multiple tutors',
+    description: 'Returns an object mapping tutorId to boolean (true if used).',
+  })
+  @Post('demo-status/bulk')
+  async bulkDemoStatus(
+    @CurrentUser('sub') userId: string,
+    @Body() body: { tutorIds: string[] },
+  ) {
+    const results: Record<string, boolean> = {};
+    for (const tutorId of body.tutorIds) {
+      const used = await this.service.hasUsedDemo(userId, tutorId);
+      results[tutorId] = used;
+    }
+    return results;
   }
 
   // ---------- Assign slot ----------
@@ -232,5 +249,127 @@ export class BookingsController {
   @UseGuards(RolesGuard)
   cancel(@Param('id') id: string, @CurrentUser('sub') actorUserId: string) {
     return this.service.cancel(id, actorUserId);
+  }
+
+  // ==================== GROUP SESSIONS ====================
+
+  @ApiOperation({ summary: 'Create a group session (tutor only)' })
+  @Post('group')
+  @Roles(Role.TUTOR, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  createGroupSession(
+    @Body() dto: CreateGroupBookingDto,
+    @CurrentUser('tutorId') tutorId: string,
+  ) {
+    if (!tutorId) {
+      throw new NotFoundException('Tutor account not found for logged-in user');
+    }
+    return this.service.createGroupSession(dto, tutorId);
+  }
+
+  @ApiOperation({ summary: 'Get available group sessions to join' })
+  @Get('group/available')
+  @Roles(Role.STUDENT, Role.TUTOR, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  getAvailableGroupSessions(
+    @Query('subject') subject?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const filters = {
+      subject,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    };
+    return this.service.getAvailableGroupSessions(filters);
+  }
+
+  @ApiOperation({ summary: 'Join a group session (student only)' })
+  @ApiParam({ name: 'id', required: true, description: 'Booking ID of group session' })
+  @Post(':id/join')
+  @Roles(Role.STUDENT, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  async joinGroupSession(
+    @Param('id') bookingId: string,
+    @CurrentUser('studentId') studentId: string,
+  ) {
+    if (!studentId) {
+      throw new NotFoundException('Student account not found for logged-in user');
+    }
+    return this.service.joinGroupSession(bookingId, studentId);
+  }
+
+  @ApiOperation({ summary: 'Leave a group session (student only)' })
+  @ApiParam({ name: 'id', required: true, description: 'Booking ID of group session' })
+  @Delete(':id/leave')
+  @Roles(Role.STUDENT, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  async leaveGroupSession(
+    @Param('id') bookingId: string,
+    @CurrentUser('studentId') studentId: string,
+  ) {
+    if (!studentId) {
+      throw new NotFoundException('Student account not found for logged-in user');
+    }
+    return this.service.leaveGroupSession(bookingId, studentId);
+  }
+
+  @ApiOperation({ summary: 'Get participants of a group session' })
+  @ApiParam({ name: 'id', required: true, description: 'Booking ID of group session' })
+  @Get(':id/participants')
+  @Roles(Role.TUTOR, Role.STUDENT, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  getGroupSessionParticipants(@Param('id') bookingId: string) {
+    return this.service.getGroupSessionParticipants(bookingId);
+  }
+
+  @ApiOperation({ summary: 'Convert 1:1 slot to group session (tutor only, >24hrs before session)' })
+  @ApiParam({ name: 'id', required: true, description: 'Booking ID to convert' })
+  @Patch(':id/convert-to-group')
+  @Roles(Role.TUTOR, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  async convertToGroupSession(
+    @Param('id') bookingId: string,
+    @CurrentUser('tutorId') tutorId: string,
+    @Body() dto: ConvertToGroupSessionDto,
+  ) {
+    if (!tutorId) {
+      throw new NotFoundException('Tutor account not found for logged-in user');
+    }
+    return this.service.convertToGroupSession(
+      bookingId,
+      tutorId,
+      dto.maxStudents,
+      dto.pricePerStudent,
+    );
+  }
+
+  @ApiOperation({ 
+    summary: 'Create a pending slot booking with tokens (student reserves tokens for future scheduling)',
+    description: 'Creates a PENDING_SLOT booking by deducting tokens. Student can schedule later when tutor has availability.'
+  })
+  @Post('reserve-with-tokens/:tutorId')
+  @Roles(Role.STUDENT)
+  @UseGuards(RolesGuard)
+  async reserveWithTokens(
+    @Param('tutorId') tutorId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.service.createPendingSlotWithTokens(tutorId, userId);
+  }
+
+  @ApiOperation({
+    summary: 'Bulk reserve tokens for multiple future sessions',
+    description: 'Creates multiple PENDING_SLOT bookings by deducting tokens upfront. Student can schedule each one later.'
+  })
+  @Post('bulk-reserve-tokens/:tutorId')
+  @Roles(Role.STUDENT)
+  @UseGuards(RolesGuard)
+  async bulkReserveTokens(
+    @Param('tutorId') tutorId: string,
+    @CurrentUser('sub') userId: string,
+    @Body('count') count: number,
+  ) {
+    return this.service.bulkReserveTokens(tutorId, userId, count);
   }
 }

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createOrder, verifyPayment } from '../../services/paymentsService';
+import { useAuth } from '../../contexts/AuthContext';
 
 declare global {
   interface Window {
@@ -24,6 +25,7 @@ async function loadRazorpayScript(): Promise<void> {
 export default function StudentCheckoutPaid() {
   const [sp] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth() as any;
   const tutorId = sp.get('tutorId') || '';
   const tokens = Number(sp.get('tokens') || '0');
 
@@ -48,8 +50,11 @@ export default function StudentCheckoutPaid() {
         setBusy(true);
         setErr(null);
 
-        // 1) Ask backend for order
-        const order = await createOrder({ tutorId, tokens });
+        // Get user's preferred display currency from user profile
+        const displayCurrency = user?.preferredCurrency || 'INR';
+
+        // 1) Ask backend for order (backend always uses INR for Razorpay)
+        const order = await createOrder({ tutorId, tokens, displayCurrency });
 
         // 2) Ensure Razorpay is available
         await loadRazorpayScript();

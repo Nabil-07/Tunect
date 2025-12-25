@@ -2,10 +2,11 @@
 import type { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, AlertCircle } from 'lucide-react';
 import api from '../lib/apiClient';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
 import { formatCurrency } from '../utils/currency';
+import { useAuth } from '../contexts/AuthContext';
 
 let Motion: any = null;
 try { Motion = require('framer-motion').motion; } catch { Motion = null; }
@@ -42,6 +43,8 @@ const normItem = (raw: any): TrendingTutor | null => {
 };
 
 const Card: FC<{ tutor: TrendingTutor; onBookDemo: (tutor: TrendingTutor) => void }> = ({ tutor, onBookDemo }) => {
+  const { user } = useAuth();
+  const [toast, setToast] = useState<string | null>(null);
   const { currency, rates } = useDisplayCurrency();
   const r = (code: string) => rates[code] ?? 1;
   const priceInDisplay = typeof tutor.hourly === 'number' && tutor.hourly > 0
@@ -50,8 +53,23 @@ const Card: FC<{ tutor: TrendingTutor; onBookDemo: (tutor: TrendingTutor) => voi
   const stars = Math.max(0, Math.min(5, Math.round(tutor.rating ?? 0)));
   const ImgWrap = useMemo(() => (Motion ? Motion.div : 'div'), []);
 
+  const handleBookDemo = () => {
+    if (user?.role === 'TUTOR') {
+      setToast('Tutor accounts cannot book demos with other tutors');
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+    onBookDemo(tutor);
+  };
+
   return (
     <div className="relative flex w-full flex-col overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-black/5">
+      {toast && (
+        <div className="absolute top-4 left-4 right-4 z-50 flex items-center gap-2 rounded-lg bg-yellow-50 border border-yellow-300 px-4 py-3 text-sm text-yellow-800 shadow-lg">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+          <span className="flex-1">{toast}</span>
+        </div>
+      )}
       <ImgWrap initial={{ opacity: 0.6 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} className="h-48 w-full bg-slate-200">
         {tutor.img ? (
           <img src={tutor.img} alt={`${tutor.name}${tutor.subject ? ` · ${tutor.subject}` : ''}`} loading="lazy" className="h-full w-full object-cover" />
@@ -90,7 +108,7 @@ const Card: FC<{ tutor: TrendingTutor; onBookDemo: (tutor: TrendingTutor) => voi
           </div>
         ) : null}
 
-        <button className="btn-primary mt-4 w-full" onClick={() => onBookDemo(tutor)}>
+        <button className="btn-primary mt-4 w-full" onClick={handleBookDemo}>
           Book a demo
         </button>
       </div>

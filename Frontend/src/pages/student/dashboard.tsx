@@ -11,6 +11,11 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Heart,
+  TrendingUp,
+  Target,
+  FileText,
+  Award,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -18,6 +23,9 @@ import { getRecommendedTutors } from '../../services/tutorService';
 import { getMe, getNextBooking } from '../../services/studentService';
 import { getUnreadCount } from '../../services/messagesService';
 import { getDemoStatusesForTutors } from '../../services/bookingsService';
+import { formatPriceFromINR } from '../../utils/currency';
+import { PriceDisplay } from '../../components/PriceDisplay';
+import api from '../../lib/apiClient';
 
 type SubjectStat = { name: string; progress: number }; // 0..100
 
@@ -31,6 +39,7 @@ export default function StudentDashboard() {
   const [reco, setReco] = useState<any[]>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tokenBalances, setTokenBalances] = useState<Map<string, number>>(new Map());
 
   // Snapshot stats (no streak)
   const [hoursStudied, setHoursStudied] = useState<number | null>(null);
@@ -54,22 +63,29 @@ export default function StudentDashboard() {
       setFetching(true);
       setError(null);
       try {
-        const [meRes, nextRes, unreadRes, recoRes] = await Promise.all([
+        const [meRes, nextRes, unreadRes, recoRes, balancesRes] = await Promise.all([
           getMe().catch(() => null),
           getNextBooking().catch(() => null),
           getUnreadCount().catch(() => ({ count: 0 })),
           getRecommendedTutors(6).catch(() => []),
+          api.get('/students/me/token-balances').catch(() => ({ data: [] })),
         ]);
         if (!alive) return;
 
-        const tokenBalance =
-          meRes?.student?.tokens ??
-          meRes?.tokens ??
-          meRes?.tokenBalance ??
-          meRes?.balance ??
-          0;
+        // Calculate total tokens from all tutor balances
+        const balances = Array.isArray(balancesRes.data) ? balancesRes.data : [];
+        const totalTokens = balances.reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0);
+        
+        // Build token balance map for tutor cards
+        const balanceMap = new Map<string, number>();
+        balances.forEach((b: any) => {
+          if (b.tutorId) {
+            balanceMap.set(b.tutorId, Number(b.balance || 0));
+          }
+        });
+        setTokenBalances(balanceMap);
 
-        setTokens(typeof tokenBalance === 'number' ? tokenBalance : Number(tokenBalance ?? 0));
+        setTokens(totalTokens);
         setNext(nextRes ?? null);
         setUnread(typeof unreadRes === 'number' ? unreadRes : unreadRes?.count ?? 0);
 
@@ -229,18 +245,26 @@ export default function StudentDashboard() {
       )}
 
       {/* Quick stats */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Token Balance"
           value={tokens ?? '—'}
           icon={<BadgeIndianRupee className="h-6 w-6 text-ocean-600" />}
           action={
-            <button
-              className="mt-2 text-sm font-medium text-ocean-700 hover:underline inline-flex items-center gap-1"
-              onClick={() => nav('/student/cart')}
-            >
-              <Plus className="h-4 w-4" /> Buy more tokens
-            </button>
+            <div className="mt-2 flex gap-3">
+              <Link
+                to="/student/token-balance"
+                className="text-sm font-medium text-ocean-700 hover:underline"
+              >
+                View Details
+              </Link>
+              <button
+                className="text-sm font-medium text-ocean-700 hover:underline inline-flex items-center gap-1"
+                onClick={() => nav('/student/cart')}
+              >
+                <Plus className="h-4 w-4" /> Buy Tokens
+              </button>
+            </div>
           }
         />
         <StatCard
@@ -265,6 +289,96 @@ export default function StudentDashboard() {
             </Link>
           }
         />
+        <StatCard
+          title="My Favorites"
+          value="View all"
+          icon={<Heart className="h-6 w-6 text-rose-600" />}
+          action={
+            <Link to="/student/favorites" className="mt-2 text-sm text-ocean-700 hover:underline">
+              Manage favorites
+            </Link>
+          }
+        />
+      </section>
+
+      {/* Phase 2 Features - Learning Tools */}
+      <section>
+        <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+          <TrendingUp className="h-5 w-5 text-ocean-700" /> Your Learning Tools
+        </h2>
+        <div className="grid md:grid-cols-4 gap-6">
+          <Link
+            to="/student/progress"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow-md transition group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <TrendingUp className="h-8 w-8 text-ocean-600 group-hover:scale-110 transition" />
+              <span className="text-2xl">📊</span>
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Progress Tracking</h3>
+            <p className="text-sm text-slate-600">View hours, levels, and achievements</p>
+          </Link>
+
+          <Link
+            to="/student/goals"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow-md transition group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <Target className="h-8 w-8 text-purple-600 group-hover:scale-110 transition" />
+              <span className="text-2xl">🎯</span>
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Learning Goals</h3>
+            <p className="text-sm text-slate-600">Set and track your objectives</p>
+          </Link>
+
+          <Link
+            to="/student/session-notes"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow-md transition group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <FileText className="h-8 w-8 text-green-600 group-hover:scale-110 transition" />
+              <span className="text-2xl">📝</span>
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Session Notes</h3>
+            <p className="text-sm text-slate-600">Review tutor notes and homework</p>
+          </Link>
+
+          <Link
+            to="/student/certificates"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow-md transition group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <Award className="h-8 w-8 text-amber-600 group-hover:scale-110 transition" />
+              <span className="text-2xl">🏆</span>
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Certificates</h3>
+            <p className="text-sm text-slate-600">View earned achievements</p>
+          </Link>
+
+          <Link
+            to="/student/group-sessions"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow-md transition group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <BookOpen className="h-8 w-8 text-blue-600 group-hover:scale-110 transition" />
+              <span className="text-2xl">👥</span>
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">Group Sessions</h3>
+            <p className="text-sm text-slate-600">Join group learning sessions</p>
+          </Link>
+
+          <Link
+            to="/student/waitlist"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow-md transition group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <Clock className="h-8 w-8 text-indigo-600 group-hover:scale-110 transition" />
+              <span className="text-2xl">⏰</span>
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">My Waitlist</h3>
+            <p className="text-sm text-slate-600">Track your tutor waitlist</p>
+          </Link>
+        </div>
       </section>
 
       {/* Recommended tutors */}
@@ -284,9 +398,13 @@ export default function StudentDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {reco.map((t) => {
               const alreadyUsed = !!t.demoUsed;
-              const btnLabel = alreadyUsed ? 'Book Slot' : 'Book Demo';
+              const tutorTokenBalance = tokenBalances.get(t.id);
+              const hasTokens = tutorTokenBalance !== undefined && tutorTokenBalance > 0;
+              const btnLabel = alreadyUsed 
+                ? (hasTokens ? 'Use Tokens' : 'Buy Tokens')
+                : 'Book Demo';
               const href = alreadyUsed
-                ? `/student/cart?tutorId=${t.id}`
+                ? (hasTokens ? '/student/bookings' : `/student/cart?tutorId=${t.id}`)
                 : `/student/demo-checkout?tutorId=${t.id}`;
               return (
                 <div
@@ -312,8 +430,24 @@ export default function StudentDashboard() {
                       </div>
                     </div>
                   </div>
+                  
+                  {/* Token Balance Display */}
+                  {alreadyUsed && hasTokens && (
+                    <div className="mt-3 p-2 rounded-lg bg-emerald-50 border border-emerald-200">
+                      <div className="flex items-center gap-1 text-xs text-emerald-700">
+                        <BadgeIndianRupee className="h-3 w-3" />
+                        <span className="font-medium">{tutorTokenBalance.toFixed(1)} tokens</span>
+                        {tutorTokenBalance <= 1 && (
+                          <span className="ml-1 text-amber-600">Low!</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="mt-4 flex items-center justify-between">
-                    <div className="text-sm font-medium">₹{t.hourlyRate ?? '—'}/hr</div>
+                    <div className="text-sm font-medium">
+                      <PriceDisplay amountInINR={t.hourlyRate ?? 0} />/hr
+                    </div>
                     <button
                       onClick={() => nav(href)}
                       className="rounded-xl bg-ocean-700 px-4 py-2 text-xs font-medium text-white hover:bg-ocean-800"

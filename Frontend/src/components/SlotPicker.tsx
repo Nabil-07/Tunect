@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Clock, Loader2, RotateCw, X } from 'lucide-react';
-import { assignSlot, getTutorAvailability } from '../services/bookingsService';
+import { Bell, CalendarDays, Clock, Loader2, RotateCw, X } from 'lucide-react';
+import { assignSlot, getTutorAvailability, listBookings } from '../services/bookingsService';
+import { addToWaitlist } from '../services/waitlistService';
+import NotificationModal from './common/NotificationModal';
 
 type AvailabilitySlot = {
   id?: string;
@@ -27,9 +29,12 @@ export default function SlotPicker({
 }) {
   const [loading, setLoading] = useState(false);
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
+  const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [joiningWaitlist, setJoiningWaitlist] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showNotification, setShowNotification] = useState(false);
 
   const dtDate = useMemo(
     () => new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
@@ -51,8 +56,25 @@ export default function SlotPicker({
       const from = new Date();
       const to = new Date();
       to.setDate(to.getDate() + Math.max(1, days));
-      const res = await getTutorAvailability(tutorId, from.toISOString(), to.toISOString(), tz);
-      setSlots(Array.isArray(res) ? res : []);
+      
+      // Fetch availability and booked slots in parallel
+      const [availabilityRes, bookedRes] = await Promise.all([
+        getTutorAvailability(tutorId, from.toISOString(), to.toISOString(), tz),
+        listBookings({ tutorId, status: 'CONFIRMED', tz }).catch(() => [])
+      ]);
+      
+      setSlots(Array.isArray(availabilityRes) ? availabilityRes : []);
+      
+      // Create a set of booked time ranges for quick lookup
+      const booked = new Set<string>();
+      if (Array.isArray(bookedRes)) {
+        bookedRes.forEach(booking => {
+          if (booking.startTime && booking.endTime) {
+            booked.add(`${booking.startTime}::${booking.endTime}`);
+          }
+        });
+      }
+      setBookedSlots(booked);
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Failed to load availability');
       setSlots([]);
@@ -70,8 +92,18 @@ export default function SlotPicker({
 
   const grouped = useMemo(() => {
     const map = new Map<string, AvailabilitySlot[]>();
+    const now = new Date();
+    
     for (const s of slots) {
-      const label = dtDate.format(new Date(s.startTime));
+      const slotKey = `${s.startTime}::${s.endTime}`;
+      const startTime = new Date(s.startTime);
+      
+      // Skip if slot is already booked or in the past
+      if (bookedSlots.has(slotKey) || startTime < now) {
+        continue;
+      }
+      
+      const label = dtDate.format(startTime);
       const arr = map.get(label) || [];
       arr.push(s);
       map.set(label, arr);
@@ -80,7 +112,7 @@ export default function SlotPicker({
       day,
       items: arr.sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime)),
     }));
-  }, [slots, dtDate]);
+  }, [slots, bookedSlots, dtDate]);
 
   async function handleAssign() {
     if (!selectedKey) return;
@@ -103,6 +135,35 @@ export default function SlotPicker({
       setSubmitting(false);
     }
   }
+
+  async function handleNotifyMe() {
+    setJoiningWaitlist(true);
+    setError(null);
+    try {
+      // Add to waitlist with a flexible time range
+      const now = new Date();
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 7); // Next 7 days
+      
+      await addToWaitlist({
+        tutorId,
+        requestedStartTime: now.toISOString(),
+        requestedEndTime: futureDate.toISOString(),
+        notes: `Notified from booking ${bookingId}`,
+      });
+      
+      setShowNotification(true);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || 'Failed to join waitlist');
+    } finally {
+      setJoiningWaitlist(false);
+    }
+  }
+
+  const handleNotificationClose = () => {
+    setShowNotification(false);
+    onClose();
+  };
 
   if (!open) return null;
 
@@ -145,8 +206,13 @@ export default function SlotPicker({
               {error}
             </div>
           ) : grouped.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              No upcoming availability for this tutor.
+            <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 text-center">
+              <p className="text-sm font-medium text-purple-900 mb-2">
+                No available slots at the moment
+              </p>
+              <p className="text-xs text-purple-700">
+                Click "Notify Me" below to get an email when this tutor adds new availability
+              </p>
             </div>
           ) : (
             grouped.map(({ day, items }) => (
@@ -188,21 +254,50 @@ export default function SlotPicker({
           >
             Cancel
           </button>
-          <button
-            disabled={!selectedKey || submitting}
-            onClick={handleAssign}
-            className="rounded-xl bg-ocean-700 px-4 py-2 font-medium text-white disabled:opacity-60"
-          >
-            {submitting ? (
-              <span className="inline-flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Assigning…
-              </span>
-            ) : (
-              'Assign Slot'
-            )}
-          </button>
+          
+          {grouped.length === 0 && !loading ? (
+            <button
+              disabled={joiningWaitlist}
+              onClick={handleNotifyMe}
+              className="rounded-xl bg-purple-600 px-4 py-2 font-medium text-white disabled:opacity-60 flex items-center gap-2"
+            >
+              {joiningWaitlist ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Joining…
+                </>
+              ) : (
+                <>
+                  <Bell className="h-4 w-4" /> Notify Me
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              disabled={!selectedKey || submitting}
+              onClick={handleAssign}
+              className="rounded-xl bg-ocean-700 px-4 py-2 font-medium text-white disabled:opacity-60"
+            >
+              {submitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Assigning…
+                </span>
+              ) : (
+                'Assign Slot'
+              )}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Notification Modal */}
+      <NotificationModal
+        open={showNotification}
+        onClose={handleNotificationClose}
+        title="Added to Waitlist!"
+        message="You will be notified via email when this tutor adds new availability."
+        type="success"
+        confirmText="Got it!"
+      />
     </div>
   );
 }

@@ -173,6 +173,13 @@ export function logout() {
   }
 }
 
+/** Update current user profile (name, preferredCurrency, etc.) */
+export async function updateMe(data: { name?: string; preferredCurrency?: string; avatarUrl?: string | null }): Promise<any> {
+  const { data: updated } = await api.patch('/users/me', data);
+  saveUserProfileToLS(updated);
+  return updated;
+}
+
 /* ---------------- Forgot Password (email or phone + OTP) ---------------- */
 
 type StartPayload = { method: "email" | "phone"; value: string };

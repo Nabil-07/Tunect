@@ -75,3 +75,23 @@ export function formatCurrency(amount: number, currency = 'USD', locale?: string
   }
 }
 
+/** Convert from INR (database storage) to target currency */
+export async function convertFromINR(amountInINR: number, targetCurrency: string): Promise<number> {
+  if (targetCurrency === 'INR') return amountInINR;
+  
+  const rates = await getUsdRates();
+  const inrRate = rates['INR'] || 83;
+  const targetRate = rates[targetCurrency] || 1;
+  
+  // INR -> USD -> Target
+  const inUSD = amountInINR / inrRate;
+  const inTarget = inUSD * targetRate;
+  
+  return inTarget;
+}
+
+/** Format price with currency conversion from INR */
+export async function formatPriceFromINR(amountInINR: number, targetCurrency: string, locale?: string): Promise<string> {
+  const converted = await convertFromINR(amountInINR, targetCurrency);
+  return formatCurrency(converted, targetCurrency, locale);
+}

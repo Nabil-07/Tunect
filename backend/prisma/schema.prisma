@@ -12,16 +12,17 @@ datasource db {
    ========================= */
 
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  password      String
-  role          Role?          // Make role optional
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  avatarUrl     String?
-  name          String?
-  phone         String?        @unique
-  hasChosenRole Boolean        @default(false)
+  id                String         @id @default(cuid())
+  email             String         @unique
+  password          String
+  role              Role?          // Make role optional
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  avatarUrl         String?
+  name              String?
+  phone             String?        @unique
+  hasChosenRole     Boolean        @default(false)
+  preferredCurrency String         @default("INR") // User's preferred display currency
 
   messagesSent  Message[]      @relation("UserToMessages")
   oauthAccounts OAuthAccount[] @relation("UserToOAuthAccounts")
@@ -34,6 +35,14 @@ model User {
   bankImportsUploaded      BankImport[]      @relation("UserToBankImports")
   gatewayImportsUploaded   GatewayImport[]   @relation("UserToGatewayImports")
   reconAdjustmentsCreated  ReconAdjustment[] @relation("UserToReconAdjustments")
+  
+  // New Features
+  sessionNotes         SessionNote[]      @relation("UserToNotes")
+  promoUsages          PromoUsage[]       @relation("UserToPromoUsage")
+  disputesReported     Dispute[]          @relation("UserToDisputes")
+  disputesResolved     Dispute[]          @relation("UserToResolvedDisputes")
+  campaignsCreated     EmailCampaign[]    @relation("UserToCampaigns")
+  notifications        Notification[]     @relation("UserToNotifications")
 
   @@index([email])
 }
@@ -63,7 +72,18 @@ model Tutor {
   balances             TutorTokenBalance[]
   wallet               TutorWallet?
   walletLedger         TutorWalletLedger[]
-  sessions             Session[]      @relation("TutorToSessions") // ✅ FIXED
+  sessions             Session[]      @relation("TutorToSessions")
+  
+  // New Features
+  assignments          Assignment[]        @relation("TutorToAssignments")
+  studyMaterials       StudyMaterial[]     @relation("TutorToMaterials")
+  certificates         Certificate[]       @relation("TutorToCertificates")
+  favoritedBy          FavoriteTutor[]     @relation("TutorToFavorites")
+  groupBookings        GroupBooking[]      @relation("TutorToGroupBookings")
+  reports              PerformanceReport[] @relation("TutorToReports")
+  recurringTemplates   RecurringTemplate[] @relation("TutorToRecurringTemplates")
+  recurringBookings    RecurringBooking[]  @relation("TutorToRecurringBookings")
+  waitlist             Waitlist[]          @relation("TutorToWaitlist")
 
   @@index([status, updatedAt])
   @@index([isTrending, updatedAt])
@@ -85,7 +105,24 @@ model Student {
   user                   User           @relation("UserToStudent", fields: [userId], references: [id], onDelete: Cascade)
   tokenLedger            TokenLedger[]
   balances               TutorTokenBalance[]
-  sessions               Session[]      @relation("StudentToSessions") // ✅ FIXED
+  sessions               Session[]      @relation("StudentToSessions")
+  
+  // New Features
+  progress               StudentProgress[]     @relation("StudentToProgress")
+  goals                  LearningGoal[]        @relation("StudentToGoals")
+  assignments            Assignment[]          @relation("StudentToAssignments")
+  materialAccess         MaterialAccess[]      @relation("StudentToMaterials")
+  referralsMade          Referral[]            @relation("StudentToReferrals")
+  referredBy             Referral[]            @relation("StudentToReferredBy")
+  certificates           Certificate[]         @relation("StudentToCertificates")
+  favoriteTutors         FavoriteTutor[]       @relation("StudentToFavorites")
+  groupParticipations    GroupParticipant[]    @relation("StudentToGroupBookings")
+  reports                PerformanceReport[]   @relation("StudentToReports")
+  recurringBookings      RecurringBooking[]    @relation("StudentToRecurringBookings")
+  waitlist               Waitlist[]            @relation("StudentToWaitlist")
+  
+  // Phase 4: Enhanced Booking Features
+  groupBookingParticipants GroupBookingParticipant[]
 
   @@index([createdAt])
   @@index([userId])
@@ -129,6 +166,19 @@ model Booking {
 
   editsUsed     Int           @default(0)
   
+  // Phase 4: Group Sessions
+  isGroupSession    Boolean  @default(false)
+  maxStudents       Int      @default(1)
+  currentEnrollment Int      @default(1)
+  pricePerStudent   Decimal? @db.Decimal(18, 2)
+  
+  // Phase 4: Google Meet Integration
+  meetingUrl      String?
+  meetingProvider String? @default("google_meet")
+  
+  // Phase 4: Recurring Bookings
+  recurringTemplateId String?
+  recurringTemplate   RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id], onDelete: SetNull)
 
   student       Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
   tutor         Tutor               @relation(fields: [tutorId], references: [id], onDelete: Cascade)
@@ -137,10 +187,68 @@ model Booking {
   review        Review?
   tokenLedgers  TokenLedger[]
   walletLedger  TutorWalletLedger[] @relation("BookingToWalletLedger")
+  
+  // New Features
+  assignments           Assignment[]
+  sessionNotes          SessionNote[]
+  meetingLink           MeetingLink?
+  whiteboardSessions    WhiteboardSession[]
+  disputes              Dispute[]
+  notifications         Notification[]
+  groupParticipants     GroupBookingParticipant[]
+  waitlistEntries       Waitlist[]              @relation("WaitlistToBooking")
 
   @@index([tutorId, startTime, endTime])
   @@index([studentId, startTime, endTime])
   @@index([status, startTime])
+  @@index([recurringTemplateId])
+  @@index([isGroupSession, currentEnrollment, maxStudents])
+}
+
+// Phase 4: Group Session Participants
+model GroupBookingParticipant {
+  id            String   @id @default(uuid())
+  bookingId     String
+  studentId     String
+  joinedAt      DateTime @default(now())
+  tokensPaid    Decimal  @default(0.00) @db.Decimal(18, 2)
+  pricePerToken Decimal  @default(0.00) @db.Decimal(10, 2) // Locked-in price when student joined
+  status        String   @default("ENROLLED") // ENROLLED, DROPPED, COMPLETED
+  
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, studentId])
+  @@index([bookingId])
+  @@index([studentId])
+}
+
+// Phase 4: Waitlist for fully booked sessions
+model Waitlist {
+  id                 String    @id @default(uuid())
+  tutorId            String
+  studentId          String
+  requestedStartTime DateTime
+  requestedEndTime   DateTime
+  subject            String?
+  priority           Int       @default(1)
+  status             String    @default("WAITING") // WAITING, NOTIFIED, EXPIRED, BOOKED
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  notifiedAt         DateTime?
+  expiresAt          DateTime?
+  bookingId          String?
+  notes              String?
+  
+  tutor              Tutor     @relation("TutorToWaitlist", fields: [tutorId], references: [id], onDelete: Cascade)
+  student            Student   @relation("StudentToWaitlist", fields: [studentId], references: [id], onDelete: Cascade)
+  booking            Booking?  @relation("WaitlistToBooking", fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([tutorId])
+  @@index([studentId])
+  @@index([status])
+  @@index([requestedStartTime])
+  @@index([bookingId])
 }
 
 
@@ -283,12 +391,13 @@ model TokenLedger {
 }
 
 model TutorTokenBalance {
-  id        String  @id @default(uuid())
-  studentId String
-  tutorId   String
-  balance   Decimal @db.Decimal(10, 2)
-  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  tutor     Tutor   @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  id                String  @id @default(uuid())
+  studentId         String
+  tutorId           String
+  balance           Decimal @db.Decimal(10, 2)
+  pricePerToken     Decimal @db.Decimal(10, 2) // Locked-in price when student purchased tokens
+  student           Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor             Tutor   @relation(fields: [tutorId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, tutorId])
   @@index([studentId, tutorId])
@@ -359,6 +468,7 @@ model Message {
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation("UserToMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  attachments  MessageAttachment[]
 
   @@index([conversationId, createdAt])
   @@index([senderId, createdAt])
@@ -597,6 +707,7 @@ enum KycStatus {
 
 enum WalletReason {
   BOOKING_EARNED
+  BOOKING_CHARGE
   ADJUSTMENT
   PAYOUT
 }
@@ -614,4 +725,464 @@ enum OtpChannel {
 
 enum OtpPurpose {
   PASSWORD_RESET
+}
+
+/* =========================
+   New Feature Models
+   ========================= */
+
+// Student Progress Tracking
+model StudentProgress {
+  id        String   @id @default(cuid())
+  studentId String
+  subject   String
+  hoursSpent Decimal @default(0) @db.Decimal(10, 2)
+  level     Int      @default(1)
+  xp        Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  student   Student  @relation("StudentToProgress", fields: [studentId], references: [id], onDelete: Cascade)
+  
+  @@unique([studentId, subject])
+  @@index([studentId])
+}
+
+// Learning Goals
+model LearningGoal {
+  id          String   @id @default(cuid())
+  studentId   String
+  title       String
+  description String?
+  targetDate  DateTime?
+  status      GoalStatus @default(IN_PROGRESS)
+  progress    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  student     Student  @relation("StudentToGoals", fields: [studentId], references: [id], onDelete: Cascade)
+  milestones  Milestone[]
+  
+  @@index([studentId, status])
+}
+
+model Milestone {
+  id        String   @id @default(cuid())
+  goalId    String
+  title     String
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  goal      LearningGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  
+  @@index([goalId])
+}
+
+// Homework/Assignments
+model Assignment {
+  id          String           @id @default(cuid())
+  tutorId     String
+  studentId   String
+  bookingId   String?
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      AssignmentStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  
+  tutor       Tutor            @relation("TutorToAssignments", fields: [tutorId], references: [id], onDelete: Cascade)
+  student     Student          @relation("StudentToAssignments", fields: [studentId], references: [id], onDelete: Cascade)
+  booking     Booking?         @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  submissions AssignmentSubmission[]
+  
+  @@index([tutorId, studentId])
+  @@index([studentId, status])
+}
+
+model AssignmentSubmission {
+  id           String   @id @default(cuid())
+  assignmentId String
+  fileUrl      String
+  notes        String?
+  grade        String?
+  feedback     String?
+  submittedAt  DateTime @default(now())
+  
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  
+  @@index([assignmentId])
+}
+
+// Study Materials Library
+model StudyMaterial {
+  id          String   @id @default(cuid())
+  tutorId     String
+  title       String
+  description String?
+  fileUrl     String
+  fileType    String
+  subject     String?
+  isPublic    Boolean  @default(false)
+  downloads   Int      @default(0)
+  createdAt   DateTime @default(now())
+  
+  tutor       Tutor    @relation("TutorToMaterials", fields: [tutorId], references: [id], onDelete: Cascade)
+  sharedWith  MaterialAccess[]
+  
+  @@index([tutorId, isPublic])
+  @@index([subject])
+}
+
+model MaterialAccess {
+  id         String   @id @default(cuid())
+  materialId String
+  studentId  String
+  accessedAt DateTime @default(now())
+  
+  material   StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  student    Student       @relation("StudentToMaterials", fields: [studentId], references: [id], onDelete: Cascade)
+  
+  @@unique([materialId, studentId])
+  @@index([studentId])
+}
+
+// Referral Program
+model Referral {
+  id            String   @id @default(cuid())
+  referrerId    String
+  referredEmail String
+  referredId    String?
+  tokensEarned  Int      @default(0)
+  status        ReferralStatus @default(PENDING)
+  createdAt     DateTime @default(now())
+  completedAt   DateTime?
+  
+  referrer      Student  @relation("StudentToReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred      Student? @relation("StudentToReferredBy", fields: [referredId], references: [id], onDelete: SetNull)
+  
+  @@index([referrerId])
+  @@index([referredEmail])
+}
+
+// Certificates
+model Certificate {
+  id        String          @id @default(cuid())
+  studentId String
+  tutorId   String?
+  type      CertificateType
+  hours     Decimal         @db.Decimal(10, 2)
+  subject   String?
+  issuedAt  DateTime        @default(now())
+  
+  student   Student         @relation("StudentToCertificates", fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor?          @relation("TutorToCertificates", fields: [tutorId], references: [id], onDelete: SetNull)
+  
+  @@index([studentId, type])
+}
+
+// Favorite Tutors
+model FavoriteTutor {
+  id        String   @id @default(cuid())
+  studentId String
+  tutorId   String
+  createdAt DateTime @default(now())
+  
+  student   Student  @relation("StudentToFavorites", fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor    @relation("TutorToFavorites", fields: [tutorId], references: [id], onDelete: Cascade)
+  
+  @@unique([studentId, tutorId])
+  @@index([studentId])
+}
+
+// Session Notes
+model SessionNote {
+  id        String   @id @default(cuid())
+  bookingId String
+  authorId  String
+  content   String   @db.Text
+  isAiGenerated Boolean @default(false)
+  approvedByTutor Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  author    User     @relation("UserToNotes", fields: [authorId], references: [id], onDelete: Cascade)
+  
+  @@index([bookingId])
+}
+
+// Group Sessions
+model GroupBooking {
+  id           String   @id @default(cuid())
+  tutorId      String
+  startTime    DateTime
+  endTime      DateTime
+  maxStudents  Int      @default(4)
+  topic        String?
+  status       BookingStatus @default(PENDING)
+  createdAt    DateTime @default(now())
+  
+  tutor        Tutor    @relation("TutorToGroupBookings", fields: [tutorId], references: [id], onDelete: Cascade)
+  participants GroupParticipant[]
+  
+  @@index([tutorId, startTime])
+}
+
+model GroupParticipant {
+  id              String   @id @default(cuid())
+  groupBookingId  String
+  studentId       String
+  paymentStatus   PaymentStatus @default(PENDING)
+  paidAmount      Decimal  @db.Decimal(18, 2)
+  joinedAt        DateTime @default(now())
+  
+  groupBooking    GroupBooking @relation(fields: [groupBookingId], references: [id], onDelete: Cascade)
+  student         Student      @relation("StudentToGroupBookings", fields: [studentId], references: [id], onDelete: Cascade)
+  
+  @@unique([groupBookingId, studentId])
+  @@index([studentId])
+}
+
+// Performance Reports
+model PerformanceReport {
+  id        String   @id @default(cuid())
+  studentId String
+  tutorId   String?
+  period    String
+  data      Json
+  createdAt DateTime @default(now())
+  
+  student   Student  @relation("StudentToReports", fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor?   @relation("TutorToReports", fields: [tutorId], references: [id], onDelete: SetNull)
+  
+  @@index([studentId, createdAt])
+}
+
+// Recurring Availability Templates
+model RecurringTemplate {
+  id                  String    @id @default(cuid())
+  tutorId             String
+  dayOfWeek           Int
+  startTime           String
+  endTime             String
+  title               String?
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  
+  // Phase 4: Automatic booking generation
+  lastGeneratedDate   DateTime?
+  nextGenerationDate  DateTime?
+  maxGroupSize        Int       @default(1)
+  isGroupSession      Boolean   @default(false)
+  pricePerStudent     Decimal?  @db.Decimal(18, 2)
+  
+  tutor               Tutor     @relation("TutorToRecurringTemplates", fields: [tutorId], references: [id], onDelete: Cascade)
+  generatedBookings   Booking[]
+  
+  @@index([tutorId, isActive])
+  @@index([nextGenerationDate, isActive])
+}
+
+// Recurring Bookings
+model RecurringBooking {
+  id           String   @id @default(cuid())
+  studentId    String
+  tutorId      String
+  dayOfWeek    Int
+  startTime    String
+  endTime      String
+  occurrences  Int
+  currentCount Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  
+  student      Student  @relation("StudentToRecurringBookings", fields: [studentId], references: [id], onDelete: Cascade)
+  tutor        Tutor    @relation("TutorToRecurringBookings", fields: [tutorId], references: [id], onDelete: Cascade)
+  
+  @@index([studentId, isActive])
+  @@index([tutorId, isActive])
+}
+
+// Google Meet Integration
+model MeetingLink {
+  id        String   @id @default(cuid())
+  bookingId String   @unique
+  meetUrl   String
+  meetId    String
+  createdAt DateTime @default(now())
+  
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+// Whiteboard Sessions
+model WhiteboardSession {
+  id        String   @id @default(cuid())
+  bookingId String
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  @@index([bookingId])
+}
+
+// File Attachments in Messages
+model MessageAttachment {
+  id        String   @id @default(cuid())
+  messageId String
+  fileUrl   String
+  fileName  String
+  fileSize  Int
+  fileType  String
+  createdAt DateTime @default(now())
+  
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  @@index([messageId])
+}
+
+// Promo Codes
+model PromoCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  discount    Decimal  @db.Decimal(10, 2)
+  type        DiscountType
+  maxUses     Int?
+  usedCount   Int      @default(0)
+  validFrom   DateTime
+  validUntil  DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  usages      PromoUsage[]
+  
+  @@index([code, isActive])
+}
+
+model PromoUsage {
+  id        String   @id @default(cuid())
+  promoId   String
+  userId    String
+  usedAt    DateTime @default(now())
+  
+  promo     PromoCode @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  user      User      @relation("UserToPromoUsage", fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([promoId])
+  @@index([userId])
+}
+
+// Dispute Resolution
+model Dispute {
+  id          String        @id @default(cuid())
+  bookingId   String
+  reporterId  String
+  reason      String
+  description String        @db.Text
+  status      DisputeStatus @default(OPEN)
+  resolution  String?       @db.Text
+  createdAt   DateTime      @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  
+  booking     Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reporter    User          @relation("UserToDisputes", fields: [reporterId], references: [id], onDelete: Cascade)
+  resolver    User?         @relation("UserToResolvedDisputes", fields: [resolvedBy], references: [id], onDelete: SetNull)
+  
+  @@index([status, createdAt])
+}
+
+// Email Campaigns
+model EmailCampaign {
+  id          String   @id @default(cuid())
+  name        String
+  subject     String
+  body        String   @db.Text
+  targetRole  Role?
+  sentCount   Int      @default(0)
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  createdBy   String
+  createdAt   DateTime @default(now())
+  
+  creator     User     @relation("UserToCampaigns", fields: [createdBy], references: [id], onDelete: Cascade)
+  
+  @@index([scheduledAt, sentAt])
+}
+
+// Notifications Storage
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType
+  bookingId String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  user      User     @relation("UserToNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  
+  @@index([userId, isRead, createdAt])
+}
+
+/* =========================
+   New Enums
+   ========================= */
+
+enum GoalStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum AssignmentStatus {
+  PENDING
+  SUBMITTED
+  GRADED
+  OVERDUE
+}
+
+enum ReferralStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+}
+
+enum CertificateType {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+}
+
+enum WaitlistStatus {
+  WAITING
+  NOTIFIED
+  BOOKED
+  EXPIRED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum NotificationType {
+  BOOKING
+  MESSAGE
+  PAYMENT
+  REMINDER
+  SYSTEM
 }

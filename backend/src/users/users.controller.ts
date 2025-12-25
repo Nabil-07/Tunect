@@ -23,7 +23,7 @@ export class UsersController {
   @Patch('me')
   async updateMe(
     @Req() req: any,
-    @Body() body: { email?: string; name?: string; avatarUrl?: string },
+    @Body() body: { email?: string; name?: string; avatarUrl?: string; preferredCurrency?: string },
   ) {
     const userId: string = req.user?.sub ?? req.user?.id;
     return this.users.updateMe(userId, body);

@@ -1,0 +1,308 @@
+// Updated Prisma Schema for Group Messaging System
+// Add these changes to your schema.prisma file
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum ConversationType {
+  ONE_ON_ONE        // Student ↔ Tutor (token-gated)
+  GROUP_SESSION     // Group class chat (tutor broadcasts)
+  ADMIN_BROADCAST   // Admin → Teachers (subject-wise)
+}
+
+enum MemberRole {
+  ADMIN          // Can delete messages, add members
+  MODERATOR      // Can post and manage content  
+  MEMBER         // Regular member
+  READ_ONLY      // Can only view
+}
+
+// ============================================
+// UPDATED MODELS
+// ============================================
+
+model User {
+  id                String         @id @default(cuid())
+  email             String         @unique
+  password          String
+  role              Role?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  avatarUrl         String?
+  name              String?
+  phone             String?        @unique
+  hasChosenRole     Boolean        @default(false)
+  preferredCurrency String         @default("INR")
+
+  messagesSent            Message[]             @relation("UserToMessages")
+  messagesDeleted         Message[]             @relation("UserToDeletedMessages")  // NEW
+  conversationsCreated    Conversation[]        @relation("UserToConversations")    // NEW
+  conversationMemberships ConversationMember[]  @relation("UserToConversationMembers") // NEW
+  
+  // ... rest of existing relations ...
+}
+
+model Conversation {
+  id           String           @id @default(cuid())
+  type         ConversationType @default(ONE_ON_ONE)  // NEW
+  
+  // For ONE_ON_ONE (nullable now)
+  studentId    String?
+  tutorId      String?
+  bookingId    String?
+  
+  // For GROUP_SESSION and ADMIN_BROADCAST (NEW)
+  name         String?
+  description  String?
+  createdById  String?
+  
+  // Metadata (NEW)
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  lastMessageAt DateTime?
+
+  // Relations
+  booking       Booking?              @relation("BookingToConversation", fields: [bookingId], references: [id], onDelete: SetNull)
+  student       Student?              @relation("StudentConversations", fields: [studentId], references: [id], onDelete: Cascade)
+  tutor         Tutor?                @relation("TutorConversations", fields: [tutorId], references: [id], onDelete: Cascade)
+  createdBy     User?                 @relation("UserToConversations", fields: [createdById], references: [id])
+  
+  messages      Message[]
+  members       ConversationMember[]  // NEW
+  groupSession  GroupBooking?         @relation("GroupSessionToConversation")  // NEW
+
+  @@unique([studentId, tutorId, bookingId])
+  @@index([type, isActive])             // NEW
+  @@index([studentId, tutorId, createdAt])
+  @@index([lastMessageAt])              // NEW
+}
+
+// NEW MODEL
+model ConversationMember {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  role           MemberRole   @default(MEMBER)
+  canPost        Boolean      @default(true)
+  canDelete      Boolean      @default(false)
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime?
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation("UserToConversationMembers", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId, conversationId])
+}
+
+model Message {
+  id             String    @id @default(cuid())
+  conversationId String
+  senderId       String
+  text           String    @db.VarChar(2000)
+  
+  // Soft delete (NEW)
+  isDeleted      Boolean   @default(false)
+  deletedById    String?
+  deletedAt      DateTime?
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  conversation   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User               @relation("UserToMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  deletedBy      User?              @relation("UserToDeletedMessages", fields: [deletedById], references: [id])  // NEW
+  attachments    MessageAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([isDeleted])  // NEW
+}
+
+model GroupBooking {
+  id           String   @id @default(cuid())
+  tutorId      String
+  startTime    DateTime
+  endTime      DateTime
+  maxStudents  Int      @default(4)
+  topic        String?
+  status       BookingStatus @default(PENDING)
+  createdAt    DateTime @default(now())
+  
+  conversationId String?  @unique  // NEW
+  
+  tutor        Tutor            @relation("TutorToGroupBookings", fields: [tutorId], references: [id], onDelete: Cascade)
+  participants GroupParticipant[]
+  conversation Conversation?    @relation("GroupSessionToConversation", fields: [conversationId], references: [id])  // NEW
+  
+  @@index([tutorId, startTime])
+}
+
+// ============================================
+// USAGE EXAMPLES
+// ============================================
+
+/*
+
+1. CREATE GROUP SESSION CHAT (Auto-triggered)
+---------------------------------------------
+When a GroupBooking is created, automatically create conversation:
+
+const conversation = await prisma.conversation.create({
+  data: {
+    type: 'GROUP_SESSION',
+    name: `Group Session: ${groupBooking.topic}`,
+    createdById: tutorUserId,
+    members: {
+      create: [
+        {
+          userId: tutorUserId,
+          role: 'MODERATOR',
+          canPost: true,
+          canDelete: false,
+        },
+        ...studentUserIds.map(id => ({
+          userId: id,
+          role: 'READ_ONLY',
+          canPost: false,
+          canDelete: false,
+        })),
+      ],
+    },
+  },
+});
+
+await prisma.groupBooking.update({
+  where: { id: groupBookingId },
+  data: { conversationId: conversation.id },
+});
+
+
+2. CREATE ADMIN BROADCAST GROUP
+--------------------------------
+Admin creates subject-wise broadcast:
+
+const conversation = await prisma.conversation.create({
+  data: {
+    type: 'ADMIN_BROADCAST',
+    name: 'Mathematics Teachers',
+    description: 'Broadcast group for all math tutors',
+    createdById: adminUserId,
+    members: {
+      create: [
+        {
+          userId: adminUserId,
+          role: 'ADMIN',
+          canPost: true,
+          canDelete: true,
+        },
+        ...mathTutorUserIds.map(id => ({
+          userId: id,
+          role: 'MEMBER',
+          canPost: false,  // Read-only for tutors
+          canDelete: false,
+        })),
+      ],
+    },
+  },
+});
+
+
+3. CHECK IF STUDENT CAN MESSAGE TUTOR
+--------------------------------------
+Before allowing message send:
+
+const balance = await prisma.tutorTokenBalance.findUnique({
+  where: {
+    studentId_tutorId: { studentId, tutorId },
+  },
+});
+
+if (!balance || balance.balance <= 0) {
+  throw new ForbiddenException('No active tokens');
+}
+
+
+4. SEND MESSAGE WITH PERMISSION CHECK
+--------------------------------------
+const member = await prisma.conversationMember.findUnique({
+  where: {
+    conversationId_userId: { conversationId, userId },
+  },
+});
+
+if (!member?.canPost) {
+  throw new ForbiddenException('Cannot post in this conversation');
+}
+
+const message = await prisma.message.create({
+  data: {
+    conversationId,
+    senderId: userId,
+    text: messageText,
+  },
+});
+
+
+5. SOFT DELETE MESSAGE (Admin only)
+------------------------------------
+await prisma.message.update({
+  where: { id: messageId },
+  data: {
+    isDeleted: true,
+    deletedById: adminUserId,
+    deletedAt: new Date(),
+  },
+});
+
+
+6. GET CONVERSATIONS FOR USER
+------------------------------
+const conversations = await prisma.conversation.findMany({
+  where: {
+    isActive: true,
+    OR: [
+      // User is student in 1-on-1
+      { student: { userId: userId } },
+      // User is tutor in 1-on-1
+      { tutor: { userId: userId } },
+      // User is member of group
+      { members: { some: { userId: userId } } },
+    ],
+  },
+  include: {
+    messages: {
+      where: { isDeleted: false },
+      orderBy: { createdAt: 'desc' },
+      take: 1,
+    },
+    members: {
+      include: {
+        user: {
+          select: { id: true, name: true, avatarUrl: true },
+        },
+      },
+    },
+  },
+  orderBy: { lastMessageAt: 'desc' },
+});
+
+
+7. GET MESSAGES (Hide Deleted from Non-Admins)
+-----------------------------------------------
+const messages = await prisma.message.findMany({
+  where: {
+    conversationId: conversationId,
+    ...(userRole !== 'ADMIN' ? { isDeleted: false } : {}),
+  },
+  include: {
+    sender: {
+      select: { id: true, name: true, avatarUrl: true },
+    },
+  },
+  orderBy: { createdAt: 'asc' },
+});
+
+*/

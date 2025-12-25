@@ -116,6 +116,12 @@ export async function assignDemoSlot(bookingId: string, payload: AssignSlotPaylo
   return data as BookingDto;
 }
 
+/** Cancel a booking */
+export async function cancelBooking(bookingId: string) {
+  const { data } = await api.delete(`/bookings/${bookingId}`);
+  return data;
+}
+
 /** Demo status helpers (bulk first, fallback fan-out) */
 export async function getDemoStatusForTutor(tutorId: string): Promise<boolean> {
   try {
@@ -143,4 +149,135 @@ export async function getDemoStatusesForTutors(
     })
   );
   return result;
+}
+
+/* ========== Phase 4: Group Sessions ========== */
+export type CreateGroupSessionPayload = {
+  tutorId: string;
+  startTime: string; // ISO
+  endTime: string;   // ISO
+  subject: string;
+  maxStudents: number; // 2-10
+  pricePerStudent: number;
+  isDemo?: boolean;
+  notes?: string;
+};
+
+export type GroupBookingDto = BookingDto & {
+  isGroupSession: boolean;
+  maxStudents: number;
+  currentEnrollment: number;
+  pricePerStudent: number;
+  meetingUrl?: string;
+  meetingProvider?: string;
+  participants?: Array<{
+    id: string;
+    studentId: string;
+    tokensPaid: number;
+    status: string;
+    joinedAt: string;
+    student: {
+      id: string;
+      name?: string;
+      avatar?: string;
+    };
+  }>;
+};
+
+export async function createGroupSession(payload: CreateGroupSessionPayload) {
+  const { data } = await api.post<GroupBookingDto>("/bookings/group", payload);
+  return data;
+}
+
+export async function getAvailableGroupSessions(params?: { subject?: string; tutorId?: string }) {
+  const { data } = await api.get<GroupBookingDto[]>("/bookings/group/available", { params });
+  return Array.isArray(data) ? data : [];
+}
+
+export async function joinGroupSession(bookingId: string) {
+  const { data } = await api.post<GroupBookingDto>(`/bookings/${bookingId}/join`, { bookingId });
+  return data;
+}
+
+export async function leaveGroupSession(bookingId: string) {
+  const { data } = await api.delete(`/bookings/${bookingId}/leave`);
+  return data;
+}
+
+export async function getGroupSessionParticipants(bookingId: string) {
+  const { data } = await api.get(`/bookings/${bookingId}/participants`);
+  return data;
+}
+
+export type ConvertToGroupSessionPayload = {
+  maxStudents: number; // 2-10
+  pricePerStudent: number;
+};
+
+export async function convertToGroupSession(bookingId: string, payload: ConvertToGroupSessionPayload) {
+  const { data } = await api.patch<GroupBookingDto>(`/bookings/${bookingId}/convert-to-group`, payload);
+  return data;
+}
+
+/* ========== Phase 4: Waitlist ========== */
+export type AddToWaitlistPayload = {
+  tutorId: string;
+  requestedStartTime: string;
+  requestedEndTime?: string;
+  subject?: string;
+  priority?: number;
+  notes?: string;
+};
+
+export type WaitlistEntryDto = {
+  id: string;
+  studentId: string;
+  tutorId: string;
+  requestedStartTime: string;
+  requestedEndTime?: string;
+  subject?: string;
+  priority: number;
+  status: "WAITING" | "NOTIFIED" | "EXPIRED" | "BOOKED";
+  notifiedAt?: string;
+  expiresAt?: string;
+  createdAt: string;
+  tutor?: {
+    id: string;
+    name?: string;
+    email?: string;
+  };
+  student?: {
+    id: string;
+    name?: string;
+    email?: string;
+  };
+};
+
+export async function addToWaitlist(payload: AddToWaitlistPayload) {
+  const { data } = await api.post<WaitlistEntryDto>("/waitlist", payload);
+  return data;
+}
+
+export async function getMyWaitlist() {
+  const { data } = await api.get<WaitlistEntryDto[]>("/waitlist/my");
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getTutorWaitlist() {
+  const { data } = await api.get<WaitlistEntryDto[]>("/waitlist/tutor");
+  return Array.isArray(data) ? data : [];
+}
+
+export async function notifyWaitlistStudent(waitlistId: string) {
+  const { data } = await api.post(`/waitlist/${waitlistId}/notify`);
+  return data;
+}
+
+export async function bookFromWaitlist(waitlistId: string) {
+  const { data } = await api.post<BookingDto>(`/waitlist/${waitlistId}/book`);
+  return data;
+}
+
+export async function removeFromWaitlist(waitlistId: string) {
+  await api.delete(`/waitlist/${waitlistId}`);
 }

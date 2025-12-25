@@ -104,6 +104,29 @@ export class StudentsController {
     return this.students.getMyBookings(userId);
   }
 
+  @ApiOperation({ summary: 'Get my token balances per tutor' })
+  @Get('me/token-balances')
+  @Roles(Role.STUDENT)
+  getTokenBalances(@CurrentUser('id') userId: string) {
+    return this.students.getTutorTokenBalances(userId);
+  }
+
+  @ApiOperation({ summary: 'Get my token ledger' })
+  @Get('me/token-ledger')
+  @Roles(Role.STUDENT)
+  getTokenLedgerAll(@CurrentUser('id') userId: string) {
+    return this.students.getTokenLedgerAll(userId);
+  }
+
+  // ----- Tutor -----
+
+  @ApiOperation({ summary: 'Get my students (tutor)' })
+  @Get('tutor/my-students')
+  @Roles(Role.TUTOR)
+  getMyStudents(@CurrentUser('id') userId: string) {
+    return this.students.getTutorStudents(userId);
+  }
+
   // ----- Admin -----
 
   @ApiOperation({ summary: 'List students (admin)' })

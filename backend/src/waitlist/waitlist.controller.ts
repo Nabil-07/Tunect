@@ -1,0 +1,101 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+
+import { WaitlistService } from './waitlist.service';
+import { AddToWaitlistDto } from './dto/add-to-waitlist.dto';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { Role } from '../auth/role.enum';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+
+@ApiTags('waitlist')
+@ApiBearerAuth()
+@Controller('waitlist')
+@UseGuards(JwtAuthGuard)
+export class WaitlistController {
+  constructor(private readonly service: WaitlistService) {}
+
+  @ApiOperation({ summary: 'Add student to waitlist' })
+  @Post()
+  @Roles(Role.STUDENT, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  addToWaitlist(@Body() dto: AddToWaitlistDto, @CurrentUser('studentId') studentId: string) {
+    if (!studentId) {
+      throw new NotFoundException('Student account not found for logged-in user');
+    }
+    return this.service.addToWaitlist(dto, studentId);
+  }
+
+  @ApiOperation({ summary: 'Get my waitlist entries (student)' })
+  @Get('my')
+  @Roles(Role.STUDENT, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  getMyWaitlist(@CurrentUser('studentId') studentId: string) {
+    if (!studentId) {
+      throw new NotFoundException('Student account not found for logged-in user');
+    }
+    return this.service.getMyWaitlist(studentId);
+  }
+
+  @ApiOperation({ summary: 'Get waitlist for tutor' })
+  @Get('tutor')
+  @Roles(Role.TUTOR, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  getTutorWaitlist(@CurrentUser('tutorId') tutorId: string) {
+    if (!tutorId) {
+      throw new NotFoundException('Tutor account not found for logged-in user');
+    }
+    return this.service.getTutorWaitlist(tutorId);
+  }
+
+  @ApiOperation({ summary: 'Notify student about available slot (tutor only)' })
+  @ApiParam({ name: 'id', required: true, description: 'Waitlist entry ID' })
+  @Post(':id/notify')
+  @Roles(Role.TUTOR, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  notifyWhenAvailable(
+    @Param('id') waitlistId: string,
+    @CurrentUser('tutorId') tutorId: string,
+    @Body('bookingId') bookingId: string,
+  ) {
+    if (!tutorId) {
+      throw new NotFoundException('Tutor account not found for logged-in user');
+    }
+    return this.service.notifyWhenAvailable(waitlistId, tutorId, bookingId);
+  }
+
+  @ApiOperation({ summary: 'Book from waitlist notification (student only)' })
+  @ApiParam({ name: 'id', required: true, description: 'Waitlist entry ID' })
+  @Post(':id/book')
+  @Roles(Role.STUDENT, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  bookFromWaitlist(@Param('id') waitlistId: string, @CurrentUser('studentId') studentId: string) {
+    if (!studentId) {
+      throw new NotFoundException('Student account not found for logged-in user');
+    }
+    return this.service.bookFromWaitlist(waitlistId, studentId);
+  }
+
+  @ApiOperation({ summary: 'Remove from waitlist' })
+  @ApiParam({ name: 'id', required: true, description: 'Waitlist entry ID' })
+  @Delete(':id')
+  @Roles(Role.STUDENT, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  removeFromWaitlist(@Param('id') waitlistId: string, @CurrentUser('studentId') studentId: string) {
+    if (!studentId) {
+      throw new NotFoundException('Student account not found for logged-in user');
+    }
+    return this.service.removeFromWaitlist(waitlistId, studentId);
+  }
+}
