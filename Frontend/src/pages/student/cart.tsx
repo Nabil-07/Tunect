@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDisplayCurrency } from '../../hooks/useDisplayCurrency';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/apiClient';
+import { useToast } from '../../contexts/ToastContext';
 
 type Tutor = {
   id: string;
@@ -25,6 +26,7 @@ export default function Cart() {
   const nav = useNavigate();
   const { user } = useAuth();
   const { currency: displayCurrency, convertFromINR } = useDisplayCurrency();
+  const { showError } = useToast();
 
   const [tutor, setTutor] = useState<Tutor | null>(null);
   const [qty, setQty] = useState<number>(10); // tokens count
@@ -83,7 +85,7 @@ export default function Cart() {
       await api.post('/bookings/demo', { tutorId });
       setSuccess(true);
     } catch (e: any) {
-      alert(e?.response?.data?.message || 'Failed to book demo');
+      showError(e?.response?.data?.message || 'Failed to book demo');
     } finally {
       setLoading(false);
     }
@@ -212,6 +214,9 @@ export default function Cart() {
         {/* Summary */}
         <div className="h-fit rounded-2xl border p-4 shadow-sm">
           <h2 className="text-lg font-semibold">Summary</h2>
+          
+          <hr className="my-3 border-slate-200" />
+
           <div className="mt-3 space-y-1 text-sm">
             <div className="flex justify-between">
               <span>Student</span>

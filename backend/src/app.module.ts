@@ -21,6 +21,17 @@ import { AdminTokensModule } from './admin-tokens/admin-tokens.module';
 import { TutorsModule } from './tutors/tutors.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MessagesModule } from './messages/messages.module';
+import { FavoritesModule } from './favorites/favorites.module';
+import { AttachmentsModule } from './attachments/attachments.module';
+import { StudentProgressModule } from './student-progress/student-progress.module';
+import { SessionNotesModule } from './session-notes/session-notes.module';
+import { LearningGoalsModule } from './learning-goals/learning-goals.module';
+import { CertificatesModule } from './certificates/certificates.module';
+import { StudyMaterialsModule } from './study-materials/study-materials.module';
+import { RecurringTemplatesModule } from './recurring-templates/recurring-templates.module';
+import { PerformanceReportsModule } from './performance-reports/performance-reports.module';
+import { WaitlistModule } from './waitlist/waitlist.module';
+import { GoogleMeetModule } from './google-meet/google-meet.module';
 
 import { AppController } from './app.controller';
 import { ReadyController } from './health/ready.controller';
@@ -57,6 +68,17 @@ import { ReconModule } from './finance/recon/recon.module';
     NotificationsModule,
     MessagesModule,
     ProfilesModule,
+    FavoritesModule,
+    AttachmentsModule,
+    StudentProgressModule,
+    SessionNotesModule,
+    LearningGoalsModule,
+    CertificatesModule,
+    StudyMaterialsModule,
+    RecurringTemplatesModule,
+    PerformanceReportsModule,
+    WaitlistModule,
+    GoogleMeetModule,
 
     FinanceDashboardModule,
     TokenLedgerModule,

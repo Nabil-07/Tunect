@@ -8,12 +8,14 @@ import {
 } from '@nestjs/common';
 import Razorpay from 'razorpay';
 import * as crypto from 'crypto';
+import PDFDocument from 'pdfkit';
+import { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { RefundDto } from './dto/refund.dto';
 import { TokenLedgerService } from '../tokens/token-ledger.service';
-import { PaymentStatus, PaymentProvider, TokenReason } from '@prisma/client';
+import { PaymentStatus, PaymentProvider, TokenReason, BookingStatus, Prisma } from '@prisma/client';
 import { Role } from '../auth/role.enum';
 
 const PURCHASE_MIN_TOKENS = Number(process.env.PURCHASE_MIN_TOKENS ?? 10);
@@ -68,6 +70,65 @@ export class PaymentsService {
     return r;
   }
 
+  // Ensure a paid booking placeholder exists (PENDING_SLOT) when tutorId is known.
+  private async ensurePendingSlotBooking(paymentId: string, studentId: string) {
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) return null;
+
+    const meta = (payment.metadata as any) || {};
+    const tutorId: string | undefined = meta?.tutorId;
+    const tokens = Number(meta?.tokens ?? 0);
+    const notes = meta?.notes ?? null;
+
+    if (!tutorId) return null;
+
+    return this.prisma.$transaction(async (tx) => {
+      const refreshed = await tx.payment.findUnique({ where: { id: paymentId }, select: { metadata: true } });
+      const refreshedMeta = (refreshed?.metadata as any) || {};
+      if (refreshedMeta.bookingId) {
+        return tx.booking.findUnique({ where: { id: refreshedMeta.bookingId } });
+      }
+
+      const booking = await tx.booking.create({
+        data: {
+          tutorId,
+          studentId,
+          isDemo: false,
+          status: BookingStatus.PENDING_SLOT,
+          tokensCharged: new Prisma.Decimal(Math.max(0, tokens)),
+          notes,
+        },
+      });
+
+      if (tokens > 0) {
+        // Reserve the purchased tokens against this booking so they cannot be double-spent.
+        const hold = Math.floor(tokens);
+        await tx.student.update({
+          where: { id: studentId },
+          data: { tokens: { decrement: hold } },
+        });
+
+        await tx.tokenLedger.create({
+          data: {
+            studentId,
+            tutorId,
+            bookingId: booking.id,
+            paymentId,
+            delta: new Prisma.Decimal(-hold),
+            reason: TokenReason.BOOKING,
+          },
+        });
+      }
+
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { metadata: { ...meta, bookingId: booking.id } },
+      });
+
+      return booking;
+    });
+  }
+
   // ===== Create Razorpay order: amount = tutor.hourlyRate * tokens (INR) =====
   async createOrder(userId: string, dto: CreateOrderDto) {
     const rp = this.requireRazor();
@@ -93,6 +154,7 @@ export class PaymentsService {
       throw new BadRequestException('Tutor hourly rate is not configured.');
     }
 
+    // Always calculate and store in INR (Razorpay requirement)
     const amountInMinor = this.toMinor(rateInInr * dto.tokens);
     if (!Number.isInteger(amountInMinor) || amountInMinor < 100) {
       throw new BadRequestException(
@@ -106,7 +168,7 @@ export class PaymentsService {
     try {
       order = await rp.orders.create({
         amount: amountInMinor,
-        currency: 'INR',
+        currency: 'INR', // Always INR for Razorpay
         receipt, // ✅ <= 40 chars now
       });
     } catch (e: any) {
@@ -119,7 +181,7 @@ export class PaymentsService {
       data: {
         userId,
         amountInMinor,
-        currency: 'INR',
+        currency: 'INR', // Always store INR
         tokensPurchased: dto.tokens,
         status: PaymentStatus.PENDING,
         provider: PaymentProvider.RAZORPAY,
@@ -131,6 +193,7 @@ export class PaymentsService {
           hourlyRateInInr: rateInInr,
           tokens: dto.tokens,
           notes: dto.notes ?? null,
+          displayCurrency: dto.displayCurrency ?? 'INR', // Store user's display preference
         } as any,
       },
     });
@@ -183,6 +246,8 @@ export class PaymentsService {
 
       const studentId =
         (payment.metadata as any)?.studentId ?? (await this.getStudentIdForUser(payment.userId));
+      const tutorId = (payment.metadata as any)?.tutorId;
+      const pricePerToken = (payment.metadata as any)?.hourlyRateInInr || 0;
 
       await this.ledger.credit(
         studentId,
@@ -190,6 +255,29 @@ export class PaymentsService {
         TokenReason.ADMIN_ADJUSTMENT,
         payment.id,
       );
+
+      // Lock in the price per token for this student-tutor combination
+      if (tutorId && pricePerToken > 0) {
+        await this.prisma.tutorTokenBalance.upsert({
+          where: {
+            studentId_tutorId: {
+              studentId,
+              tutorId,
+            },
+          },
+          update: {
+            balance: { increment: Number(payment.tokensPurchased) },
+          },
+          create: {
+            studentId,
+            tutorId,
+            balance: Number(payment.tokensPurchased),
+            pricePerToken: new Prisma.Decimal(pricePerToken),
+          },
+        });
+      }
+
+      await this.ensurePendingSlotBooking(payment.id, studentId);
     }
 
     return { ok: true, paymentId: payment.id };
@@ -244,6 +332,8 @@ export class PaymentsService {
           TokenReason.ADMIN_ADJUSTMENT,
           payment.id,
         );
+
+        await this.ensurePendingSlotBooking(payment.id, studentId);
       }
     }
 
@@ -391,5 +481,149 @@ export class PaymentsService {
     if (!isOwner && !isAdmin) throw new ForbiddenException('You do not have access to this payment');
 
     return p;
+  }
+
+  async getReceiptForUser(id: string, requesterUserId: string, requesterRole: Role) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        refunds: {
+          select: {
+            id: true,
+            amountInMinor: true,
+            providerRefundId: true,
+            reason: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    const isOwner = payment.userId === requesterUserId;
+    const isAdmin = requesterRole === Role.ADMIN;
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException('You do not have access to this payment receipt');
+    }
+
+    // Calculate totals
+    const totalRefunded = payment.refunds.reduce(
+      (sum, r) => sum + Number(r.amountInMinor),
+      0,
+    );
+    const amountPaid = Number(payment.amountInMinor);
+    const netAmount = amountPaid - totalRefunded;
+
+    // Format receipt data
+    return {
+      id: payment.id,
+      date: payment.createdAt,
+      status: payment.status,
+      customer: {
+        name: payment.user.name,
+        email: payment.user.email,
+      },
+      payment: {
+        amountPaid: amountPaid / 100, // Convert to INR
+        currency: payment.currency,
+        tokensPurchased: Number(payment.tokensPurchased),
+        provider: payment.provider,
+        providerOrderId: payment.providerOrderId,
+        providerPaymentId: payment.providerPaymentId,
+      },
+      refunds: payment.refunds.map(r => ({
+        id: r.id,
+        amount: Number(r.amountInMinor) / 100,
+        reason: r.reason,
+        date: r.createdAt,
+        providerRefundId: r.providerRefundId,
+      })),
+      summary: {
+        totalPaid: amountPaid / 100,
+        totalRefunded: totalRefunded / 100,
+        netAmount: netAmount / 100,
+      },
+      metadata: payment.metadata,
+    };
+  }
+
+  async generateReceiptPDF(receiptData: any, res: Response): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50 });
+      
+      // Pipe PDF to response
+      doc.pipe(res);
+
+      // Header
+      doc.fontSize(20).text('PAYMENT RECEIPT', { align: 'center' });
+      doc.moveDown();
+      doc.fontSize(10).text(`Receipt ID: ${receiptData.id}`, { align: 'right' });
+      doc.text(`Date: ${new Date(receiptData.date).toLocaleDateString()}`, { align: 'right' });
+      doc.moveDown();
+
+      // Customer Information
+      doc.fontSize(14).text('Customer Information', { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(10);
+      doc.text(`Name: ${receiptData.customer.name || 'N/A'}`);
+      doc.text(`Email: ${receiptData.customer.email}`);
+      doc.moveDown();
+
+      // Payment Details
+      doc.fontSize(14).text('Payment Details', { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(10);
+      doc.text(`Status: ${receiptData.status}`);
+      doc.text(`Amount Paid: ₹${receiptData.payment.amountPaid.toFixed(2)}`);
+      doc.text(`Tokens Purchased: ${receiptData.payment.tokensPurchased}`);
+      doc.text(`Payment Method: ${receiptData.payment.provider}`);
+      doc.text(`Order ID: ${receiptData.payment.providerOrderId || 'N/A'}`);
+      doc.text(`Payment ID: ${receiptData.payment.providerPaymentId || 'N/A'}`);
+      doc.moveDown();
+
+      // Refunds (if any)
+      if (receiptData.refunds && receiptData.refunds.length > 0) {
+        doc.fontSize(14).text('Refunds', { underline: true });
+        doc.moveDown(0.5);
+        doc.fontSize(10);
+        receiptData.refunds.forEach((refund: any, index: number) => {
+          doc.text(`Refund ${index + 1}:`);
+          doc.text(`  Amount: ₹${refund.amount.toFixed(2)}`);
+          doc.text(`  Reason: ${refund.reason || 'N/A'}`);
+          doc.text(`  Date: ${new Date(refund.date).toLocaleDateString()}`);
+          doc.text(`  Refund ID: ${refund.providerRefundId || 'N/A'}`);
+          doc.moveDown(0.5);
+        });
+        doc.moveDown();
+      }
+
+      // Summary
+      doc.fontSize(14).text('Summary', { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(10);
+      doc.text(`Total Paid: ₹${receiptData.summary.totalPaid.toFixed(2)}`);
+      doc.text(`Total Refunded: ₹${receiptData.summary.totalRefunded.toFixed(2)}`);
+      doc.fontSize(12).text(`Net Amount: ₹${receiptData.summary.netAmount.toFixed(2)}`);
+      doc.moveDown();
+
+      // Footer
+      doc.moveDown(2);
+      doc.fontSize(8).text('Thank you for your business!', { align: 'center' });
+      doc.text('This is a computer-generated receipt.', { align: 'center' });
+
+      // Finalize PDF
+      doc.end();
+
+      doc.on('finish', () => resolve());
+      doc.on('error', (error) => reject(error));
+    });
   }
 }

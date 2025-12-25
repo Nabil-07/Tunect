@@ -11,4 +11,8 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  displayCurrency?: string; // e.g., 'USD', 'EUR' - for receipt/display only
 }

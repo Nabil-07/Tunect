@@ -181,13 +181,17 @@ export class TutorsService {
   async getByIdOrTid(idOrTid: string) {
     const byId = await this.prisma.tutor.findUnique({
       where: { id: idOrTid },
-      include: { user: { select: { name: true, email: true, avatarUrl: true } } },
+      include: {
+        user: { select: { name: true, email: true, avatarUrl: true } },
+      },
     });
     if (byId) return normalizeTutor(byId);
 
     const byTid = await this.prisma.tutor.findUnique({
       where: { tutorTid: idOrTid },
-      include: { user: { select: { name: true, email: true, avatarUrl: true } } },
+      include: {
+        user: { select: { name: true, email: true, avatarUrl: true } },
+      },
     });
     if (byTid) return normalizeTutor(byTid);
 
@@ -237,8 +241,17 @@ export class TutorsService {
 
   // ---------- SESSIONS FOR LOGGED-IN TUTOR ----------
   async getSessionsForTutor(tutorId: string) {
-    const sessions = await this.prisma.session.findMany({
-      where: { tutorId },
+    console.log('[getSessionsForTutor] Fetching bookings for tutorId:', tutorId);
+    
+    // Query bookings instead of sessions - bookings are the actual scheduled sessions
+    const bookings = await this.prisma.booking.findMany({
+      where: { 
+        tutorId,
+        // Only show bookings that have been confirmed with time slots
+        startTime: { not: null },
+        endTime: { not: null },
+        status: { notIn: ['CANCELED'] }
+      },
       include: {
         tutor: { select: { subjects: true } },
         student: {
@@ -251,34 +264,43 @@ export class TutorsService {
       orderBy: { startTime: 'desc' },
     });
 
+    console.log('[getSessionsForTutor] Found', bookings.length, 'bookings');
+    bookings.forEach((b, i) => {
+      console.log(`  [${i}] id=${b.id}, status=${b.status}, isDemo=${b.isDemo}, start=${b.startTime}, end=${b.endTime}`);
+    });
+
     const now = new Date();
 
-    return sessions.map((s) => {
+    const result = bookings.map((booking) => {
       const studentName =
-        s.student?.user?.name ||
-        (s.student?.user?.email
-          ? s.student.user.email.split('@')[0].replace(/\./g, ' ').replace(/^\w/, (c) =>
+        booking.student?.user?.name ||
+        (booking.student?.user?.email
+          ? booking.student.user.email.split('@')[0].replace(/\./g, ' ').replace(/^\w/, (c: string) =>
               c.toUpperCase(),
             )
           : 'Student');
 
-    const subject =
-      Array.isArray(s.tutor?.subjects) && s.tutor.subjects.length
-        ? s.tutor.subjects[0]
-        : 'Session';
+      const subject =
+        Array.isArray(booking.tutor?.subjects) && booking.tutor.subjects.length
+          ? booking.tutor.subjects[0]
+          : 'Session';
 
       const status: 'UPCOMING' | 'COMPLETED' =
-        new Date(s.endTime) > now ? 'UPCOMING' : 'COMPLETED';
+        new Date(booking.endTime!) > now ? 'UPCOMING' : 'COMPLETED';
 
       return {
-        id: s.id,
+        id: booking.id,
         studentName,
         subject,
-        startTime: s.startTime.toISOString(),
-        endTime: s.endTime.toISOString(),
+        startTime: booking.startTime!.toISOString(),
+        endTime: booking.endTime!.toISOString(),
         status,
+        isDemo: booking.isDemo,
       };
     });
+
+    console.log('[getSessionsForTutor] Returning', result.length, 'sessions');
+    return result;
   }
 
   // ---------- ME (profile for logged-in tutor) ----------

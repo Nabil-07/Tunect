@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getAvailability, updateAvailability } from '../../services/tutorService';
 import type { AvailabilitySlot } from '../../services/tutorService';
 
 type DayKey = string; // "YYYY-MM-DD"
 type SlotVM = { id?: string; start: string; end: string; title?: string; booked?: boolean };
 type SlotsByDay = Record<DayKey, SlotVM[]>;
+type ToastType = 'error' | 'success' | 'warning';
 
 function ymKey(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
 function ymd(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
@@ -69,6 +70,9 @@ export default function TutorAvailability() {
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // toast notification
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+
   // modal editor state
   const [editorOpen, setEditorOpen] = useState(false);
   const [activeDay, setActiveDay] = useState<DayKey | null>(null);
@@ -77,6 +81,14 @@ export default function TutorAvailability() {
   const [draftEnd,   setDraftEnd]   = useState('10:00');
   const [draftTitle, setDraftTitle] = useState<string>('');
   const [draftBooked, setDraftBooked] = useState<boolean>(false); // if the slot is booked
+
+  // Auto-hide toast after 4 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   const now = new Date();
   const monthLabel = useMemo(() => month.toLocaleString(undefined, { month: 'long', year: 'numeric' }), [month]);
@@ -174,17 +186,39 @@ export default function TutorAvailability() {
     if (isToday(activeDay, now)) {
       const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       if (compareHHMM(draftStart, nowHHMM) <= 0) {
-        alert('Start time must be in the future.');
+        setToast({ message: 'Start time must be in the future.', type: 'error' });
         return;
       }
     }
 
     setSlots((prev) => {
       const list = [...(prev[activeDay] || [])];
+      
+      // Check for duplicate when adding a new slot
       if (editingIndex === null) {
+        const duplicate = list.some(
+          (existing) => existing.start === draftStart && existing.end === draftEnd
+        );
+        if (duplicate) {
+          setToast({ message: `This time slot (${draftStart}-${draftEnd}) already exists for this day.`, type: 'warning' });
+          return prev;
+        }
         list.push({ start: draftStart, end: draftEnd, title: draftTitle?.trim() || undefined, booked: false });
       } else {
         if (list[editingIndex]?.booked) return prev; // do not edit a booked one
+        
+        // Check for duplicate when editing (exclude current slot)
+        const duplicate = list.some(
+          (existing, idx) => 
+            idx !== editingIndex && 
+            existing.start === draftStart && 
+            existing.end === draftEnd
+        );
+        if (duplicate) {
+          setToast({ message: `This time slot (${draftStart}-${draftEnd}) already exists for this day.`, type: 'warning' });
+          return prev;
+        }
+        
         list[editingIndex] = {
           ...list[editingIndex],
           start: draftStart,
@@ -219,8 +253,9 @@ export default function TutorAvailability() {
       setLoading(true);
       await updateAvailability(toApiPayload(slots));
       setDirty(false);
+      setToast({ message: 'Availability saved successfully!', type: 'success' });
     } catch {
-      alert('Failed to save availability');
+      setToast({ message: 'Failed to save availability. Please try again.', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -228,6 +263,33 @@ export default function TutorAvailability() {
 
   return (
     <main className="container mx-auto px-4 py-6">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-5 duration-300">
+          <div
+            className={`flex items-center gap-3 rounded-lg px-4 py-3 shadow-lg min-w-[300px] max-w-md ${
+              toast.type === 'error'
+                ? 'bg-red-50 text-red-900 border border-red-200'
+                : toast.type === 'success'
+                ? 'bg-green-50 text-green-900 border border-green-200'
+                : 'bg-amber-50 text-amber-900 border border-amber-200'
+            }`}
+          >
+            {toast.type === 'error' && <AlertCircle className="h-5 w-5 text-red-600" />}
+            {toast.type === 'success' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+            {toast.type === 'warning' && <AlertCircle className="h-5 w-5 text-amber-600" />}
+            <p className="flex-1 text-sm font-medium">{toast.message}</p>
+            <button
+              onClick={() => setToast(null)}
+              className="rounded-lg p-1 hover:bg-black/5 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* className="container mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
         <h2 className="text-2xl font-bold">Availability</h2>

@@ -13,6 +13,7 @@ export async function createOrder(payload: {
   tutorId: string;
   tokens: number;
   notes?: string;
+  displayCurrency?: string;
 }) {
   const { data } = await api.post<CreateOrderResponse>("/payments/order", payload);
   return data;

@@ -7,10 +7,11 @@ import {
   Param,
   Post,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 
 import { PaymentsService } from './payments.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -73,5 +74,25 @@ export class PaymentsController {
     @CurrentUser('role') role: Role,
   ) {
     return this.payments.getByIdForUser(id, userId, role);
+  }
+
+  @ApiOperation({ summary: 'Get payment receipt/details' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/receipt')
+  async getReceipt(
+    @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: Role,
+    @Res() res: Response,
+  ) {
+    const receiptData = await this.payments.getReceiptForUser(id, userId, role);
+    
+    // Set headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=receipt-${id}.pdf`);
+    
+    // Generate and stream PDF
+    await this.payments.generateReceiptPDF(receiptData, res);
   }
 }

@@ -5,6 +5,7 @@ import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-
 import MainLayout from './layouts/MainLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import { setAuthHeader, readToken } from './lib/apiClient';
+import { ToastProvider } from './contexts/ToastContext';
 
 function Spinner() {
   return (
@@ -100,12 +101,23 @@ const StudentDashboard = lazy(() => import('./pages/student/dashboard'));
 const StudentProfile = lazy(() => import('./pages/student/profile'));
 const StudentBookings = lazy(() => import('./pages/student/bookings'));
 const StudentChat = lazy(() => import('./pages/student/chat'));
+const StudentNotifications = lazy(() => import('./pages/student/notifications'));
+const StudentFavorites = lazy(() => import('./pages/student/favorites'));
+const StudentProgress = lazy(() => import('./pages/student/progress'));
+const StudentGoals = lazy(() => import('./pages/student/goals'));
+const SessionNotes = lazy(() => import('./pages/student/session-notes'));
+const StudentCertificates = lazy(() => import('./pages/student/certificates'));
 const ReviewSession = lazy(() => import('./pages/student/review-session'));
 const Cart = lazy(() => import('./pages/student/cart'));
 const DemoCheckout = lazy(() => import('./pages/student/checkout')); // FREE demo checkout (existing)
 const StudentCheckoutPaid = lazy(() => import('./pages/student/checkout-paid')); // NEW paid checkout
 const PaymentSuccess = lazy(() => import('./pages/student/payment-success'));    // NEW
 const PaymentFailure = lazy(() => import('./pages/student/payment-failure'));    // NEW
+const TokenBalance = lazy(() => import('./pages/student/token-balance'));        // NEW
+/** Phase 4: Student Features */
+const GroupSessions = lazy(() => import('./pages/student/group-sessions'));
+const StudentWaitlist = lazy(() => import('./pages/student/waitlist'));
+const StudentManageAccount = lazy(() => import('./pages/student/manage-account'));
 
 /** Tutor */
 const TutorDashboard = lazy(() => import('./pages/tutor/dashboard'));
@@ -116,6 +128,13 @@ const SkillTest = lazy(() => import('./pages/tutor/skill-test'));
 const TutorSessions = lazy(() => import('./pages/tutor/sessions'));
 const TutorChat = lazy(() => import('./pages/tutor/chat'));
 const TutorEarnings = lazy(() => import('./pages/tutor/earnings'));
+const ContentLibrary = lazy(() => import('./pages/tutor/content-library'));
+const RecurringTemplates = lazy(() => import('./pages/tutor/recurring-templates'));
+const PerformanceTracking = lazy(() => import('./pages/tutor/performance-tracking'));
+/** Phase 4: Tutor Features */
+const CreateGroupSession = lazy(() => import('./pages/tutor/create-group-session'));
+const TutorWaitlist = lazy(() => import('./pages/tutor/waitlist-management'));
+const TutorManageAccount = lazy(() => import('./pages/tutor/manage-account'));
 
 /** Admin */
 const AdminDashboard = lazy(() => import('./pages/admin/dashboard'));
@@ -137,7 +156,7 @@ const NotFound = () => (
   </div>
 );
 
-export default function App() {
+function App() {
   const navigate = useNavigate();
   const hasNavigatedRef = useRef(false);
 
@@ -219,13 +238,25 @@ export default function App() {
           <Route path="/student/dashboard" element={<StudentDashboard />} />
           <Route path="/student/profile" element={<StudentProfile />} />
           <Route path="/student/bookings" element={<StudentBookings />} />
+          <Route path="/student/token-balance" element={<TokenBalance />} />
           <Route path="/student/messages" element={<StudentChat />} />
           <Route path="/student/chat" element={<StudentChat />} />
+          <Route path="/student/notifications" element={<StudentNotifications />} />
+          <Route path="/student/favorites" element={<StudentFavorites />} />
+          <Route path="/student/progress" element={<StudentProgress />} />
+          <Route path="/student/goals" element={<StudentGoals />} />
+          <Route path="/student/session-notes" element={<SessionNotes />} />
+          <Route path="/student/certificates" element={<StudentCertificates />} />
           <Route path="/student/review-session" element={<ReviewSession />} />
           <Route path="/student/cart" element={<Cart />} />
 
           {/* Free DEMO checkout (existing) */}
           <Route path="/student/demo-checkout" element={<DemoCheckout />} />
+          
+          {/* Phase 4: Student Routes */}
+          <Route path="/student/group-sessions" element={<GroupSessions />} />
+          <Route path="/student/waitlist" element={<StudentWaitlist />} />
+          <Route path="/student/manage-account" element={<StudentManageAccount />} />
 
           {/* NEW paid checkout flow + result pages */}
           <Route path="/student/checkout" element={<StudentCheckoutPaid />} />
@@ -252,6 +283,14 @@ export default function App() {
           <Route path="/tutor/messages" element={<TutorChat />} />
           <Route path="/tutor/chat" element={<TutorChat />} />
           <Route path="/tutor/earnings" element={<TutorEarnings />} />
+          <Route path="/tutor/content-library" element={<ContentLibrary />} />
+          <Route path="/tutor/recurring-templates" element={<RecurringTemplates />} />
+          <Route path="/tutor/performance-tracking" element={<PerformanceTracking />} />
+          
+          {/* Phase 4: Tutor Routes */}
+          <Route path="/tutor/create-group-session" element={<CreateGroupSession />} />
+          <Route path="/tutor/waitlist" element={<TutorWaitlist />} />
+          <Route path="/tutor/manage-account" element={<TutorManageAccount />} />
         </Route>
 
         {/* Admin Dashboard */}
@@ -278,5 +317,13 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
+  );
+}
+
+export default function AppWithProviders() {
+  return (
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   );
 }

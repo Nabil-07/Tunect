@@ -37,8 +37,15 @@ const PUBLIC_EXTRA = [
 const STUDENT_CENTER = [
   { to: '/', label: 'Home' },
   { to: '/find-tutors', label: 'Find Tutor' },
+  { to: '/student/dashboard', label: 'Dashboard' },
   { to: '/student/bookings', label: 'Bookings' },
   { to: '/student/messages', label: 'Messages' },
+];
+
+const STUDENT_MORE = [
+  { to: '/student/token-balance', label: 'Token Balance' },
+  { to: '/student/group-sessions', label: 'Group Sessions' },
+  { to: '/student/waitlist', label: 'My Waitlist' },
   { to: '/support', label: 'Support' },
 ];
 
@@ -50,13 +57,14 @@ const ADMIN_CENTER = [
 ];
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, accounts, switchAccount } = useAuth();
   const nav = useNavigate();
   const location = useLocation();
 
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const extraRef = useRef<HTMLDivElement | null>(null);
 
@@ -110,7 +118,7 @@ export default function Navbar() {
   }, []);
 
   /* DISPLAY NAME */
-  const displayName = (user?.name || user?.email || 'User').trim();
+  const displayName = user?.name || user?.email?.split('@')[0] || 'User';
   const avatarSeed = displayName || 'U';
   const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
 
@@ -120,6 +128,7 @@ export default function Navbar() {
     } finally {
       setMenuOpen(false);
       setExtraOpen(false);
+      setShowLogoutModal(false);
       nav('/login');
     }
   }, [logout, nav]);
@@ -158,7 +167,7 @@ export default function Navbar() {
               </NavLink>
             ))}
 
-            {/* Public "Extra" dropdown (About, Pricing, Support) */}
+            {/* Public "More" dropdown (About, Pricing, Support) */}
             {!isAuthed && (
               <div className="relative" ref={extraRef}>
                 <button
@@ -166,7 +175,7 @@ export default function Navbar() {
                   onClick={() => setExtraOpen((v) => !v)}
                   className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
                 >
-                  Extra <ChevronDown size={16} className="text-slate-500" />
+                  More <ChevronDown size={16} className="text-slate-500" />
                 </button>
                 {extraOpen && (
                   <div className="absolute right-0 mt-2 w-56 rounded-none border border-slate-200 bg-white shadow-md p-0 z-50 overflow-hidden">
@@ -185,7 +194,7 @@ export default function Navbar() {
               </div>
             )}
 
-            {/* Tutor-only Extra dropdown (post-login) */}
+            {/* Tutor-only More dropdown (post-login) */}
             {isAuthed && role === 'tutor' && (
               <div className="relative" ref={extraRef}>
                 <button
@@ -193,17 +202,20 @@ export default function Navbar() {
                   onClick={() => setExtraOpen((v) => !v)}
                   className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
                 >
-                  Extra <ChevronDown size={16} className="text-slate-500" />
+                  More <ChevronDown size={16} className="text-slate-500" />
                 </button>
                 {extraOpen && (
                   <div className="absolute right-0 mt-2 w-56 rounded-none border border-slate-200 bg-white shadow-md p-0 z-50 overflow-hidden">
                     <Link to="/tutor/profile" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Profile</Link>
+                    <Link to="/tutor/create-group-session" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Create Group Session</Link>
+                    <Link to="/tutor/waitlist" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Waitlist Management</Link>
+                    <Link to="/tutor/recurring-templates" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Recurring Templates</Link>
+                    <Link to="/tutor/earnings" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Total Earnings</Link>
                     <Link to="/find-tutors" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Find Tutor</Link>
                     <Link to="/become-tutor" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>
                       Become a Tutor {showBecomeTutorForTutor ? '' : '(KYC)'}
                     </Link>
                     <Link to="/support" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Support</Link>
-                    <Link to="/tutor/earnings" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Total earnings</Link>
                   </div>
                 )}
               </div>
@@ -259,7 +271,7 @@ export default function Navbar() {
                     <span>Edit details</span>
                   </Link>
                   <Link
-                    to="/account"
+                    to={role === 'tutor' ? '/tutor/manage-account' : role === 'student' ? '/student/manage-account' : '/account'}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
                     onClick={() => setMenuOpen(false)}
                   >
@@ -274,14 +286,93 @@ export default function Navbar() {
                     <KeyRound size={16} />
                     <span>Password &amp; security</span>
                   </Link>
+                  
+                  {/* Multi-Account Switcher */}
+                  {accounts && accounts.length > 1 && (
+                    <>
+                      <hr className="my-2 border-slate-100" />
+                      <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Switch Account
+                      </div>
+                      {accounts
+                        .filter(acc => acc.id !== user?.id)
+                        .map(account => (
+                          <button
+                            key={account.id}
+                            type="button"
+                            onClick={() => {
+                              switchAccount(account.id);
+                              setMenuOpen(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
+                          >
+                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                              {account.name 
+                                ? account.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                                : account.email.substring(0, 2).toUpperCase()
+                              }
+                            </div>
+                            <div className="flex-1 text-left min-w-0">
+                              <div className="text-sm font-medium text-gray-900 truncate">
+                                {account.name || account.email}
+                              </div>
+                              <div className="text-xs text-gray-500 truncate">{account.email}</div>
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              account.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' :
+                              account.role === 'TUTOR' ? 'bg-blue-100 text-blue-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>
+                              {account.role}
+                            </span>
+                          </button>
+                        ))
+                      }
+                    </>
+                  )}
+                  
+                  <hr className="my-2 border-slate-100" />
                   <button
                     type="button"
-                    onClick={handleLogout}
-                    className="mt-1 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      // Store flag that user wants to add account
+                      try { 
+                        localStorage.setItem('adding_account', 'true');
+                        // Clear current auth tokens completely
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('auth_ok');
+                        sessionStorage.removeItem('token');
+                        sessionStorage.removeItem('access_token');
+                      } catch {}
+                      // Hard reload to /login to completely reset React state
+                      window.location.href = '/login';
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Add another account</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowLogoutModal(true);
+                      setMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50"
                   >
                     <LogOut size={16} />
                     <span>Logout</span>
                   </button>
+                  
+                  {/* Account count */}
+                  {accounts && accounts.length > 0 && (
+                    <div className="px-3 py-2 mt-1 text-xs text-gray-500 border-t border-slate-100">
+                      {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -364,12 +455,54 @@ export default function Navbar() {
             ) : (
               <button
                 type="button"
-                onClick={() => { handleLogout(); setOpen(false); }}
+                onClick={() => { 
+                  setShowLogoutModal(true); 
+                  setOpen(false); 
+                }}
                 className="mt-2 inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-red-600 hover:bg-red-50"
               >
                 <LogOut size={18} /> Logout
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutModal && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm min-h-screen"
+          onClick={() => setShowLogoutModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <LogOut className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900">
+                Sign out of your account?
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-6 ml-15">
+              You will be redirected to the login page. You can sign back in anytime.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors shadow-sm"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       )}

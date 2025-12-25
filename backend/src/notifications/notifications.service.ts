@@ -1,6 +1,8 @@
 // src/notifications/notifications.service.ts
 import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import nodemailer, { Transporter } from 'nodemailer';
+import { CreateNotificationDto } from './dto/create-notification.dto';
 
 type BookingConfirmationPayload = {
   studentEmail: string;
@@ -38,7 +40,7 @@ export class NotificationsService {
     );
   }
 
-  constructor() {
+  constructor(private prisma: PrismaService) {
     // ---------- EMAIL ----------
     const host = process.env.SMTP_HOST;
     const port = Number(process.env.SMTP_PORT ?? 587);
@@ -210,5 +212,103 @@ export class NotificationsService {
     `;
 
     await this.sendEmail(payload.to, subject, html);
+  }
+
+  /* =========================
+     Notification Storage API
+     ========================= */
+
+  async create(dto: CreateNotificationDto) {
+    return this.prisma.notification.create({
+      data: {
+        userId: dto.userId,
+        title: dto.title,
+        message: dto.message,
+        type: dto.type,
+        bookingId: dto.bookingId,
+      },
+    });
+  }
+
+  async getUserNotifications(userId: string, unreadOnly = false) {
+    return this.prisma.notification.findMany({
+      where: {
+        userId,
+        ...(unreadOnly ? { isRead: false } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        booking: {
+          select: {
+            id: true,
+            startTime: true,
+            endTime: true,
+            tutor: { select: { id: true, user: { select: { name: true } } } },
+          },
+        },
+      },
+    });
+  }
+
+  async getUnreadCount(userId: string): Promise<number> {
+    return this.prisma.notification.count({
+      where: { userId, isRead: false },
+    });
+  }
+
+  async markAsRead(id: string, userId: string) {
+    return this.prisma.notification.updateMany({
+      where: { id, userId },
+      data: { isRead: true },
+    });
+  }
+
+  async markAllAsRead(userId: string) {
+    return this.prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true },
+    });
+  }
+
+  async createBookingNotification(
+    userId: string,
+    bookingId: string,
+    title: string,
+    message: string,
+  ) {
+    return this.create({
+      userId,
+      title,
+      message,
+      type: 'BOOKING' as any,
+      bookingId,
+    });
+  }
+
+  async createPaymentNotification(
+    userId: string,
+    title: string,
+    message: string,
+  ) {
+    return this.create({
+      userId,
+      title,
+      message,
+      type: 'PAYMENT' as any,
+    });
+  }
+
+  async createSystemNotification(
+    userId: string,
+    title: string,
+    message: string,
+  ) {
+    return this.create({
+      userId,
+      title,
+      message,
+      type: 'SYSTEM' as any,
+    });
   }
 }

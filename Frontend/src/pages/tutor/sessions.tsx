@@ -1,6 +1,11 @@
 // src/pages/tutor/sessions.tsx
 import { useEffect, useState } from 'react';
 import { getMySessions } from '../../services/sessionService';
+import { convertToGroupSession } from '../../services/bookingsService';
+import { Users, Clock, Calendar, UserPlus, X, IndianRupee } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
+import { differenceInHours } from 'date-fns';
+import Loader from '../../components/common/Loader';
 
 type Session = {
   id: string;
@@ -8,7 +13,11 @@ type Session = {
   subject?: string;
   startTime: string;
   endTime: string;
-  status?: 'UPCOMING' | 'COMPLETED';
+  status?: 'UPCOMING' | 'COMPLETED' | 'PENDING_SLOT';
+  isGroupSession?: boolean;
+  maxStudents?: number;
+  currentEnrollment?: number;
+  pricePerStudent?: number;
 };
 
 function toArray(maybe: any): Session[] {
@@ -18,64 +27,273 @@ function toArray(maybe: any): Session[] {
 }
 
 export default function MySessions() {
+  const { showSuccess, showError } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [convertModalOpen, setConvertModalOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [maxStudents, setMaxStudents] = useState(5);
+  const [pricePerStudent, setPricePerStudent] = useState(0.5);
+  const [converting, setConverting] = useState(false);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const result = await getMySessions();
-        setSessions(toArray(result));
-      } catch (err) {
-        console.error('Failed to load sessions', err);
-        setSessions([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    loadSessions();
   }, []);
 
+  async function loadSessions() {
+    try {
+      setLoading(true);
+      console.log('[Sessions] Fetching sessions...');
+      const result = await getMySessions();
+      console.log('[Sessions] API response:', result);
+      const sessionsArray = toArray(result);
+      console.log('[Sessions] Parsed sessions:', sessionsArray.length, 'items');
+      setSessions(sessionsArray);
+    } catch (err) {
+      console.error('[Sessions] Failed to load sessions', err);
+      showError('Failed to load sessions');
+      setSessions([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function canConvertToGroup(session: Session): boolean {
+    // Can only convert if:
+    // 1. Not already a group session
+    // 2. Status is PENDING_SLOT (unbooked)
+    // 3. More than 24 hours before the session
+    if (session.isGroupSession) return false;
+    if (session.status !== 'PENDING_SLOT') return false;
+    if (!session.startTime) return false;
+    
+    const hoursUntilSession = differenceInHours(new Date(session.startTime), new Date());
+    return hoursUntilSession > 24;
+  }
+
+  function openConvertModal(session: Session) {
+    setSelectedSession(session);
+    setMaxStudents(5);
+    setPricePerStudent(0.5);
+    setConvertModalOpen(true);
+  }
+
+  async function handleConvertToGroup() {
+    if (!selectedSession) return;
+
+    try {
+      setConverting(true);
+      await convertToGroupSession(selectedSession.id, {
+        maxStudents,
+        pricePerStudent,
+      });
+      showSuccess('Successfully converted to group session!');
+      setConvertModalOpen(false);
+      setSelectedSession(null);
+      loadSessions(); // Refresh the list
+    } catch (err: any) {
+      showError(err?.response?.data?.message || 'Failed to convert to group session');
+    } finally {
+      setConverting(false);
+    }
+  }
+
+  const formatDateTime = (iso: string) => {
+    return new Date(iso).toLocaleString('en-IN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  };
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold mb-4">📅 My Teaching Sessions</h2>
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-slate-800 mb-2">📅 My Teaching Sessions</h2>
+        <p className="text-slate-600">
+          Manage your 1:1 and group sessions. Convert unbooked slots to group sessions.
+        </p>
+      </div>
 
       {loading ? (
-        <p>Loading sessions...</p>
+        <Loader message="Loading sessions..." />
       ) : sessions.length === 0 ? (
-        <p className="text-gray-500">No sessions found.</p>
+        <div className="text-center py-12 bg-slate-50 rounded-lg">
+          <Calendar className="mx-auto h-16 w-16 text-slate-400 mb-4" />
+          <p className="text-slate-600">No sessions found.</p>
+        </div>
       ) : (
-        <div className="space-y-4">
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              className="p-4 border rounded-lg shadow-sm bg-white hover:shadow transition-all duration-200"
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-lg font-semibold">{s.subject ?? 'Session'}</p>
-                  {s.studentName && (
-                    <p className="text-sm text-gray-700">👤 Student: {s.studentName}</p>
-                  )}
-                  <p className="text-sm text-gray-600">
-                    🕒 {new Date(s.startTime).toLocaleString()} —{' '}
-                    {new Date(s.endTime).toLocaleTimeString()}
-                  </p>
-                </div>
-                {s.status && (
-                  <span
-                    className={`text-xs font-bold px-2 py-1 rounded-full ${
-                      s.status === 'UPCOMING'
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {sessions.map((session) => {
+            const isGroup = session.isGroupSession;
+            const canConvert = canConvertToGroup(session);
+
+            return (
+              <div
+                key={session.id}
+                className={`p-6 border rounded-lg shadow-sm bg-white hover:shadow-lg transition-all duration-200 ${
+                  isGroup ? 'border-green-200 bg-green-50' : 'border-slate-200'
+                }`}
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      {isGroup ? (
+                        <Users className="h-5 w-5 text-green-600" />
+                      ) : (
+                        <Clock className="h-5 w-5 text-blue-600" />
+                      )}
+                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                        isGroup
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {isGroup ? 'Group Session' : '1:1 Session'}
+                      </span>
+                    </div>
+                    <p className="text-lg font-semibold text-slate-800">
+                      {session.subject ?? 'Session'}
+                    </p>
+                  </div>
+                  {session.status && (
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                      session.status === 'UPCOMING'
                         ? 'bg-blue-100 text-blue-600'
+                        : session.status === 'PENDING_SLOT'
+                        ? 'bg-amber-100 text-amber-600'
                         : 'bg-green-100 text-green-600'
-                    }`}
+                    }`}>
+                      {session.status === 'PENDING_SLOT' ? 'UNBOOKED' : session.status}
+                    </span>
+                  )}
+                </div>
+
+                {/* Details */}
+                <div className="space-y-2 mb-4">
+                  {!isGroup && session.studentName && (
+                    <p className="text-sm text-slate-700 flex items-center gap-2">
+                      <Users className="h-4 w-4" /> Student: {session.studentName}
+                    </p>
+                  )}
+                  {isGroup && (
+                    <p className="text-sm text-slate-700 flex items-center gap-2">
+                      <Users className="h-4 w-4" /> 
+                      {session.currentEnrollment ?? 0}/{session.maxStudents ?? 0} students
+                    </p>
+                  )}
+                  <p className="text-sm text-slate-600 flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    {formatDateTime(session.startTime)}
+                  </p>
+                  <p className="text-sm text-slate-600 flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    {new Date(session.endTime).toLocaleTimeString('en-IN', {
+                      timeStyle: 'short',
+                    })}
+                  </p>
+                  {isGroup && session.pricePerStudent !== undefined && (
+                    <p className="text-sm font-semibold text-green-600 flex items-center gap-2">
+                      <IndianRupee className="h-4 w-4" />
+                      {session.pricePerStudent} tokens/student
+                    </p>
+                  )}
+                </div>
+
+                {/* Actions */}
+                {canConvert && (
+                  <button
+                    onClick={() => openConvertModal(session)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
                   >
-                    {s.status}
-                  </span>
+                    <UserPlus className="h-4 w-4" />
+                    Convert to Group
+                  </button>
                 )}
               </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Convert Modal */}
+      {convertModalOpen && selectedSession && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="font-semibold text-lg">Convert to Group Session</h3>
+              <button
+                className="p-1 rounded hover:bg-slate-100"
+                onClick={() => setConvertModalOpen(false)}
+              >
+                <X size={20} />
+              </button>
             </div>
-          ))}
+
+            <div className="p-6 space-y-6">
+              <div>
+                <p className="text-sm text-slate-600 mb-2">
+                  Session: <span className="font-semibold">{selectedSession.subject}</span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Time: <span className="font-semibold">{formatDateTime(selectedSession.startTime)}</span>
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Maximum Students (2-10)
+                </label>
+                <input
+                  type="number"
+                  min="2"
+                  max="10"
+                  value={maxStudents}
+                  onChange={(e) => setMaxStudents(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Price per Student (in tokens)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={pricePerStudent}
+                  onChange={(e) => setPricePerStudent(parseFloat(e.target.value))}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Recommended: 0.5 tokens for group sessions
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Once converted, students can join this session at the specified token rate. The slot will be open for enrollment.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t flex items-center justify-end gap-3">
+              <button
+                className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
+                onClick={() => setConvertModalOpen(false)}
+                disabled={converting}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed"
+                onClick={handleConvertToGroup}
+                disabled={converting}
+              >
+                {converting ? 'Converting...' : 'Convert to Group'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

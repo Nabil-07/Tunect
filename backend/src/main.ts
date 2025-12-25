@@ -7,6 +7,8 @@ import { PrismaService } from './prisma/prisma.service';
 import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import cookieParser from 'cookie-parser';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 
 async function bootstrap() {
@@ -21,17 +23,25 @@ async function bootstrap() {
     process.on('uncaughtException', (err) => Sentry.captureException(err));
   }
 
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+
+  // Serve static files for uploads
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads',
+  });
 
   app.enableCors({
-    origin: ['http://localhost:5173', 'https://tunectnow.com', 'https://test-tunectnow.com'],
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'https://tunectnow.com', 'https://test-tunectnow.com'],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-timezone', 'X-Timezone'],
     credentials: false,
     maxAge: 86400,
   });
 
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  app.use(helmet({ 
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: false // Disable CSP to allow video playback
+  }));
 
   // Parse the short-lived "remember_oauth" cookie during Google OAuth callback
   app.use(cookieParser(process.env.COOKIE_SECRET || 'dev-cookie'));

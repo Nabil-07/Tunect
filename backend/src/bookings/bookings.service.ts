@@ -11,11 +11,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
-import { addMinutes, isBefore, differenceInMinutes } from 'date-fns';
+import { CreateGroupBookingDto, JoinGroupBookingDto } from './dto/group-booking.dto';
+import { addMinutes, isBefore, differenceInMinutes, differenceInHours } from 'date-fns';
 import { Prisma, BookingStatus, TokenReason } from '@prisma/client';
 import { toUtc, fromUtc } from '../common/time.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
+import { GoogleMeetService } from '../google-meet/google-meet.service';
+import { NotificationType } from '../notifications/dto/create-notification.dto';
 
 const TOKENS_PER_HOUR = Number(process.env.TOKENS_PER_HOUR ?? 1);
 const MIN_BLOCK_MINUTES = 15;
@@ -26,6 +29,7 @@ export class BookingsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private googleMeet: GoogleMeetService,
   ) {}
 
   // ---------- utils ----------
@@ -301,7 +305,7 @@ export class BookingsService {
     await this.ensureNoTutorOverlap(booking.tutorId, start, end, booking.id);
     await this.ensureNoStudentOverlap(booking.studentId, start, end, booking.id);
 
-    return this.prisma.booking.update({
+    const updated = await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         startTime: start,
@@ -309,7 +313,28 @@ export class BookingsService {
         notes: dto.notes ?? booking.notes,
         status: BookingStatus.CONFIRMED,
       },
+      include: {
+        tutor: { include: { user: true } },
+        student: { include: { user: true } },
+      },
     });
+
+    // Generate Google Meet link
+    try {
+      await this.googleMeet.createAndAttachMeeting(
+        updated.id,
+        updated.tutor.user.email,
+        updated.student.user.email,
+        updated.startTime!,
+        updated.endTime!,
+        updated.notes || 'Tutoring Session',
+      );
+    } catch (error) {
+      console.error('[BookingsService] Failed to create Google Meet link:', error);
+      // Don't fail the booking if Meet creation fails
+    }
+
+    return updated;
   }
 
   // ---------- RESCHEDULE ----------
@@ -452,6 +477,9 @@ export class BookingsService {
       }
 
       if (booking.status === BookingStatus.CANCELED) return booking;
+      if (booking.status === BookingStatus.COMPLETED) {
+        throw new BadRequestException('Cannot cancel a completed booking.');
+      }
 
       const updated = await tx.booking.update({
         where: { id },
@@ -466,24 +494,736 @@ export class BookingsService {
 
         const charged = Math.abs(Number(agg._sum.delta ?? 0));
         if (charged > 0) {
-          await tx.student.update({
-            where: { id: booking.student.id },
-            data: { tokens: { increment: charged } },
-          });
+          let refundAmount = 0;
+          let refundReason = TokenReason.REFUND;
 
-          await tx.tokenLedger.create({
-            data: {
-              studentId: booking.student.id,
-              tutorId: booking.tutor.id,
-              delta: new Prisma.Decimal(charged),
-              reason: TokenReason.REFUND,
-              bookingId: booking.id,
-            },
-          });
+          // Determine who is canceling
+          const isTutorCanceling = actorUserId === booking.tutor.userId;
+          const isStudentCanceling = actorUserId === booking.student.userId;
+
+          if (isTutorCanceling) {
+            // Tutor cancellation: 100% refund + 10% bonus
+            refundAmount = Math.floor(charged * 1.1);
+            refundReason = TokenReason.REFUND;
+          } else if (isStudentCanceling && booking.startTime) {
+            // Student cancellation: time-based refund
+            const now = new Date();
+            const start = booking.startTime;
+            const hoursUntilStart = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+            if (hoursUntilStart >= 24) {
+              // 24+ hours before: 100% refund
+              refundAmount = charged;
+            } else {
+              // Less than 24 hours: No refund
+              refundAmount = 0;
+            }
+          } else if (!booking.startTime) {
+            // Booking without slot (PENDING or PENDING_SLOT): full refund
+            refundAmount = charged;
+          }
+
+          if (refundAmount > 0) {
+            // Update global student tokens
+            await tx.student.update({
+              where: { id: booking.student.id },
+              data: { tokens: { increment: refundAmount } },
+            });
+
+            // Update tutor-specific token balance
+            const existingBalance = await tx.tutorTokenBalance.findUnique({
+              where: {
+                studentId_tutorId: {
+                  studentId: booking.student.id,
+                  tutorId: booking.tutor.id,
+                },
+              },
+            });
+
+            if (existingBalance) {
+              await tx.tutorTokenBalance.update({
+                where: {
+                  studentId_tutorId: {
+                    studentId: booking.student.id,
+                    tutorId: booking.tutor.id,
+                  },
+                },
+                data: {
+                  balance: { increment: refundAmount },
+                },
+              });
+            }
+
+            // Create ledger entry
+            await tx.tokenLedger.create({
+              data: {
+                studentId: booking.student.id,
+                tutorId: booking.tutor.id,
+                delta: new Prisma.Decimal(refundAmount),
+                reason: refundReason,
+                bookingId: booking.id,
+              },
+            });
+          }
         }
       }
 
       return updated;
     });
   }
+
+  // ==================== GROUP SESSIONS ====================
+  
+  async createGroupSession(dto: CreateGroupBookingDto, creatorTutorId: string) {
+    const { tutorId, startTime, endTime, subject, maxStudents, pricePerStudent, isDemo, notes } = dto;
+    
+    // Verify tutor creating is the same as specified tutor
+    if (tutorId !== creatorTutorId) {
+      throw new ForbiddenException('You can only create group sessions for yourself');
+    }
+
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+
+    // Validate time range
+    if (isBefore(end, start)) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    // Check for tutor overlap
+    await this.ensureNoTutorOverlap(tutorId, start, end);
+
+    // Verify tutor exists
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      include: { user: true },
+    });
+
+    if (!tutor) {
+      throw new NotFoundException('Tutor not found');
+    }
+
+    // Create group booking (no initial student - they will join separately)
+    // For group sessions, we create a "placeholder" student booking for the tutor to manage
+    const booking = await this.prisma.booking.create({
+      data: {
+        tutorId,
+        studentId: tutor.userId, // Temporary - group sessions don't have a single student
+        startTime: start,
+        endTime: end,
+        status: BookingStatus.CONFIRMED,
+        notes: notes || `Group ${subject} session`,
+        isDemo: isDemo || false,
+        isGroupSession: true,
+        maxStudents,
+        currentEnrollment: 0,
+        pricePerStudent: new Prisma.Decimal(pricePerStudent),
+        tokensCharged: new Prisma.Decimal(0), // Will be calculated as students join
+      },
+      include: {
+        tutor: { include: { user: true } },
+        groupParticipants: {
+          include: {
+            student: { include: { user: true } },
+          },
+        },
+      },
+    });
+
+    // Generate Google Meet link for group session
+    try {
+      await this.googleMeet.createAndAttachMeeting(
+        booking.id,
+        booking.tutor.user.email,
+        booking.tutor.user.email, // Group session - tutor email for both
+        booking.startTime!,
+        booking.endTime!,
+        booking.notes || 'Group Session',
+      );
+    } catch (error) {
+      console.error('[BookingsService] Failed to create Google Meet link for group session:', error);
+    }
+
+    return {
+      ...booking,
+      spotsAvailable: maxStudents - 0,
+    };
+  }
+
+  async joinGroupSession(bookingId: string, studentId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        tutor: { include: { user: true } },
+        groupParticipants: {
+          include: { student: { include: { user: true } } },
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Group session not found');
+    }
+
+    if (!booking.isGroupSession) {
+      throw new BadRequestException('This is not a group session');
+    }
+
+    if (booking.currentEnrollment >= booking.maxStudents) {
+      throw new BadRequestException('Group session is full');
+    }
+
+    // Check if student already joined
+    const alreadyJoined = booking.groupParticipants.some(p => p.studentId === studentId);
+    if (alreadyJoined) {
+      throw new BadRequestException('You have already joined this session');
+    }
+
+    // Get student with tokens
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: { user: true },
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    // Calculate tokens needed - GROUP SESSIONS USE 0.5 TOKENS
+    const GROUP_SESSION_TOKEN_COST = 0.5;
+    const tokensNeeded = GROUP_SESSION_TOKEN_COST;
+
+    // Get student's token balance with locked-in price for this tutor
+    const tokenBalance = await this.prisma.tutorTokenBalance.findUnique({
+      where: {
+        studentId_tutorId: {
+          studentId,
+          tutorId: booking.tutorId,
+        },
+      },
+      select: { balance: true, pricePerToken: true },
+    });
+
+    if (!tokenBalance || Number(tokenBalance.balance) < tokensNeeded) {
+      throw new BadRequestException(
+        `Insufficient tokens. You need ${tokensNeeded} tokens for this tutor but have ${tokenBalance?.balance || 0}`,
+      );
+    }
+
+    // Transaction: charge tokens, add participant, update enrollment, add to tutor wallet
+    return this.prisma.$transaction(async (tx) => {
+      // Deduct 0.5 tokens from tutor-specific balance
+      await tx.tutorTokenBalance.update({
+        where: {
+          studentId_tutorId: {
+            studentId,
+            tutorId: booking.tutorId,
+          },
+        },
+        data: {
+          balance: { decrement: tokensNeeded },
+        },
+      });
+
+      // Also deduct from general student tokens (for display purposes)
+      await tx.student.update({
+        where: { id: studentId },
+        data: { tokens: { decrement: tokensNeeded } },
+      });
+
+      // Create token ledger entry
+      await tx.tokenLedger.create({
+        data: {
+          studentId,
+          tutorId: booking.tutorId,
+          delta: new Prisma.Decimal(-tokensNeeded),
+          reason: 'BOOKING',
+          bookingId: booking.id,
+        },
+      });
+
+      // Calculate payout amount based on student's locked-in price
+      const payoutAmount = tokensNeeded * Number(tokenBalance.pricePerToken);
+
+      // Add to tutor wallet
+      await tx.tutorWallet.upsert({
+        where: { tutorId: booking.tutorId },
+        update: {
+          balance: { increment: payoutAmount },
+        },
+        create: {
+          tutorId: booking.tutorId,
+          balance: new Prisma.Decimal(payoutAmount),
+        },
+      });
+
+      // Track in tutor wallet ledger for payout reconciliation
+      await tx.tutorWalletLedger.create({
+        data: {
+          tutorId: booking.tutorId,
+          bookingId: booking.id,
+          delta: new Prisma.Decimal(payoutAmount),
+          reason: 'BOOKING_CHARGE',
+          note: `Group session: ${tokensNeeded} tokens × ₹${tokenBalance.pricePerToken} = ₹${payoutAmount}`,
+        },
+      });
+
+      // Add participant with price tracking
+      await tx.groupBookingParticipant.create({
+        data: {
+          bookingId: booking.id,
+          studentId,
+          tokensPaid: new Prisma.Decimal(tokensNeeded),
+          pricePerToken: tokenBalance.pricePerToken,
+          status: 'ENROLLED',
+        },
+      });
+
+      // Update booking enrollment count and total tokens charged
+      const updated = await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          currentEnrollment: { increment: 1 },
+          tokensCharged: { increment: tokensNeeded },
+        },
+        include: {
+          tutor: { include: { user: true } },
+          groupParticipants: {
+            include: { student: { include: { user: true } } },
+          },
+        },
+      });
+
+      // Send notification to student
+      await this.notifications.create({
+        userId: student.userId,
+        type: NotificationType.BOOKING,
+        title: 'Joined Group Session',
+        message: `You've joined a group session with ${booking.tutor.user.name}`,
+        bookingId: booking.id,
+      });
+
+      return {
+        ...updated,
+        spotsAvailable: updated.maxStudents - updated.currentEnrollment,
+      };
+    });
+  }
+
+  async leaveGroupSession(bookingId: string, studentId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        groupParticipants: {
+          where: { studentId },
+          include: { student: { include: { user: true } } },
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Group session not found');
+    }
+
+    if (!booking.isGroupSession) {
+      throw new BadRequestException('This is not a group session');
+    }
+
+    const participant = booking.groupParticipants[0];
+    if (!participant) {
+      throw new BadRequestException('You are not enrolled in this session');
+    }
+
+    if (participant.status === 'DROPPED') {
+      throw new BadRequestException('You have already left this session');
+    }
+
+    // Check if session is too soon (e.g., within 24 hours)
+    const hoursUntilSession = differenceInMinutes(booking.startTime!, new Date()) / 60;
+    const refundPercentage = hoursUntilSession >= 24 ? 100 : hoursUntilSession >= 12 ? 50 : 0;
+    const refundAmount = Math.floor((Number(participant.tokensPaid) * refundPercentage) / 100);
+
+    return this.prisma.$transaction(async (tx) => {
+      // Mark participant as dropped
+      await tx.groupBookingParticipant.update({
+        where: { id: participant.id },
+        data: { status: 'DROPPED' },
+      });
+
+      // Refund tokens if applicable
+      if (refundAmount > 0) {
+        await tx.student.update({
+          where: { id: studentId },
+          data: { tokens: { increment: refundAmount } },
+        });
+
+        await tx.tokenLedger.create({
+          data: {
+            studentId,
+            tutorId: booking.tutorId,
+            delta: new Prisma.Decimal(refundAmount),
+            reason: 'REFUND',
+            bookingId: booking.id,
+          },
+        });
+      }
+
+      // Update enrollment count
+      const updated = await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          currentEnrollment: { decrement: 1 },
+          tokensCharged: { decrement: Number(participant.tokensPaid) - refundAmount },
+        },
+      });
+
+      return {
+        ...updated,
+        refundAmount,
+        refundPercentage,
+      };
+    });
+  }
+
+  async getGroupSessionParticipants(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        groupParticipants: {
+          where: { status: 'ENROLLED' },
+          include: {
+            student: {
+              include: { 
+                user: { 
+                  select: { 
+                    name: true, 
+                    avatarUrl: true
+                    // Exclude email and student ID for privacy
+                  } 
+                } 
+              },
+            },
+          },
+          orderBy: { joinedAt: 'asc' },
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Group session not found');
+    }
+
+    if (!booking.isGroupSession) {
+      throw new BadRequestException('This is not a group session');
+    }
+
+    return {
+      bookingId: booking.id,
+      maxStudents: booking.maxStudents,
+      currentEnrollment: booking.currentEnrollment,
+      spotsAvailable: booking.maxStudents - booking.currentEnrollment,
+      participants: booking.groupParticipants.map(p => ({
+        id: p.id,
+        studentId: p.studentId,
+        name: p.student.user.name,
+        avatarUrl: p.student.user.avatarUrl,
+        joinedAt: p.joinedAt,
+        tokensPaid: p.tokensPaid,
+      })),
+    };
+  }
+
+  async getAvailableGroupSessions(filters?: { subject?: string; startDate?: Date; endDate?: Date }) {
+    const where: Prisma.BookingWhereInput = {
+      isGroupSession: true,
+      status: BookingStatus.CONFIRMED,
+      startTime: {
+        gte: filters?.startDate || new Date(),
+        ...(filters?.endDate && { lte: filters.endDate }),
+      },
+    };
+
+    const bookings = await this.prisma.booking.findMany({
+      where,
+      include: {
+        tutor: {
+          include: { user: { select: { name: true, avatarUrl: true } } },
+        },
+        groupParticipants: {
+          where: { status: 'ENROLLED' },
+        },
+      },
+      orderBy: { startTime: 'asc' },
+    });
+
+    return bookings
+      .filter(b => b.currentEnrollment < b.maxStudents) // Only show sessions with available spots
+      .map(b => ({
+        id: b.id,
+        tutorId: b.tutorId,
+        tutorName: b.tutor.user.name,
+        tutorAvatar: b.tutor.user.avatarUrl,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        subject: b.notes || 'Group Session',
+        maxStudents: b.maxStudents,
+        currentEnrollment: b.currentEnrollment,
+        spotsAvailable: b.maxStudents - b.currentEnrollment,
+        pricePerStudent: b.pricePerStudent,
+        isDemo: b.isDemo,
+      }));
+  }
+
+  // Convert existing 1:1 slot to group session
+  async convertToGroupSession(
+    bookingId: string,
+    tutorId: string,
+    maxStudents: number,
+    pricePerStudent: number,
+  ) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { student: true },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.tutorId !== tutorId) {
+      throw new ForbiddenException('You can only convert your own bookings');
+    }
+
+    // Validation: Must be >24 hours before session
+    if (!booking.startTime) {
+      throw new BadRequestException('Booking has no start time');
+    }
+    const hoursUntilSession = differenceInHours(booking.startTime, new Date());
+    if (hoursUntilSession < 24) {
+      throw new BadRequestException(
+        'Cannot convert to group session within 24 hours of start time',
+      );
+    }
+
+    // Validation: Must be an unbooked slot (PENDING_SLOT status)
+    if (booking.status !== BookingStatus.PENDING_SLOT) {
+      throw new BadRequestException(
+        'Can only convert unbooked slots to group sessions. This slot has already been booked.',
+      );
+    }
+
+    // Validation: Must not already be a group session
+    if (booking.isGroupSession) {
+      throw new BadRequestException('This is already a group session');
+    }
+
+    // Convert to group session
+    // Note: studentId remains for the tutor who created the slot initially
+    // Group participants are tracked separately in GroupBookingParticipant
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        isGroupSession: true,
+        maxStudents,
+        currentEnrollment: 0,
+        pricePerStudent: new Prisma.Decimal(pricePerStudent),
+        status: BookingStatus.PENDING, // Open for enrollment
+      },
+      include: {
+        tutor: { include: { user: true } },
+      },
+    });
+
+    return {
+      ...updated,
+      message: 'Successfully converted to group session',
+      spotsAvailable: maxStudents,
+    };
+  }
+
+  // Create a PENDING_SLOT booking by deducting tokens upfront
+  async createPendingSlotWithTokens(tutorId: string, userId: string) {
+    // Get student
+    const student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student profile not found');
+    }
+
+    // Verify tutor exists
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      select: { id: true, hourlyRate: true },
+    });
+
+    if (!tutor) {
+      throw new NotFoundException('Tutor not found');
+    }
+
+    // Check token balance for this tutor
+    const tokenBalance = await this.prisma.tutorTokenBalance.findUnique({
+      where: {
+        studentId_tutorId: {
+          studentId: student.id,
+          tutorId,
+        },
+      },
+      select: { balance: true, pricePerToken: true },
+    });
+
+    if (!tokenBalance || Number(tokenBalance.balance) < 1) {
+      throw new BadRequestException(
+        `Insufficient tokens. You need at least 1 token for this tutor but have ${tokenBalance?.balance || 0}`,
+      );
+    }
+
+    // Deduct 1 token upfront to reserve the slot
+    const tokensToReserve = 1;
+
+    return this.prisma.$transaction(async (tx) => {
+      // Deduct tokens from tutor-specific balance
+      await tx.tutorTokenBalance.update({
+        where: {
+          studentId_tutorId: {
+            studentId: student.id,
+            tutorId,
+          },
+        },
+        data: {
+          balance: { decrement: tokensToReserve },
+        },
+      });
+
+      // Deduct from global student tokens
+      await tx.student.update({
+        where: { id: student.id },
+        data: { tokens: { decrement: tokensToReserve } },
+      });
+
+      // Create token ledger entry
+      await tx.tokenLedger.create({
+        data: {
+          studentId: student.id,
+          tutorId,
+          delta: new Prisma.Decimal(-tokensToReserve),
+          reason: 'BOOKING',
+        },
+      });
+
+      // Create PENDING_SLOT booking
+      const booking = await tx.booking.create({
+        data: {
+          tutorId,
+          studentId: student.id,
+          isDemo: false,
+          status: BookingStatus.PENDING_SLOT,
+          tokensCharged: new Prisma.Decimal(tokensToReserve),
+        },
+        include: {
+          tutor: { include: { user: true } },
+          student: { include: { user: true } },
+        },
+      });
+
+      return booking;
+    });
+  }
+
+  // Bulk reserve tokens for multiple sessions
+  async bulkReserveTokens(tutorId: string, userId: string, count: number) {
+    if (count < 1 || count > 20) {
+      throw new BadRequestException('Count must be between 1 and 20');
+    }
+
+    const student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student profile not found');
+    }
+
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      select: { id: true },
+    });
+
+    if (!tutor) {
+      throw new NotFoundException('Tutor not found');
+    }
+
+    // Check token balance
+    const tokenBalance = await this.prisma.tutorTokenBalance.findUnique({
+      where: {
+        studentId_tutorId: {
+          studentId: student.id,
+          tutorId,
+        },
+      },
+      select: { balance: true },
+    });
+
+    if (!tokenBalance || Number(tokenBalance.balance) < count) {
+      throw new BadRequestException(
+        `Insufficient tokens. You need ${count} tokens but have ${tokenBalance?.balance || 0}`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Deduct tokens
+      await tx.tutorTokenBalance.update({
+        where: {
+          studentId_tutorId: {
+            studentId: student.id,
+            tutorId,
+          },
+        },
+        data: {
+          balance: { decrement: count },
+        },
+      });
+
+      await tx.student.update({
+        where: { id: student.id },
+        data: { tokens: { decrement: count } },
+      });
+
+      // Create ledger entry
+      await tx.tokenLedger.create({
+        data: {
+          studentId: student.id,
+          tutorId,
+          delta: new Prisma.Decimal(-count),
+          reason: 'BOOKING',
+        },
+      });
+
+      // Create multiple PENDING_SLOT bookings
+      const bookings = [];
+      for (let i = 0; i < count; i++) {
+        const booking = await tx.booking.create({
+          data: {
+            tutorId,
+            studentId: student.id,
+            isDemo: false,
+            status: BookingStatus.PENDING_SLOT,
+            tokensCharged: new Prisma.Decimal(1),
+          },
+        });
+        bookings.push(booking);
+      }
+
+      return {
+        count: bookings.length,
+        bookings,
+        message: `Successfully reserved ${count} tokens for future sessions`,
+      };
+    });
+  }
 }
+
+

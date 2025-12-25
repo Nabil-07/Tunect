@@ -3,6 +3,8 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
   import { CreateSlotDto } from './dto/create-slot.dto';
@@ -10,12 +12,17 @@ import { UpdateSlotDto } from './dto/update-slot.dto';
 import { BookingStatus, TutorStatus } from '@prisma/client';
 import { addMinutes, isBefore } from 'date-fns';
 import { BookableQueryDto } from './dto/bookable-query.dto';
+import { WaitlistService } from '../waitlist/waitlist.service';
 
 const MIN_BLOCK_MINUTES = 15;
 
 @Injectable()
 export class AvailabilityService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => WaitlistService))
+    private waitlistService: WaitlistService,
+  ) {}
 
   // ---------------- helpers ----------------
 
@@ -37,15 +44,31 @@ export class AvailabilityService {
     end: Date,
     excludeId?: string,
   ) {
+    // Check for any overlap or exact duplicate
     const overlap = await this.prisma.availabilitySlot.findFirst({
       where: {
         tutorId,
         ...(excludeId ? { NOT: { id: excludeId } } : {}),
-        AND: [{ startTime: { lt: end } }, { endTime: { gt: start } }],
+        OR: [
+          // Overlap: existing slot intersects with new slot
+          {
+            AND: [{ startTime: { lt: end } }, { endTime: { gt: start } }],
+          },
+          // Exact duplicate
+          {
+            AND: [{ startTime: { equals: start } }, { endTime: { equals: end } }],
+          },
+        ],
       },
-      select: { id: true },
+      select: { id: true, startTime: true, endTime: true },
     });
-    if (overlap) throw new BadRequestException('Slot overlaps an existing slot');
+    if (overlap) {
+      const existingStart = overlap.startTime.toLocaleString();
+      const existingEnd = overlap.endTime.toLocaleString();
+      throw new BadRequestException(
+        `Slot conflicts with existing slot (${existingStart} - ${existingEnd})`
+      );
+    }
   }
 
   private async ensureNoBookingOverlap(tutorId: string, start: Date, end: Date) {
@@ -124,10 +147,15 @@ export class AvailabilityService {
     await this.ensureNoSlotOverlap(tutor.id, start, end);
     await this.ensureNoBookingOverlap(tutor.id, start, end);
 
-    return this.prisma.availabilitySlot.create({
+    const slot = await this.prisma.availabilitySlot.create({
       data: { tutorId: tutor.id, startTime: start, endTime: end },
       select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
     });
+
+    // Notify waiting students about new availability
+    await this.waitlistService.notifyWaitingStudentsForTutor(tutor.id);
+
+    return slot;
   }
 
   async listMine(userId: string) {
@@ -240,6 +268,21 @@ export class AvailabilityService {
           continue;
         }
       }
+
+      // Check for duplicates before creating
+      const duplicate = await this.prisma.availabilitySlot.findFirst({
+        where: {
+          tutorId: tutor.id,
+          startTime: startIso as any,
+          endTime: endIso as any,
+        },
+      });
+      
+      if (duplicate) {
+        // Skip duplicate - already exists
+        continue;
+      }
+
       await (this.prisma.availabilitySlot as any).create({
         data: { tutorId: tutor.id, startTime: startIso as any, endTime: endIso as any, title: s.title },
       });

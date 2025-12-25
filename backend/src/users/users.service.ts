@@ -4,8 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type UpdateMeInput = {
   email?: string;
-  // name?: string;             // keep commented unless column exists
-  // avatarUrl?: string | null; // keep commented unless column exists
+  name?: string;
+  avatarUrl?: string | null;
+  preferredCurrency?: string;
 };
 
 @Injectable()
@@ -19,6 +20,10 @@ export class UsersService {
         id: true,
         email: true,
         role: true,
+        name: true,
+        avatarUrl: true,
+        phone: true,
+        preferredCurrency: true,
         createdAt: true,
         updatedAt: true,
         // personas → let frontend decide routing correctly
@@ -40,13 +45,18 @@ export class UsersService {
       where: { id: userId },
       data: {
         ...(data.email ? { email: data.email.toLowerCase().trim() } : {}),
-        // ...(typeof data.name !== 'undefined' ? { name: data.name } : {}),
-        // ...(typeof data.avatarUrl !== 'undefined' ? { avatarUrl: data.avatarUrl } : {}),
+        ...(typeof data.name !== 'undefined' ? { name: data.name } : {}),
+        ...(typeof data.avatarUrl !== 'undefined' ? { avatarUrl: data.avatarUrl } : {}),
+        ...(data.preferredCurrency ? { preferredCurrency: data.preferredCurrency } : {}),
       },
       select: {
         id: true,
         email: true,
         role: true,
+        name: true,
+        avatarUrl: true,
+        phone: true,
+        preferredCurrency: true,
         createdAt: true,
         updatedAt: true,
         student: { select: { id: true, createdAt: true } },

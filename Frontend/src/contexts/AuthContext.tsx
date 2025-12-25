@@ -8,7 +8,8 @@ import React, {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { me as fetchMe, logout as doLogout } from '../services/authService';
-import { readToken, setAuthHeader, getTimeLeftSec, refreshAccessToken } from '../lib/apiClient';
+import { readToken, setAuthHeader, getTimeLeftSec, refreshAccessToken, writeToken, writeRefreshToken } from '../lib/apiClient';
+import { accountManager, type StoredAccount } from '../services/accountManager';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 type User = {
@@ -27,6 +28,11 @@ type AuthCtx = {
   isAuthenticated: boolean | null;
   setUser: React.Dispatch<React.SetStateAction<User>>;
   logout: () => void;
+  // Multi-account methods
+  accounts: StoredAccount[];
+  switchAccount: (accountId: string) => Promise<void>;
+  addAccount: (user: any, accessToken: string, refreshToken: string) => void;
+  removeAccount: (accountId: string) => void;
 };
 
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
@@ -214,6 +220,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearInterval(interval);
   }, []);
 
+  // Multi-account state
+  const [accounts, setAccounts] = useState<StoredAccount[]>([]);
+
+  // Load accounts on mount
+  useEffect(() => {
+    setAccounts(accountManager.getAllAccounts());
+  }, []);
+
+  // Multi-account methods
+  const switchAccount = async (accountId: string) => {
+    console.log('🔄 switchAccount called with accountId:', accountId);
+    const account = accountManager.switchAccount(accountId);
+    console.log('🔄 Retrieved account from accountManager:', account);
+    if (!account) {
+      console.error('❌ No account found for ID:', accountId);
+      return;
+    }
+
+    // Write tokens to localStorage FIRST (so API calls use the correct token)
+    writeToken(account.accessToken);
+    writeRefreshToken(account.refreshToken);
+    setAuthHeader(account.accessToken);
+    setToken(account.accessToken);
+    console.log('🔄 Tokens written to storage and auth header set');
+
+    try {
+      const u = await fetchMe();
+      const resolved = (u as any)?.user ?? u ?? null;
+      console.log('🔄 Fetched user after switch:', resolved);
+      setUser(resolved);
+
+      // Update localStorage role
+      if (resolved?.role) {
+        try {
+          localStorage.setItem('role', resolved.role);
+        } catch {}
+      }
+
+      // Navigate to appropriate dashboard
+      const role = account.role.toUpperCase();
+      console.log('🔄 Navigating to dashboard for role:', role);
+      if (role === 'ADMIN') {
+        nav('/admin/dashboard', { replace: true });
+      } else if (role === 'TUTOR') {
+        nav('/tutor/dashboard', { replace: true });
+      } else if (role === 'STUDENT') {
+        nav('/student/dashboard', { replace: true });
+      }
+
+      // Update accounts list
+      setAccounts(accountManager.getAllAccounts());
+      console.log('✅ Account switch complete');
+    } catch (err) {
+      console.error('❌ Failed to switch account:', err);
+    }
+  };
+
+  const addAccountHandler = (user: any, accessToken: string, refreshToken: string) => {
+    accountManager.addAccount(user, accessToken, refreshToken);
+    setAccounts(accountManager.getAllAccounts());
+  };
+
+  const removeAccountHandler = (accountId: string) => {
+    accountManager.removeAccount(accountId);
+    setAccounts(accountManager.getAllAccounts());
+
+    // If removing current account, switch to another or logout
+    if (user?.id === accountId) {
+      const remaining = accountManager.getAllAccounts();
+      if (remaining.length > 0) {
+        void switchAccount(remaining[0].id);
+      } else {
+        // No accounts left, logout
+        doLogout();
+        setAuthHeader(null);
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem('role');
+        nav('/login', { replace: true });
+      }
+    }
+  };
+
   const value = useMemo<AuthCtx>(
     () => ({
       user,
@@ -222,20 +311,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: loading ? null : !!token,
       setUser,
       logout: () => {
-        doLogout();
-        setAuthHeader(null);
-        setToken(null);
-        setUser(null);
-        localStorage.removeItem('role');
-        nav('/login', { replace: true });
+        // Logout current account only (explicit logout)
+        if (user?.id) {
+          removeAccountHandler(user.id);
+        } else {
+          // Fallback: logout completely
+          accountManager.clearAll();
+          doLogout();
+          setAuthHeader(null);
+          setToken(null);
+          setUser(null);
+          localStorage.removeItem('role');
+          nav('/login', { replace: true });
+        }
       },
+      // Multi-account methods
+      accounts,
+      switchAccount,
+      addAccount: addAccountHandler,
+      removeAccount: removeAccountHandler,
     }),
-    [user, token, loading, nav],
+    [user, token, loading, accounts, nav],
   );
 
   return (
     <>
       <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+      
+      {/* Idle Warning Modal */}
       {idleOpen && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">

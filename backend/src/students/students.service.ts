@@ -338,4 +338,120 @@ export class StudentsService {
       ok: sum === tokens,
     };
   }
+
+  // -------- Tutor: Get my students from bookings --------
+  async getTutorStudents(userId: string) {
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!tutor) throw new NotFoundException('Tutor profile not found');
+
+    // Get distinct students from bookings
+    const bookings = await this.prisma.booking.findMany({
+      where: { tutorId: tutor.id },
+      select: {
+        student: {
+          select: {
+            id: true,
+            grade: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+      distinct: ['studentId'],
+    });
+
+    return bookings.map((b) => ({
+      id: b.student.id,
+      name: b.student.user?.name,
+      email: b.student.user?.email,
+      grade: b.student.grade,
+      user: b.student.user,
+    }));
+  }
+
+  async getTutorTokenBalances(userId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!student) throw new NotFoundException('Student profile not found');
+
+    const balances = await this.prisma.tutorTokenBalance.findMany({
+      where: { studentId: student.id },
+      select: {
+        id: true,
+        tutorId: true,
+        balance: true,
+        pricePerToken: true,
+        tutor: {
+          select: {
+            id: true,
+            hourlyRate: true,
+            user: {
+              select: {
+                name: true,
+                email: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { balance: 'desc' },
+    });
+
+    return balances.map((b) => ({
+      ...b,
+      balance: toNum(b.balance),
+      pricePerToken: toNum(b.pricePerToken),
+      tutor: {
+        ...b.tutor,
+        hourlyRate: toNum(b.tutor.hourlyRate),
+      },
+    }));
+  }
+
+  async getTokenLedgerAll(userId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!student) throw new NotFoundException('Student profile not found');
+
+    const ledger = await this.prisma.tokenLedger.findMany({
+      where: { studentId: student.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        studentId: true,
+        tutorId: true,
+        delta: true,
+        reason: true,
+        createdAt: true,
+        tutor: {
+          select: {
+            user: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return ledger.map((l) => ({
+      ...l,
+      delta: toNum(l.delta),
+    }));
+  }
 }

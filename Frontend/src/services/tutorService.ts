@@ -13,6 +13,12 @@ export type Tutor = {
   hourlyRate?: number;
   avatarUrl?: string | null;
   user?: { name?: string; email?: string } | null;
+  video?: {
+    id: string;
+    videoUrl: string;
+    thumbnail?: string;
+    duration?: number;
+  } | null;
 };
 
 /** Normalized slot for UI. Prefer `date` (YYYY-MM-DD). `day` kept for BC. */
