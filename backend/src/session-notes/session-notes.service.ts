@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OpenAIService } from '../common/services/openai.service';
 import { CreateSessionNoteDto } from './dto/create-session-note.dto';
 import { UpdateSessionNoteDto } from './dto/update-session-note.dto';
 
 @Injectable()
 export class SessionNotesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private openaiService: OpenAIService,
+  ) {}
 
   async create(bookingId: string, authorId: string, dto: CreateSessionNoteDto) {
     // Verify booking exists and user is the tutor
@@ -169,6 +173,132 @@ export class SessionNotesService {
 
     return this.prisma.sessionNote.delete({
       where: { id: noteId },
+    });
+  }
+
+  /**
+   * Generate AI session notes for a completed booking
+   */
+  async generateAISessionNotes(bookingId: string, userId: string) {
+    // Verify booking exists and is completed
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        tutor: true,
+        student: {
+          include: {
+            user: true,
+          },
+        },
+        conversations: {
+          include: {
+            messages: {
+              take: 50,
+              orderBy: { createdAt: 'desc' },
+            },
+          },
+        },
+        sessionNotes: true,
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (booking.tutor.userId !== userId) {
+      throw new ForbiddenException('Only the tutor can generate AI notes');
+    }
+
+    if (booking.status !== 'COMPLETED') {
+      throw new ForbiddenException('Can only generate notes for completed sessions');
+    }
+
+    // Check if booking was paid (prevent abuse)
+    if (!booking.tokensCharged || booking.tokensCharged.toNumber() === 0) {
+      throw new ForbiddenException('AI notes are only available for paid sessions');
+    }
+
+    // Gather session context
+    const chatMessages = booking.conversations[0]?.messages.map(
+      (msg) => msg.text,
+    ) || [];
+
+    const existingNotes = booking.sessionNotes.find((note) => !note.isAiGenerated);
+
+    const duration = booking.startTime && booking.endTime
+      ? Math.round((booking.endTime.getTime() - booking.startTime.getTime()) / (1000 * 60))
+      : undefined;
+
+    // Generate AI summary
+    const aiResult = await this.openaiService.generateSessionNotes({
+      chatMessages,
+      tutorNotes: existingNotes?.content,
+      sessionTopic: booking.notes || undefined,
+      duration,
+    });
+
+    // Create or update AI-generated note
+    const existingAiNote = booking.sessionNotes.find((note) => note.isAiGenerated);
+
+    if (existingAiNote) {
+      return this.prisma.sessionNote.update({
+        where: { id: existingAiNote.id },
+        data: {
+          aiSummary: aiResult.aiSummary,
+          keyPoints: aiResult.keyPoints.join('\n'),
+          homeworkSuggestions: aiResult.homeworkSuggestions.join('\n'),
+          approvedByTutor: false, // Reset approval
+        },
+      });
+    }
+
+    return this.prisma.sessionNote.create({
+      data: {
+        bookingId,
+        authorId: userId,
+        content: 'AI-generated session summary',
+        aiSummary: aiResult.aiSummary,
+        keyPoints: aiResult.keyPoints.join('\n'),
+        homeworkSuggestions: aiResult.homeworkSuggestions.join('\n'),
+        isAiGenerated: true,
+        approvedByTutor: false,
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Approve AI-generated notes
+   */
+  async approveAINotes(noteId: string, userId: string) {
+    const note = await this.prisma.sessionNote.findUnique({
+      where: { id: noteId },
+      include: {
+        booking: {
+          include: { tutor: true },
+        },
+      },
+    });
+
+    if (!note) {
+      throw new NotFoundException('Session note not found');
+    }
+
+    if (note.booking.tutor.userId !== userId) {
+      throw new ForbiddenException('Only the tutor can approve notes');
+    }
+
+    return this.prisma.sessionNote.update({
+      where: { id: noteId },
+      data: { approvedByTutor: true },
     });
   }
 }

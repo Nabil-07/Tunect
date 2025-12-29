@@ -25,7 +25,10 @@ export function AccountSwitcher() {
   }, [isOpen]);
 
   const currentAccount = accounts?.find(acc => acc.id === user?.id);
-  const otherAccounts = accounts?.filter(acc => acc.id !== user?.id) || [];
+  // Filter out accounts that don't have valid tokens
+  const otherAccounts = accounts?.filter(acc => 
+    acc.id !== user?.id && acc.accessToken && acc.accessToken.length > 0
+  ) || [];
 
   console.log('AccountSwitcher state:', { currentAccount, otherAccountsCount: otherAccounts.length });
 

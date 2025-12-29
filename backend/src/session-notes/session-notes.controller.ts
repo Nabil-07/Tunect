@@ -56,4 +56,20 @@ export class SessionNotesController {
   ) {
     return this.service.delete(noteId, userId);
   }
+
+  @Post('booking/:bookingId/generate-ai')
+  async generateAINotes(
+    @Param('bookingId') bookingId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.service.generateAISessionNotes(bookingId, userId);
+  }
+
+  @Put(':noteId/approve-ai')
+  async approveAINotes(
+    @Param('noteId') noteId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.service.approveAINotes(noteId, userId);
+  }
 }

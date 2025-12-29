@@ -1,5 +1,6 @@
 // src/services/studentService.ts
-import api, { readToken, setAuthHeader } from '../lib/apiClient';
+import { http as api } from '../api/http';
+import { getAccessToken } from '../lib/auth';
 import { getRole } from './authService';
 
 const hasStudentProfileFlag = () => localStorage.getItem('has_student_profile') === '1';
@@ -26,9 +27,8 @@ export type StudentMe =
 
 /** Prefer /users/me; also cache profile flags for guards. */
 export async function getMe(): Promise<StudentMe> {
-  const t = readToken();
+  const t = getAccessToken();
   if (!t) return null;
-  setAuthHeader(t);
 
   try {
     const { data } = await api.get('/users/me'); // primary
@@ -60,10 +60,9 @@ export async function getMe(): Promise<StudentMe> {
 
 /** Next booking widget: only if authenticated AND role is STUDENT AND a Student profile exists. */
 export async function getNextBooking(): Promise<any | null> {
-  const t = readToken();
+  const t = getAccessToken();
   const role = getRole(); // typically from localStorage 'role'
   if (!t || role !== 'STUDENT' || !hasStudentProfileFlag()) return null; // hard guard
-  setAuthHeader(t);
 
   try {
     const { data } = await api.get('/bookings/next');

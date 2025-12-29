@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api, { readToken, setAuthHeader } from '../lib/apiClient';
+import { useEffect, useState } from 'react';
+import { http } from '../api/http';
+import { getAccessToken, setTokens } from '../lib/auth';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 
@@ -9,63 +9,98 @@ const targetFor = (role: RoleApi) =>
   : role === 'TUTOR' ? '/tutor/dashboard'
   : '/student/dashboard';
 
+// Prevent double navigations during StrictMode/dev re-renders
+let isNavigating = false;
+
 export default function ChooseRole() {
   const [loading, setLoading] = useState<'STUDENT' | 'TUTOR' | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const hasNavigated = useRef(false);
-
-  const token = readToken();
 
   useEffect(() => {
-    if (!token || hasNavigated.current) return;
-
-    setAuthHeader(token);
+    const token = getAccessToken();
+    
+    // If no token, just show the page
+    if (!token) {
+      setCheckingAuth(false);
+      return;
+    }
+    
+    // Check localStorage first for quick redirect, but only when
+    // the matching profile exists to avoid redirect loops.
     const localRole = localStorage.getItem('role')?.toUpperCase() as RoleApi;
+    const hasStudentLocal = localStorage.getItem('has_student_profile') === '1';
+    const hasTutorLocal = localStorage.getItem('has_tutor_profile') === '1';
 
-    if (['ADMIN', 'TUTOR', 'STUDENT'].includes(localRole)) {
-      hasNavigated.current = true;
-      navigate(targetFor(localRole), { replace: true });
+    const canFastRedirect =
+      (localRole === 'ADMIN') ||
+      (localRole === 'TUTOR' && hasTutorLocal) ||
+      (localRole === 'STUDENT' && hasStudentLocal);
+
+    if (canFastRedirect) {
+      if (!isNavigating) {
+        isNavigating = true;
+        window.location.href = targetFor(localRole);
+      }
       return;
     }
 
+    // Fetch user data to determine role
+    let isMounted = true;
+    
     (async () => {
       try {
-        const me = await api.get('/users/me').then(r => r.data);
+        const me = await http.get('/users/me').then(r => r.data);
+        
+        if (!isMounted) return;
+        
         const role = me?.role?.toUpperCase?.() as RoleApi | undefined;
         const hasStudent = !!me?.student?.id;
         const hasTutor = !!me?.tutor?.id;
 
+        // Save to localStorage
         if (role) localStorage.setItem('role', role);
         localStorage.setItem('has_student_profile', hasStudent ? '1' : '0');
         localStorage.setItem('has_tutor_profile', hasTutor ? '1' : '0');
 
-        if (me?.hasChosenRole === false) {
-          return; // stay on chooser
+        // If user has a role + matching profile, redirect them
+        const canRedirect =
+          (role === 'ADMIN') ||
+          (role === 'TUTOR' && hasTutor) ||
+          (role === 'STUDENT' && hasStudent);
+
+        if (canRedirect) {
+          if (isMounted && !isNavigating) {
+            isNavigating = true;
+            window.location.href = targetFor(role!);
+          }
+          return;
         }
 
-        const next = role ? targetFor(role)
-          : hasStudent ? '/student/dashboard'
-          : hasTutor ? '/tutor/dashboard'
-          : null;
-
-        if (next && !hasNavigated.current) {
-          hasNavigated.current = true;
-          navigate(next, { replace: true });
+        // If user hasn't chosen a role yet, stay on this page
+        if (isMounted) {
+          setCheckingAuth(false);
         }
 
       } catch (e) {
         console.error("Failed to fetch user info", e);
+        if (isMounted) {
+          setCheckingAuth(false);
+        }
       }
     })();
-  }, [navigate, token]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   async function postChooseRole(role: 'STUDENT' | 'TUTOR') {
     try {
-      return await api.post('/profiles/choose-role', { role });
+      return await http.post('/profiles/choose-role', { role });
     } catch (e: any) {
       if (e?.response?.status === 404 || e?.response?.status === 405) {
-        return await api.post('/auth/choose-role', { role });
+        return await http.post('/auth/choose-role', { role });
       }
       throw e;
     }
@@ -76,8 +111,14 @@ export default function ChooseRole() {
     setLoading(role);
 
     try {
-      await postChooseRole(role);
-      const me = await api.get('/users/me').then(r => r.data);
+      const response = await postChooseRole(role);
+      
+      // Store the new JWT token with updated role
+      if (response.data?.access_token) {
+        setTokens({ accessToken: response.data.access_token });
+      }
+      
+      const me = await http.get('/users/me').then(r => r.data);
       const roleUpdated = me?.role?.toUpperCase?.() as RoleApi | undefined;
       const hasStudent = !!me?.student?.id;
       const hasTutor = !!me?.tutor?.id;
@@ -88,14 +129,22 @@ export default function ChooseRole() {
 
       const next = roleUpdated ? targetFor(roleUpdated) : targetFor(role);
 
-      if (!hasNavigated.current) {
-        hasNavigated.current = true;
-        navigate(next, { replace: true });
-      }
+      window.location.href = next;
     } catch (e: any) {
       setErr(e?.response?.data?.message || e?.message || 'Something went wrong.');
       setLoading(null);
     }
+  }
+
+  if (checkingAuth) {
+    return (
+      <main className="min-h-[70vh] flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-ocean-600 border-r-transparent"></div>
+          <p className="mt-4 text-slate-600">Loading...</p>
+        </div>
+      </main>
+    );
   }
 
   return (

@@ -1,5 +1,5 @@
 // src/services/userService.ts
-import { api } from '../lib/apiClient';
+import { http as api } from '../api/http';
 
 export type MeResponse = {
   id: string;

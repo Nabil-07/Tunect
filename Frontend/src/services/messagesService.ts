@@ -1,12 +1,12 @@
 // src/services/messagesService.ts
-import api, { readToken, setAuthHeader } from '../lib/apiClient';
+import { http as api } from '../api/http';
+import { getAccessToken } from '../lib/auth';
 
 export type UnreadCount = { count: number };
 
 export async function getUnreadCount(): Promise<UnreadCount> {
-  const t = readToken();
+  const t = getAccessToken();
   if (!t) return { count: 0 };        // 🚫 no token → no request
-  setAuthHeader(t);
   try {
     const { data } = await api.get('/messages/unread-count');
     if (typeof data === 'number') return { count: data };

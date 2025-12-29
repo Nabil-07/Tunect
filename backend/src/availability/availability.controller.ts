@@ -127,20 +127,20 @@ export class AvailabilityController {
 
   // singular
   @Get('tutor/:tutorId')
-  listByTutorSingular(@Param('tutorId', new ParseUUIDPipe()) tutorId: string) {
+  listByTutorSingular(@Param('tutorId') tutorId: string) {
     return this.service.listByTutor(tutorId);
   }
 
   // plural (canonical for FE)
   @Get('tutors/:tutorId')
-  listByTutorPlural(@Param('tutorId', new ParseUUIDPipe()) tutorId: string) {
+  listByTutorPlural(@Param('tutorId') tutorId: string) {
     return this.service.listByTutor(tutorId);
   }
 
   // singular bookable
   @Get('tutor/:tutorId/bookable')
   listBookableSingular(
-    @Param('tutorId', new ParseUUIDPipe()) tutorId: string,
+    @Param('tutorId') tutorId: string,
     @Query() q: BookableQueryDto,
   ) {
     return this.service.listBookable(tutorId, q);
@@ -149,7 +149,7 @@ export class AvailabilityController {
   // plural bookable (canonical for FE)
   @Get('tutors/:tutorId/bookable')
   listBookablePlural(
-    @Param('tutorId', new ParseUUIDPipe()) tutorId: string,
+    @Param('tutorId') tutorId: string,
     @Query() q: BookableQueryDto,
   ) {
     return this.service.listBookable(tutorId, q);
@@ -158,7 +158,7 @@ export class AvailabilityController {
   // extra legacy alias used by some older UI code: /availability/bookable/:id
   @Get('bookable/:tutorId')
   listBookableLegacy(
-    @Param('tutorId', new ParseUUIDPipe()) tutorId: string,
+    @Param('tutorId') tutorId: string,
     @Query() q: BookableQueryDto,
   ) {
     return this.service.listBookable(tutorId, q);

@@ -7,264 +7,47 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* =========================
-   Core Users & Roles
-   ========================= */
+model Assignment {
+  id                      String                    @id @default(cuid())
+  tutorId              String
+  studentId            String
+  bookingId            String?
+  title                String
+  description          String?
+  fileUrl              String?
+  fileType             String?
+  dueDate              DateTime?
+  status               AssignmentStatus       @default(PENDING)
+  aiScanStatus         AiScanStatus           @default(PENDING)
+  aiScanReason         String?
+  isVisibleToStudent   Boolean                @default(false)
+  createdAt            DateTime               @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  booking              Booking?               @relation(fields: [bookingId], references: [id])
+  student              Student                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor                Tutor                  @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  assignmentSubmissions AssignmentSubmission[]
 
-model User {
-  id                String         @id @default(cuid())
-  email             String         @unique
-  password          String
-  role              Role?          // Make role optional
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  avatarUrl         String?
-  name              String?
-  phone             String?        @unique
-  hasChosenRole     Boolean        @default(false)
-  preferredCurrency String         @default("INR") // User's preferred display currency
-
-  messagesSent  Message[]      @relation("UserToMessages")
-  oauthAccounts OAuthAccount[] @relation("UserToOAuthAccounts")
-  otpCodes      OtpCode[]
-  payments      Payment[]      @relation("UserToPayments")
-  student       Student?       @relation("UserToStudent")
-  tutor         Tutor?         @relation("UserToTutor")
-
-  // Reconciliation
-  bankImportsUploaded      BankImport[]      @relation("UserToBankImports")
-  gatewayImportsUploaded   GatewayImport[]   @relation("UserToGatewayImports")
-  reconAdjustmentsCreated  ReconAdjustment[] @relation("UserToReconAdjustments")
-  
-  // New Features
-  sessionNotes         SessionNote[]      @relation("UserToNotes")
-  promoUsages          PromoUsage[]       @relation("UserToPromoUsage")
-  disputesReported     Dispute[]          @relation("UserToDisputes")
-  disputesResolved     Dispute[]          @relation("UserToResolvedDisputes")
-  campaignsCreated     EmailCampaign[]    @relation("UserToCampaigns")
-  notifications        Notification[]     @relation("UserToNotifications")
-
-  @@index([email])
+  @@index([studentId, status])
+  @@index([tutorId, studentId])
+  @@index([aiScanStatus])
 }
 
-model Tutor {
-  id         String      @id @default(uuid())
-  userId     String      @unique
-  bio        String?
-  subjects   String[]    @default([])
-  createdAt  DateTime    @default(now())
-  hourlyRate Int         @default(0)
-  updatedAt  DateTime    @updatedAt
-  status     TutorStatus @default(PENDING)
-  country    String?
-  isTrending Boolean     @default(false)
-  tutorTid   String?     @unique(map: "tutor_tid_unique") @map("tutor_tid")
+model AssignmentSubmission {
+  id                      String                    @id @default(cuid())
+  assignmentId String
+  fileUrl      String
+  notes        String?
+  grade        String?
+  feedback     String?
+  submittedAt  DateTime   @default(now())
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
 
-  slots                AvailabilitySlot[]
-  bookings             Booking[]
-  conversationsAsTutor Conversation[] @relation("TutorConversations")
-  kycDocs              KycDocument[]
-  kycApplications     TutorKycApplication[]
-  payouts              Payout[]
-  reviews              Review[]
-  tokenLedger          TokenLedger[]
-  user                 User           @relation("UserToTutor", fields: [userId], references: [id], onDelete: Cascade)
-  balances             TutorTokenBalance[]
-  wallet               TutorWallet?
-  walletLedger         TutorWalletLedger[]
-  sessions             Session[]      @relation("TutorToSessions")
-  
-  // New Features
-  assignments          Assignment[]        @relation("TutorToAssignments")
-  studyMaterials       StudyMaterial[]     @relation("TutorToMaterials")
-  certificates         Certificate[]       @relation("TutorToCertificates")
-  favoritedBy          FavoriteTutor[]     @relation("TutorToFavorites")
-  groupBookings        GroupBooking[]      @relation("TutorToGroupBookings")
-  reports              PerformanceReport[] @relation("TutorToReports")
-  recurringTemplates   RecurringTemplate[] @relation("TutorToRecurringTemplates")
-  recurringBookings    RecurringBooking[]  @relation("TutorToRecurringBookings")
-  waitlist             Waitlist[]          @relation("TutorToWaitlist")
-
-  @@index([status, updatedAt])
-  @@index([isTrending, updatedAt])
-  @@index([userId])
-}
-
-model Student {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  grade     String?
-  tokens    Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  studentSid String? @unique(map: "student_sid_unique") @map("student_sid")
-
-  bookings               Booking[]
-  conversationsAsStudent Conversation[] @relation("StudentConversations")
-  reviews                Review[]
-  user                   User           @relation("UserToStudent", fields: [userId], references: [id], onDelete: Cascade)
-  tokenLedger            TokenLedger[]
-  balances               TutorTokenBalance[]
-  sessions               Session[]      @relation("StudentToSessions")
-  
-  // New Features
-  progress               StudentProgress[]     @relation("StudentToProgress")
-  goals                  LearningGoal[]        @relation("StudentToGoals")
-  assignments            Assignment[]          @relation("StudentToAssignments")
-  materialAccess         MaterialAccess[]      @relation("StudentToMaterials")
-  referralsMade          Referral[]            @relation("StudentToReferrals")
-  referredBy             Referral[]            @relation("StudentToReferredBy")
-  certificates           Certificate[]         @relation("StudentToCertificates")
-  favoriteTutors         FavoriteTutor[]       @relation("StudentToFavorites")
-  groupParticipations    GroupParticipant[]    @relation("StudentToGroupBookings")
-  reports                PerformanceReport[]   @relation("StudentToReports")
-  recurringBookings      RecurringBooking[]    @relation("StudentToRecurringBookings")
-  waitlist               Waitlist[]            @relation("StudentToWaitlist")
-  
-  // Phase 4: Enhanced Booking Features
-  groupBookingParticipants GroupBookingParticipant[]
-
-  @@index([createdAt])
-  @@index([userId])
-}
-
-/* =========================
-   Session Tracking
-   ========================= */
-
-model Session {
-  id         String   @id @default(cuid())
-  tutorId    String
-  studentId  String
-  startTime  DateTime
-  endTime    DateTime
-  createdAt  DateTime @default(now())
-
-  tutor    Tutor   @relation("TutorToSessions", fields: [tutorId], references: [id])
-  student  Student @relation("StudentToSessions", fields: [studentId], references: [id])
-}
-
-/* =========================
-   Bookings / Schedules
-   ========================= */
-
-model Booking {
-  id            String        @id @default(uuid())
-  tutorId       String
-  studentId     String
-
-  // Times are nullable so you can create a demo booking before a slot is chosen
-  startTime     DateTime?
-  endTime       DateTime?
-
-  status        BookingStatus @default(PENDING)
-  notes         String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  isDemo        Boolean       @default(false)
-  tokensCharged Decimal       @default(0.00) @db.Decimal(18, 2)
-
-  editsUsed     Int           @default(0)
-  
-  // Phase 4: Group Sessions
-  isGroupSession    Boolean  @default(false)
-  maxStudents       Int      @default(1)
-  currentEnrollment Int      @default(1)
-  pricePerStudent   Decimal? @db.Decimal(18, 2)
-  
-  // Phase 4: Google Meet Integration
-  meetingUrl      String?
-  meetingProvider String? @default("google_meet")
-  
-  // Phase 4: Recurring Bookings
-  recurringTemplateId String?
-  recurringTemplate   RecurringTemplate? @relation(fields: [recurringTemplateId], references: [id], onDelete: SetNull)
-
-  student       Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  tutor         Tutor               @relation(fields: [tutorId], references: [id], onDelete: Cascade)
-  conversations Conversation[]      @relation("BookingToConversation")
-  reminders     Reminder[]
-  review        Review?
-  tokenLedgers  TokenLedger[]
-  walletLedger  TutorWalletLedger[] @relation("BookingToWalletLedger")
-  
-  // New Features
-  assignments           Assignment[]
-  sessionNotes          SessionNote[]
-  meetingLink           MeetingLink?
-  whiteboardSessions    WhiteboardSession[]
-  disputes              Dispute[]
-  notifications         Notification[]
-  groupParticipants     GroupBookingParticipant[]
-  waitlistEntries       Waitlist[]              @relation("WaitlistToBooking")
-
-  @@index([tutorId, startTime, endTime])
-  @@index([studentId, startTime, endTime])
-  @@index([status, startTime])
-  @@index([recurringTemplateId])
-  @@index([isGroupSession, currentEnrollment, maxStudents])
-}
-
-// Phase 4: Group Session Participants
-model GroupBookingParticipant {
-  id            String   @id @default(uuid())
-  bookingId     String
-  studentId     String
-  joinedAt      DateTime @default(now())
-  tokensPaid    Decimal  @default(0.00) @db.Decimal(18, 2)
-  pricePerToken Decimal  @default(0.00) @db.Decimal(10, 2) // Locked-in price when student joined
-  status        String   @default("ENROLLED") // ENROLLED, DROPPED, COMPLETED
-  
-  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@unique([bookingId, studentId])
-  @@index([bookingId])
-  @@index([studentId])
-}
-
-// Phase 4: Waitlist for fully booked sessions
-model Waitlist {
-  id                 String    @id @default(uuid())
-  tutorId            String
-  studentId          String
-  requestedStartTime DateTime
-  requestedEndTime   DateTime
-  subject            String?
-  priority           Int       @default(1)
-  status             String    @default("WAITING") // WAITING, NOTIFIED, EXPIRED, BOOKED
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  notifiedAt         DateTime?
-  expiresAt          DateTime?
-  bookingId          String?
-  notes              String?
-  
-  tutor              Tutor     @relation("TutorToWaitlist", fields: [tutorId], references: [id], onDelete: Cascade)
-  student            Student   @relation("StudentToWaitlist", fields: [studentId], references: [id], onDelete: Cascade)
-  booking            Booking?  @relation("WaitlistToBooking", fields: [bookingId], references: [id], onDelete: SetNull)
-
-  @@index([tutorId])
-  @@index([studentId])
-  @@index([status])
-  @@index([requestedStartTime])
-  @@index([bookingId])
-}
-
-
-model Reminder {
-  id        String   @id @default(uuid())
-  bookingId String
-  kind      String
-  sentAt    DateTime @default(now())
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-
-  @@unique([bookingId, kind])
-  @@index([sentAt])
+  @@index([assignmentId])
 }
 
 model AvailabilitySlot {
-  id        String   @id @default(uuid())
+  id                      String                    @id @default(cuid())
   tutorId   String
   startTime DateTime
   endTime   DateTime
@@ -273,230 +56,246 @@ model AvailabilitySlot {
   tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
 
   @@unique([tutorId, startTime, endTime])
-  @@index([tutorId, startTime])
   @@index([tutorId, endTime])
+  @@index([tutorId, startTime])
 }
 
-// Application-level KYC (structured form)
-enum KycAppStatus {
-  SUBMITTED
-  UNDER_REVIEW
-  NEEDS_MORE_INFO
-  APPROVED
-  REJECTED
+model BankImport {
+  id                      String                    @id @default(cuid())
+  filename   String
+  uploadedBy String?
+  uploadedAt DateTime  @default(now())
+  rowCount   Int       @default(0)
+  notes      String?
+  User       User?     @relation(fields: [uploadedBy], references: [id])
+  BankTxn    BankTxn[]
+
+  @@index([uploadedAt])
 }
 
-model TutorKycApplication {
-  id             String        @id @default(uuid())
-  tutorId        String
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  status         KycAppStatus  @default(SUBMITTED)
-  rejectionCount Int           @default(0)
-  reapplyAfter   DateTime?
-  notes          String?
-
-  // Personal
-  fullName   String
-  dob        DateTime
-  phone      String
-  country    String
-  address1   String
-  address2   String?
-  city       String
-  state      String?
-  postalCode String?
-
-  // Bank common
-  bankAccountHolder String
-  bankName          String
-  bankBranch        String?
-
-  // India
-  accountNumber String?
-  ifsc          String?
-  upiId         String?
-  aadhaarNumber String?
-
-  // UAE
-  iban  String?
-  swift String?
-
-  tutor Tutor @relation(fields: [tutorId], references: [id], onDelete: Cascade)
-
-  @@index([tutorId, status, updatedAt])
-}
-
-/* =========================
-   Payments / Wallets
-   ========================= */
-
-model Payment {
-  id                String          @id @default(cuid())
-  currency          String          @default("INR")
-  status            PaymentStatus   @default(PENDING)
-  createdAt         DateTime        @default(now())
-  amountInMinor     Int
-  metadata          Json?
-  providerOrderId   String?
-  providerPaymentId String?
-  providerSignature String?
-  tokensPurchased   Int             @default(0)
-  updatedAt         DateTime        @updatedAt
-  userId            String
-  provider          PaymentProvider
-  user              User            @relation("UserToPayments", fields: [userId], references: [id], onDelete: Cascade)
-  refunds           Refund[]
-  ledgerEntries     TokenLedger[]
-
-  // ✅ Back-relations to raw reconciliation txns
-  bankTxns          BankTxn[]       @relation("PaymentToBankTxns")
-  gatewayTxns       GatewayTxn[]    @relation("PaymentToGatewayTxns")
-
-  @@index([userId, status, createdAt])
-  @@index([userId])
-}
-
-model Refund {
-  id               String   @id @default(cuid())
-  paymentId        String
-  amountInMinor    Int
-  providerRefundId String?
-  reason           String?
-  createdAt        DateTime @default(now())
-  payment          Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+model BankTxn {
+  id                      String                    @id @default(cuid())
+  importId   String
+  txnDate    DateTime
+  valueDate  DateTime?
+  narration  String?
+  ref        String?
+  amount     Decimal    @db.Decimal(18, 2)
+  balance    Decimal?   @db.Decimal(18, 2)
+  currency   String     @default("INR")
+  accountNo  String?
+  hash       String     @unique
+  paymentId  String?
+  BankImport BankImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  Payment    Payment?   @relation(fields: [paymentId], references: [id])
 
   @@index([paymentId])
+  @@index([ref])
+  @@index([txnDate])
 }
 
-model TokenLedger {
-  id        String      @id @default(uuid())
+model Booking {
+  id                      String                    @id @default(cuid())
+  tutorId                 String
+  studentId               String
+  startTime               DateTime?
+  endTime                 DateTime?
+  status                  BookingStatus             @default(PENDING)
+  notes                   String?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  isDemo                  Boolean                   @default(false)
+  tokensCharged           Decimal                   @default(0.00) @db.Decimal(18, 2)
+  editsUsed               Int                       @default(0)
+  isGroupSession          Boolean                   @default(false)
+  maxStudents             Int                       @default(1)
+  currentEnrollment       Int                       @default(1)
+  pricePerStudent         Decimal?                  @db.Decimal(18, 2)
+  meetingUrl              String?
+  meetingProvider         String?                   @default("google_meet")
+  recurringTemplateId     String?
+  assignments             Assignment[]
+  recurringTemplate       RecurringTemplate?        @relation(fields: [recurringTemplateId], references: [id])
+  student                 Student                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor                   Tutor                     @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  conversations           Conversation[]
+  disputes                Dispute[]
+  groupParticipants       GroupBookingParticipant[]
+  meetingLink             MeetingLink?
+  notifications           Notification[]
+  reminders               Reminder[]
+  review                  Review?
+  sessionNotes            SessionNote[]
+  tokenLedger             TokenLedger[]
+  walletLedger            TutorWalletLedger[]
+  waitlist                Waitlist[]
+  whiteboardSessions      WhiteboardSession[]
+
+  @@index([isGroupSession, currentEnrollment, maxStudents])
+  @@index([recurringTemplateId])
+  @@index([status, startTime])
+  @@index([studentId, startTime, endTime])
+  @@index([tutorId, startTime, endTime])
+}
+
+model Certificate {
+  id                      String                    @id @default(cuid())
   studentId String
-  delta     Decimal     @db.Decimal(10, 2)
-  reason    TokenReason
-  bookingId String?
-  paymentId String?
-  createdAt DateTime    @default(now())
   tutorId   String?
+  type      CertificateType
+  hours     Decimal         @db.Decimal(10, 2)
+  subject   String?
+  issuedAt  DateTime        @default(now())
+  student   Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor?          @relation(fields: [tutorId], references: [id])
 
-  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  student Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  tutor   Tutor?   @relation(fields: [tutorId], references: [id], onDelete: SetNull)
-
-  @@index([studentId, createdAt])
-  @@index([tutorId])
-  @@index([bookingId])
-  @@index([paymentId])
+  @@index([studentId, type])
 }
-
-model TutorTokenBalance {
-  id                String  @id @default(uuid())
-  studentId         String
-  tutorId           String
-  balance           Decimal @db.Decimal(10, 2)
-  pricePerToken     Decimal @db.Decimal(10, 2) // Locked-in price when student purchased tokens
-  student           Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  tutor             Tutor   @relation(fields: [tutorId], references: [id], onDelete: Cascade)
-
-  @@unique([studentId, tutorId])
-  @@index([studentId, tutorId])
-}
-
-model TutorWallet {
-  tutorId   String   @id
-  balance   Decimal  @default(0.0) @db.Decimal(18, 2)
-  updatedAt DateTime @updatedAt
-  tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
-}
-
-model TutorWalletLedger {
-  id        String       @id @default(cuid())
-  tutorId   String
-  bookingId String?
-  delta     Decimal      @db.Decimal(18, 2)
-  reason    WalletReason
-  note      String?
-  createdAt DateTime     @default(now())
-
-  booking Booking? @relation("BookingToWalletLedger", fields: [bookingId], references: [id], onDelete: SetNull)
-  tutor   Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
-
-  @@index([tutorId, createdAt])
-  @@index([bookingId])
-}
-
-model Payout {
-  id        String       @id @default(cuid())
-  tutorId   String
-  amount    Decimal      @db.Decimal(18, 2)
-  status    PayoutStatus @default(PENDING)
-  reference String?
-  createdAt DateTime     @default(now())
-  paidAt    DateTime?
-  tutor     Tutor        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
-
-  @@index([tutorId, createdAt])
-}
-
-/* =========================
-   Conversations / Messages
-   ========================= */
 
 model Conversation {
-  id        String   @id @default(cuid())
+  id                      String                    @id @default(cuid())
   studentId String
   tutorId   String
   bookingId String?
-  createdAt DateTime @default(now())
-
-  booking  Booking?  @relation("BookingToConversation", fields: [bookingId], references: [id], onDelete: SetNull)
-  student  Student   @relation("StudentConversations", fields: [studentId], references: [id], onDelete: Cascade)
-  tutor    Tutor     @relation("TutorConversations", fields: [tutorId], references: [id], onDelete: Cascade)
-  messages Message[]
+  createdAt DateTime  @default(now())
+  booking   Booking?  @relation(fields: [bookingId], references: [id])
+  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor     @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  messages  Message[]
 
   @@unique([studentId, tutorId, bookingId])
   @@index([studentId, tutorId, createdAt])
 }
 
-model Message {
-  id             String   @id @default(cuid())
-  conversationId String
-  senderId       String
-  text           String   @db.VarChar(2000)
-  createdAt      DateTime @default(now())
+model Dispute {
+  id                      String                    @id @default(cuid())
+  bookingId                     String
+  reporterId                    String
+  reason                        String
+  description                   String
+  status                        DisputeStatus @default(OPEN)
+  resolution                    String?
+  createdAt                     DateTime      @default(now())
+  resolvedAt                    DateTime?
+  resolvedBy                    String?
+  Booking                       Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  User_Dispute_reporterIdToUser User          @relation("Dispute_reporterIdToUser", fields: [reporterId], references: [id], onDelete: Cascade)
+  User_Dispute_resolvedByToUser User?         @relation("Dispute_resolvedByToUser", fields: [resolvedBy], references: [id])
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User         @relation("UserToMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  attachments  MessageAttachment[]
-
-  @@index([conversationId, createdAt])
-  @@index([senderId, createdAt])
+  @@index([status, createdAt])
 }
 
-/* =========================
-   Reviews / KYC / OAuth / OTP
-   ========================= */
+model EmailCampaign {
+  id                      String                    @id @default(cuid())
+  name        String
+  subject     String
+  body        String
+  targetRole  Role?
+  sentCount   Int       @default(0)
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  User        User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
-model Review {
-  id        String   @id @default(uuid())
-  tutorId   String
+  @@index([scheduledAt, sentAt])
+}
+
+model FavoriteTutor {
+  id                      String                    @id @default(cuid())
   studentId String
-  rating    Int
-  comment   String?
+  tutorId   String
   createdAt DateTime @default(now())
-  bookingId String   @unique
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
 
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  tutor   Tutor   @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  @@unique([studentId, tutorId])
+  @@index([studentId])
+}
 
-  @@index([tutorId, createdAt])
-  @@index([studentId, createdAt])
+model GatewayImport {
+  id                      String                    @id @default(cuid())
+  provider   PaymentProvider
+  filename   String
+  uploadedBy String?
+  uploadedAt DateTime        @default(now())
+  rowCount   Int             @default(0)
+  notes      String?
+  User       User?           @relation(fields: [uploadedBy], references: [id])
+  GatewayTxn GatewayTxn[]
+
+  @@index([provider, uploadedAt])
+}
+
+model GatewayTxn {
+  id                      String                    @id @default(cuid())
+  importId      String
+  provider      PaymentProvider
+  event         String?
+  txnDate       DateTime
+  ref           String?
+  description   String?
+  amount        Decimal         @db.Decimal(18, 2)
+  fee           Decimal?        @db.Decimal(18, 2)
+  tax           Decimal?        @db.Decimal(18, 2)
+  currency      String          @default("INR")
+  hash          String          @unique
+  paymentId     String?
+  GatewayImport GatewayImport   @relation(fields: [importId], references: [id], onDelete: Cascade)
+  Payment       Payment?        @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+  @@index([ref])
+  @@index([txnDate])
+}
+
+model GroupBooking {
+  id                      String                    @id @default(cuid())
+  tutorId          String
+  startTime        DateTime
+  endTime          DateTime
+  maxStudents      Int                @default(4)
+  topic            String?
+  status           BookingStatus      @default(PENDING)
+  createdAt        DateTime           @default(now())
+  Tutor            Tutor              @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  GroupParticipant GroupParticipant[]
+
+  @@index([tutorId, startTime])
+}
+
+model GroupBookingParticipant {
+  id                      String                    @id @default(cuid())
+  bookingId     String
+  studentId     String
+  joinedAt      DateTime @default(now())
+  tokensPaid    Decimal  @default(0.00) @db.Decimal(18, 2)
+  pricePerToken Decimal  @default(0.00) @db.Decimal(10, 2)
+  status        String   @default("ENROLLED")
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, studentId])
+  @@index([bookingId])
+  @@index([studentId])
+}
+
+model GroupParticipant {
+  id                      String                    @id @default(cuid())
+  groupBookingId String
+  studentId      String
+  paymentStatus  PaymentStatus @default(PENDING)
+  paidAmount     Decimal       @db.Decimal(18, 2)
+  joinedAt       DateTime      @default(now())
+  groupBooking   GroupBooking  @relation(fields: [groupBookingId], references: [id], onDelete: Cascade)
+  student        Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([groupBookingId, studentId])
+  @@index([studentId])
 }
 
 model KycDocument {
-  id        String    @id @default(uuid())
+  id                      String                    @id @default(cuid())
   tutorId   String
   docType   String
   url       String
@@ -508,20 +307,110 @@ model KycDocument {
   @@index([tutorId, status, createdAt])
 }
 
+model LearningGoal {
+  id                      String                    @id @default(cuid())
+  studentId   String
+  title       String
+  description String?
+  targetDate  DateTime?
+  status      GoalStatus  @default(IN_PROGRESS)
+  progress    Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  student     Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  milestones  Milestone[]
+
+  @@index([studentId, status])
+}
+
+model MaterialAccess {
+  id                      String                    @id @default(cuid())
+  materialId    String
+  studentId     String
+  accessedAt    DateTime      @default(now())
+  studyMaterial StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, studentId])
+  @@index([studentId])
+}
+
+model MeetingLink {
+  id                      String                    @id @default(cuid())
+  bookingId String   @unique
+  meetUrl   String
+  meetId    String
+  createdAt DateTime @default(now())
+  Booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id                      String                    @id @default(cuid())
+  conversationId    String
+  senderId          String
+  text              String              @db.VarChar(2000)
+  createdAt         DateTime            @default(now())
+  conversation      Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User                @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  messageAttachments MessageAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+model MessageAttachment {
+  id                      String                    @id @default(cuid())
+  messageId String
+  fileUrl   String
+  fileName  String
+  fileSize  Int
+  fileType  String
+  createdAt DateTime @default(now())
+  Message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model Milestone {
+  id                      String                    @id @default(cuid())
+  goalId       String
+  title        String
+  completed    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  goal         LearningGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+}
+
+model Notification {
+  id                      String                    @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType
+  bookingId String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  booking   Booking?         @relation(fields: [bookingId], references: [id])
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
 model OAuthAccount {
-  id             String   @id @default(uuid())
+  id                      String                    @id @default(cuid())
   userId         String
   provider       String
   providerUserId String   @unique
   email          String
   createdAt      DateTime @default(now())
-  user           User     @relation("UserToOAuthAccounts", fields: [userId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, provider])
 }
 
 model OtpCode {
-  id         String     @id @default(cuid())
+  id                      String                    @id @default(cuid())
   userId     String
   purpose    OtpPurpose @default(PASSWORD_RESET)
   channel    OtpChannel
@@ -531,462 +420,109 @@ model OtpCode {
   consumedAt DateTime?
   attempts   Int        @default(0)
   createdAt  DateTime   @default(now())
+  User       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([target, purpose, expiresAt])
   @@index([code, target])
+  @@index([target, purpose, expiresAt])
+  @@index([userId, createdAt])
 }
 
-/* =========================
-   Reconciliation Models
-   ========================= */
+model Payment {
+  id                      String                    @id @default(cuid())
+  currency          String          @default("INR")
+  status            PaymentStatus   @default(PENDING)
+  createdAt         DateTime        @default(now())
+  amountInMinor     Int
+  metadata          Json?
+  providerOrderId   String?
+  providerPaymentId String?
+  providerSignature String?
+  tokensPurchased   Int             @default(0)
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  userId            String
+  provider          PaymentProvider
+  bankTxns          BankTxn[]
+  gatewayTxns       GatewayTxn[]
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refunds           Refund[]
+  tokenLedger       TokenLedger[]
 
-/// Who uploaded what, when (bank)
-model BankImport {
-  id          String   @id @default(cuid())
-  filename    String
-  uploadedBy  String?
-  uploadedAt  DateTime @default(now())
-  rowCount    Int      @default(0)
-  notes       String?
-
-  // 🔁 back to User.bankImportsUploaded
-  uploader    User?    @relation("UserToBankImports", fields: [uploadedBy], references: [id], onDelete: SetNull)
-  txns        BankTxn[]
-
-  @@index([uploadedAt])
+  @@index([userId])
+  @@index([userId, status, createdAt])
 }
 
-/// Raw bank statement rows (credits/debits)
-model BankTxn {
-  id          String   @id @default(cuid())
-  importId    String
-  txnDate     DateTime
-  valueDate   DateTime?
-  narration   String?
-  ref         String?
-  amount      Decimal  @db.Decimal(18, 2) // +credit / -debit
-  balance     Decimal? @db.Decimal(18, 2)
-  currency    String   @default("INR")
-  accountNo   String?
-  hash        String   // dedup hash
+model Payout {
+  id                      String                    @id @default(cuid())
+  tutorId   String
+  amount    Decimal      @db.Decimal(18, 2)
+  status    PayoutStatus @default(PENDING)
+  reference String?
+  createdAt DateTime     @default(now())
+  paidAt    DateTime?
+  tutor     Tutor        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
 
-  // Optional linkage to Payment if you detect it
-  paymentId   String?
-  // 🔁 back to Payment.bankTxns
-  payment     Payment? @relation("PaymentToBankTxns", fields: [paymentId], references: [id], onDelete: SetNull)
-
-  import      BankImport @relation(fields: [importId], references: [id], onDelete: Cascade)
-
-  @@index([txnDate])
-  @@index([ref])
-  @@index([paymentId])
-  @@unique([hash]) // prevents duplicate re-ingest of same row
+  @@index([tutorId, createdAt])
 }
 
-/// Gateway report upload (Razorpay/Stripe)
-model GatewayImport {
-  id          String   @id @default(cuid())
-  provider    PaymentProvider
-  filename    String
-  uploadedBy  String?
-  uploadedAt  DateTime @default(now())
-  rowCount    Int      @default(0)
-  notes       String?
+model PerformanceReport {
+  id                      String                    @id @default(cuid())
+  studentId String
+  tutorId   String?
+  period    String
+  data      Json
+  createdAt DateTime @default(now())
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor?   @relation(fields: [tutorId], references: [id])
 
-  // 🔁 back to User.gatewayImportsUploaded
-  uploader    User?    @relation("UserToGatewayImports", fields: [uploadedBy], references: [id], onDelete: SetNull)
-  txns        GatewayTxn[]
-
-  @@index([provider, uploadedAt])
+  @@index([studentId, createdAt])
 }
 
-/// Raw gateway transactions (orders/payments/settlements)
-model GatewayTxn {
-  id            String   @id @default(cuid())
-  importId      String
-  provider      PaymentProvider
-  event         String?        // e.g., "payment.captured", "settlement"
-  txnDate       DateTime
-  ref           String?        // providerPaymentId/orderId/settlementRef
-  description   String?
-  amount        Decimal        @db.Decimal(18, 2) // +credit / -debit (post-fee if settlement)
-  fee           Decimal?       @db.Decimal(18, 2)
-  tax           Decimal?       @db.Decimal(18, 2)
-  currency      String         @default("INR")
-  hash          String
+model PromoCode {
+  id                      String                    @id @default(cuid())
+  code       String       @unique
+  discount   Decimal      @db.Decimal(10, 2)
+  type       DiscountType
+  maxUses    Int?
+  usedCount  Int          @default(0)
+  validFrom  DateTime
+  validUntil DateTime
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  PromoUsage PromoUsage[]
 
-  // Optional linkage to Payment if known
-  paymentId     String?
-  // 🔁 back to Payment.gatewayTxns
-  payment       Payment?       @relation("PaymentToGatewayTxns", fields: [paymentId], references: [id], onDelete: SetNull)
-
-  import        GatewayImport  @relation(fields: [importId], references: [id], onDelete: Cascade)
-
-  @@index([txnDate])
-  @@index([ref])
-  @@index([paymentId])
-  @@unique([hash])
+  @@index([code, isActive])
 }
 
-/// Manual recon adjustments created from Admin UI
+model PromoUsage {
+  id                      String                    @id @default(cuid())
+  promoId   String
+  userId    String
+  usedAt    DateTime  @default(now())
+  promoCode PromoCode @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([promoId])
+  @@index([userId])
+}
+
 model ReconAdjustment {
-  id          String      @id @default(cuid())
-  date        DateTime
-  ref         String?
-  side        ReconSide
-  amount      Decimal     @db.Decimal(18, 2)
-  reason      String
-  createdAt   DateTime    @default(now())
-  createdBy   String?
-
-  // 🔁 back to User.reconAdjustmentsCreated
-  creator     User?       @relation("UserToReconAdjustments", fields: [createdBy], references: [id], onDelete: SetNull)
+  id                      String                    @id @default(cuid())
+  date      DateTime
+  ref       String?
+  side      ReconSide
+  amount    Decimal   @db.Decimal(18, 2)
+  reason    String
+  createdAt DateTime  @default(now())
+  createdBy String?
+  User      User?     @relation(fields: [createdBy], references: [id])
 
   @@index([date])
   @@index([ref])
   @@index([side, date])
 }
 
-
-
-/* =========================
-   Enums
-   ========================= */
-
-enum ReconSide {
-  BANK
-  GATEWAY
-}
-
-enum Role {
-  ADMIN
-  TUTOR
-  STUDENT
-}
-
-enum TutorStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  COMPLETED
-  CANCELED
-   PENDING_SLOT   // ✅ new status
-}
-
-enum PaymentStatus {
-  PENDING
-  SUCCEEDED
-  FAILED
-  REFUNDED
-  CANCELED
-}
-
-enum PaymentProvider {
-  RAZORPAY
-}
-
-enum TokenReason {
-  BOOKING
-  REFUND
-  ADMIN_ADJUSTMENT
-}
-
-enum KycStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum WalletReason {
-  BOOKING_EARNED
-  BOOKING_CHARGE
-  ADJUSTMENT
-  PAYOUT
-}
-
-enum PayoutStatus {
-  PENDING
-  PAID
-  CANCELED
-}
-
-enum OtpChannel {
-  EMAIL
-  SMS
-}
-
-enum OtpPurpose {
-  PASSWORD_RESET
-}
-
-/* =========================
-   New Feature Models
-   ========================= */
-
-// Student Progress Tracking
-model StudentProgress {
-  id        String   @id @default(cuid())
-  studentId String
-  subject   String
-  hoursSpent Decimal @default(0) @db.Decimal(10, 2)
-  level     Int      @default(1)
-  xp        Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  student   Student  @relation("StudentToProgress", fields: [studentId], references: [id], onDelete: Cascade)
-  
-  @@unique([studentId, subject])
-  @@index([studentId])
-}
-
-// Learning Goals
-model LearningGoal {
-  id          String   @id @default(cuid())
-  studentId   String
-  title       String
-  description String?
-  targetDate  DateTime?
-  status      GoalStatus @default(IN_PROGRESS)
-  progress    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  student     Student  @relation("StudentToGoals", fields: [studentId], references: [id], onDelete: Cascade)
-  milestones  Milestone[]
-  
-  @@index([studentId, status])
-}
-
-model Milestone {
-  id        String   @id @default(cuid())
-  goalId    String
-  title     String
-  completed Boolean  @default(false)
-  createdAt DateTime @default(now())
-  
-  goal      LearningGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  
-  @@index([goalId])
-}
-
-// Homework/Assignments
-model Assignment {
-  id          String           @id @default(cuid())
-  tutorId     String
-  studentId   String
-  bookingId   String?
-  title       String
-  description String?
-  dueDate     DateTime?
-  status      AssignmentStatus @default(PENDING)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  
-  tutor       Tutor            @relation("TutorToAssignments", fields: [tutorId], references: [id], onDelete: Cascade)
-  student     Student          @relation("StudentToAssignments", fields: [studentId], references: [id], onDelete: Cascade)
-  booking     Booking?         @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  submissions AssignmentSubmission[]
-  
-  @@index([tutorId, studentId])
-  @@index([studentId, status])
-}
-
-model AssignmentSubmission {
-  id           String   @id @default(cuid())
-  assignmentId String
-  fileUrl      String
-  notes        String?
-  grade        String?
-  feedback     String?
-  submittedAt  DateTime @default(now())
-  
-  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  
-  @@index([assignmentId])
-}
-
-// Study Materials Library
-model StudyMaterial {
-  id          String   @id @default(cuid())
-  tutorId     String
-  title       String
-  description String?
-  fileUrl     String
-  fileType    String
-  subject     String?
-  isPublic    Boolean  @default(false)
-  downloads   Int      @default(0)
-  createdAt   DateTime @default(now())
-  
-  tutor       Tutor    @relation("TutorToMaterials", fields: [tutorId], references: [id], onDelete: Cascade)
-  sharedWith  MaterialAccess[]
-  
-  @@index([tutorId, isPublic])
-  @@index([subject])
-}
-
-model MaterialAccess {
-  id         String   @id @default(cuid())
-  materialId String
-  studentId  String
-  accessedAt DateTime @default(now())
-  
-  material   StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  student    Student       @relation("StudentToMaterials", fields: [studentId], references: [id], onDelete: Cascade)
-  
-  @@unique([materialId, studentId])
-  @@index([studentId])
-}
-
-// Referral Program
-model Referral {
-  id            String   @id @default(cuid())
-  referrerId    String
-  referredEmail String
-  referredId    String?
-  tokensEarned  Int      @default(0)
-  status        ReferralStatus @default(PENDING)
-  createdAt     DateTime @default(now())
-  completedAt   DateTime?
-  
-  referrer      Student  @relation("StudentToReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
-  referred      Student? @relation("StudentToReferredBy", fields: [referredId], references: [id], onDelete: SetNull)
-  
-  @@index([referrerId])
-  @@index([referredEmail])
-}
-
-// Certificates
-model Certificate {
-  id        String          @id @default(cuid())
-  studentId String
-  tutorId   String?
-  type      CertificateType
-  hours     Decimal         @db.Decimal(10, 2)
-  subject   String?
-  issuedAt  DateTime        @default(now())
-  
-  student   Student         @relation("StudentToCertificates", fields: [studentId], references: [id], onDelete: Cascade)
-  tutor     Tutor?          @relation("TutorToCertificates", fields: [tutorId], references: [id], onDelete: SetNull)
-  
-  @@index([studentId, type])
-}
-
-// Favorite Tutors
-model FavoriteTutor {
-  id        String   @id @default(cuid())
-  studentId String
-  tutorId   String
-  createdAt DateTime @default(now())
-  
-  student   Student  @relation("StudentToFavorites", fields: [studentId], references: [id], onDelete: Cascade)
-  tutor     Tutor    @relation("TutorToFavorites", fields: [tutorId], references: [id], onDelete: Cascade)
-  
-  @@unique([studentId, tutorId])
-  @@index([studentId])
-}
-
-// Session Notes
-model SessionNote {
-  id        String   @id @default(cuid())
-  bookingId String
-  authorId  String
-  content   String   @db.Text
-  isAiGenerated Boolean @default(false)
-  approvedByTutor Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  author    User     @relation("UserToNotes", fields: [authorId], references: [id], onDelete: Cascade)
-  
-  @@index([bookingId])
-}
-
-// Group Sessions
-model GroupBooking {
-  id           String   @id @default(cuid())
-  tutorId      String
-  startTime    DateTime
-  endTime      DateTime
-  maxStudents  Int      @default(4)
-  topic        String?
-  status       BookingStatus @default(PENDING)
-  createdAt    DateTime @default(now())
-  
-  tutor        Tutor    @relation("TutorToGroupBookings", fields: [tutorId], references: [id], onDelete: Cascade)
-  participants GroupParticipant[]
-  
-  @@index([tutorId, startTime])
-}
-
-model GroupParticipant {
-  id              String   @id @default(cuid())
-  groupBookingId  String
-  studentId       String
-  paymentStatus   PaymentStatus @default(PENDING)
-  paidAmount      Decimal  @db.Decimal(18, 2)
-  joinedAt        DateTime @default(now())
-  
-  groupBooking    GroupBooking @relation(fields: [groupBookingId], references: [id], onDelete: Cascade)
-  student         Student      @relation("StudentToGroupBookings", fields: [studentId], references: [id], onDelete: Cascade)
-  
-  @@unique([groupBookingId, studentId])
-  @@index([studentId])
-}
-
-// Performance Reports
-model PerformanceReport {
-  id        String   @id @default(cuid())
-  studentId String
-  tutorId   String?
-  period    String
-  data      Json
-  createdAt DateTime @default(now())
-  
-  student   Student  @relation("StudentToReports", fields: [studentId], references: [id], onDelete: Cascade)
-  tutor     Tutor?   @relation("TutorToReports", fields: [tutorId], references: [id], onDelete: SetNull)
-  
-  @@index([studentId, createdAt])
-}
-
-// Recurring Availability Templates
-model RecurringTemplate {
-  id                  String    @id @default(cuid())
-  tutorId             String
-  dayOfWeek           Int
-  startTime           String
-  endTime             String
-  title               String?
-  isActive            Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  
-  // Phase 4: Automatic booking generation
-  lastGeneratedDate   DateTime?
-  nextGenerationDate  DateTime?
-  maxGroupSize        Int       @default(1)
-  isGroupSession      Boolean   @default(false)
-  pricePerStudent     Decimal?  @db.Decimal(18, 2)
-  
-  tutor               Tutor     @relation("TutorToRecurringTemplates", fields: [tutorId], references: [id], onDelete: Cascade)
-  generatedBookings   Booking[]
-  
-  @@index([tutorId, isActive])
-  @@index([nextGenerationDate, isActive])
-}
-
-// Recurring Bookings
 model RecurringBooking {
-  id           String   @id @default(cuid())
+  id                      String                    @id @default(cuid())
   studentId    String
   tutorId      String
   dayOfWeek    Int
@@ -996,147 +532,394 @@ model RecurringBooking {
   currentCount Int      @default(0)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
-  
-  student      Student  @relation("StudentToRecurringBookings", fields: [studentId], references: [id], onDelete: Cascade)
-  tutor        Tutor    @relation("TutorToRecurringBookings", fields: [tutorId], references: [id], onDelete: Cascade)
-  
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor        Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
   @@index([studentId, isActive])
   @@index([tutorId, isActive])
 }
 
-// Google Meet Integration
-model MeetingLink {
-  id        String   @id @default(cuid())
-  bookingId String   @unique
-  meetUrl   String
-  meetId    String
-  createdAt DateTime @default(now())
-  
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+model RecurringTemplate {
+  id                      String                    @id @default(cuid())
+  tutorId            String
+  dayOfWeek          Int
+  startTime          String
+  endTime            String
+  title              String?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  lastGeneratedDate  DateTime?
+  nextGenerationDate DateTime?
+  maxGroupSize       Int       @default(1)
+  isGroupSession     Boolean   @default(false)
+  pricePerStudent    Decimal?  @db.Decimal(18, 2)
+  bookings           Booking[]
+  tutor              Tutor     @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([nextGenerationDate, isActive])
+  @@index([tutorId, isActive])
 }
 
-// Whiteboard Sessions
-model WhiteboardSession {
-  id        String   @id @default(cuid())
+model Referral {
+  id                      String                    @id @default(cuid())
+  referrerId                           String
+  referredEmail                        String
+  referredId                           String?
+  referralCode                         String         @unique
+  tokensEarned                         Int            @default(0)
+  referredUserBonus                    Int            @default(0)
+  status                               ReferralStatus @default(PENDING)
+  firstPaidSessionId                   String?
+  createdAt                            DateTime       @default(now())
+  completedAt                          DateTime?
+  Student_Referral_referredIdToStudent Student?       @relation("Referral_referredIdToStudent", fields: [referredId], references: [id])
+  Student_Referral_referrerIdToStudent Student        @relation("Referral_referrerIdToStudent", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  @@index([referredEmail])
+  @@index([referrerId])
+  @@index([referralCode])
+}
+
+model Refund {
+  id                      String                    @id @default(cuid())
+  paymentId        String
+  amountInMinor    Int
+  providerRefundId String?
+  reason           String?
+  createdAt        DateTime @default(now())
+  Payment          Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+}
+
+model Reminder {
+  id                      String                    @id @default(cuid())
   bookingId String
-  data      Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
+  kind      String
+  sentAt    DateTime @default(now())
   booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  
+
+  @@unique([bookingId, kind])
+  @@index([sentAt])
+}
+
+model Review {
+  id                      String                    @id @default(cuid())
+  tutorId   String
+  studentId String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  bookingId String   @unique
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, createdAt])
+  @@index([tutorId, createdAt])
+}
+
+model Session {
+  id                      String                    @id @default(cuid())
+  tutorId   String
+  studentId String
+  startTime DateTime
+  endTime   DateTime
+  createdAt DateTime @default(now())
+  student   Student  @relation(fields: [studentId], references: [id])
+  tutor     Tutor    @relation(fields: [tutorId], references: [id])
+}
+
+model SessionNote {
+  id                      String                    @id @default(cuid())
+  bookingId       String
+  authorId        String
+  content         String
+  aiSummary       String?
+  keyPoints       String?
+  homeworkSuggestions String?
+  isAiGenerated   Boolean  @default(false)
+  approvedByTutor Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  author          User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  booking         Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
   @@index([bookingId])
 }
 
-// File Attachments in Messages
-model MessageAttachment {
-  id        String   @id @default(cuid())
-  messageId String
-  fileUrl   String
-  fileName  String
-  fileSize  Int
-  fileType  String
-  createdAt DateTime @default(now())
-  
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  
-  @@index([messageId])
-}
+model Student {
+  id                      String                    @id @default(cuid())
+  userId                                String                    @unique
+  grade                                 String?
+  tokens                                Int                       @default(0)
+  createdAt                             DateTime                  @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  student_sid                           String?                   @unique(map: "student_sid_unique") @map("student_sid")
+  assignments                           Assignment[]
+  bookings                              Booking[]
+  certificates                          Certificate[]
+  conversationsAsStudent                Conversation[]
+  favoriteTutors                        FavoriteTutor[]
+  groupBookingParticipants              GroupBookingParticipant[]
+  groupParticipants                     GroupParticipant[]
+  learningGoals                         LearningGoal[]
+  materialAccess                        MaterialAccess[]
+  performanceReports                    PerformanceReport[]
+  recurringBookings                     RecurringBooking[]
+  referralsReceived                     Referral[]                @relation("Referral_referredIdToStudent")
+  referralsMade                         Referral[]                @relation("Referral_referrerIdToStudent")
+  reviews                               Review[]
+  sessions                              Session[]
+  user                                  User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  progress                              StudentProgress[]
+  tokenLedger                           TokenLedger[]
+  tutorTokenBalances                    TutorTokenBalance[]
+  waitlist                              Waitlist[]
 
-// Promo Codes
-model PromoCode {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  discount    Decimal  @db.Decimal(10, 2)
-  type        DiscountType
-  maxUses     Int?
-  usedCount   Int      @default(0)
-  validFrom   DateTime
-  validUntil  DateTime
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  
-  usages      PromoUsage[]
-  
-  @@index([code, isActive])
-}
-
-model PromoUsage {
-  id        String   @id @default(cuid())
-  promoId   String
-  userId    String
-  usedAt    DateTime @default(now())
-  
-  promo     PromoCode @relation(fields: [promoId], references: [id], onDelete: Cascade)
-  user      User      @relation("UserToPromoUsage", fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([promoId])
+  @@index([createdAt])
   @@index([userId])
 }
 
-// Dispute Resolution
-model Dispute {
-  id          String        @id @default(cuid())
-  bookingId   String
-  reporterId  String
-  reason      String
-  description String        @db.Text
-  status      DisputeStatus @default(OPEN)
-  resolution  String?       @db.Text
-  createdAt   DateTime      @default(now())
-  resolvedAt  DateTime?
-  resolvedBy  String?
-  
-  booking     Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  reporter    User          @relation("UserToDisputes", fields: [reporterId], references: [id], onDelete: Cascade)
-  resolver    User?         @relation("UserToResolvedDisputes", fields: [resolvedBy], references: [id], onDelete: SetNull)
-  
-  @@index([status, createdAt])
+model StudentProgress {
+  id                      String                    @id @default(cuid())
+  studentId  String
+  subject    String
+  hoursSpent Decimal  @default(0) @db.Decimal(10, 2)
+  level      Int      @default(1)
+  xp         Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  Student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, subject])
+  @@index([studentId])
 }
 
-// Email Campaigns
-model EmailCampaign {
-  id          String   @id @default(cuid())
-  name        String
-  subject     String
-  body        String   @db.Text
-  targetRole  Role?
-  sentCount   Int      @default(0)
-  scheduledAt DateTime?
-  sentAt      DateTime?
-  createdBy   String
-  createdAt   DateTime @default(now())
-  
-  creator     User     @relation("UserToCampaigns", fields: [createdBy], references: [id], onDelete: Cascade)
-  
-  @@index([scheduledAt, sentAt])
+model StudyMaterial {
+  id                      String                    @id @default(cuid())
+  tutorId        String
+  title          String
+  description    String?
+  fileUrl        String
+  fileType       String
+  subject        String?
+  isPublic       Boolean          @default(false)
+  downloads      Int              @default(0)
+  createdAt      DateTime         @default(now())
+  access         MaterialAccess[]
+  tutor          Tutor            @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([subject])
+  @@index([tutorId, isPublic])
 }
 
-// Notifications Storage
-model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String
-  message   String
-  type      NotificationType
+model TokenLedger {
+  id                      String                    @id @default(cuid())
+  studentId String
+  delta     Decimal     @db.Decimal(10, 2)
+  reason    TokenReason
   bookingId String?
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  
-  user      User     @relation("UserToNotifications", fields: [userId], references: [id], onDelete: Cascade)
-  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  
-  @@index([userId, isRead, createdAt])
+  paymentId String?
+  createdAt DateTime    @default(now())
+  tutorId   String?
+  booking   Booking?    @relation(fields: [bookingId], references: [id])
+  payment   Payment?    @relation(fields: [paymentId], references: [id])
+  student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor     Tutor?      @relation(fields: [tutorId], references: [id])
+
+  @@index([bookingId])
+  @@index([paymentId])
+  @@index([studentId, createdAt])
+  @@index([tutorId])
 }
 
-/* =========================
-   New Enums
-   ========================= */
+model Tutor {
+  id                      String                    @id @default(cuid())
+  userId              String                @unique
+  bio                 String?
+  subjects            String[]              @default([])
+  languages           String[]              @default([])
+  createdAt           DateTime              @default(now())
+  hourlyRate          Int                   @default(0)
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  status              TutorStatus           @default(PENDING)
+  country             String?
+  isTrending          Boolean               @default(false)
+  tutorTid            String?               @unique(map: "tutor_tid_unique") @map("tutor_tid")
+  assignments         Assignment[]
+  slots               AvailabilitySlot[]
+  bookings            Booking[]
+  certificates        Certificate[]
+  conversationsAsTutor Conversation[]
+  favoritedBy         FavoriteTutor[]
+  groupBookings       GroupBooking[]
+  kycDocs             KycDocument[]
+  payouts             Payout[]
+  reports             PerformanceReport[]
+  recurringBookings   RecurringBooking[]
+  recurringTemplates  RecurringTemplate[]
+  reviews             Review[]
+  sessions            Session[]
+  studyMaterials      StudyMaterial[]
+  tokenLedger         TokenLedger[]
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kycApplications     TutorKycApplication[]
+  balances            TutorTokenBalance[]
+  wallet              TutorWallet?
+  walletLedger        TutorWalletLedger[]
+  waitlist            Waitlist[]
 
-enum GoalStatus {
-  IN_PROGRESS
-  COMPLETED
-  ABANDONED
+  @@index([country])
+  @@index([hourlyRate])
+  @@index([isTrending, updatedAt])
+  @@index([status, updatedAt])
+  @@index([userId])
+}
+
+model TutorKycApplication {
+  id                      String                    @id @default(cuid())
+  tutorId           String
+  createdAt         DateTime     @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  status            KycAppStatus @default(SUBMITTED)
+  rejectionCount    Int          @default(0)
+  reapplyAfter      DateTime?
+  notes             String?
+  fullName          String
+  dob               DateTime
+  phone             String
+  country           String
+  address1          String
+  address2          String?
+  city              String
+  state             String?
+  postalCode        String?
+  bankAccountHolder String
+  bankName          String
+  bankBranch        String?
+  accountNumber     String?
+  ifsc              String?
+  upiId             String?
+  aadhaarNumber     String?
+  iban              String?
+  swift             String?
+  tutor             Tutor        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId, status, updatedAt])
+}
+
+model TutorTokenBalance {
+  id                      String                    @id @default(cuid())
+  studentId     String
+  tutorId       String
+  balance       Decimal @db.Decimal(10, 2)
+  pricePerToken Decimal @db.Decimal(10, 2)
+  student       Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor         Tutor   @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, tutorId])
+  @@index([studentId, tutorId])
+  @@index([studentId, balance(sort: Desc)])
+}
+
+model TutorWallet {
+  tutorId   String   @id
+  balance   Decimal  @default(0.0) @db.Decimal(18, 2)
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+}
+
+model TutorWalletLedger {
+  id                      String                    @id @default(cuid())
+  tutorId   String
+  bookingId String?
+  delta     Decimal      @db.Decimal(18, 2)
+  reason    WalletReason
+  note      String?
+  createdAt DateTime     @default(now())
+  booking   Booking?     @relation(fields: [bookingId], references: [id])
+  tutor     Tutor        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([tutorId, createdAt])
+}
+
+model User {
+  id                      String                    @id @default(cuid())
+  email                            String            @unique
+  password                         String
+  role                             Role?
+  createdAt                        DateTime          @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  avatarUrl                        String?
+  name                             String?
+  phone                            String?           @unique
+  hasChosenRole                    Boolean           @default(false)
+  preferredCurrency                String            @default("INR")
+  bankImports                      BankImport[]
+  disputesReported                 Dispute[]         @relation("Dispute_reporterIdToUser")
+  disputesResolved                 Dispute[]         @relation("Dispute_resolvedByToUser")
+  emailCampaigns                   EmailCampaign[]
+  gatewayImports                   GatewayImport[]
+  messages                         Message[]
+  notifications                    Notification[]
+  oauthAccounts                    OAuthAccount[]
+  otpCodes                         OtpCode[]
+  payments                         Payment[]
+  promoUsages                      PromoUsage[]
+  reconAdjustments                 ReconAdjustment[]
+  sessionNotes                     SessionNote[]
+  student                          Student?
+  tutor                            Tutor?
+
+  @@index([email])
+  @@index([role, hasChosenRole])
+}
+
+model Waitlist {
+  id                      String                    @id @default(cuid())
+  tutorId            String
+  studentId          String
+  requestedStartTime DateTime
+  requestedEndTime   DateTime
+  subject            String?
+  priority           Int       @default(1)
+  status             String    @default("WAITING")
+  createdAt          DateTime  @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  notifiedAt         DateTime?
+  expiresAt          DateTime?
+  bookingId          String?
+  notes              String?
+  booking            Booking?  @relation(fields: [bookingId], references: [id])
+  student            Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor              Tutor     @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([requestedStartTime])
+  @@index([status])
+  @@index([studentId])
+  @@index([tutorId])
+}
+
+model WhiteboardSession {
+  id                      String                    @id @default(cuid())
+  bookingId String   @unique
+  data      Json?
+  s3Url     String?
+  endedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt               DateTime                  @default(now()) @updatedAt
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
+
+enum AiScanStatus {
+  PENDING
+  CLEAN
+  FLAGGED
 }
 
 enum AssignmentStatus {
@@ -1146,10 +929,12 @@ enum AssignmentStatus {
   OVERDUE
 }
 
-enum ReferralStatus {
+enum BookingStatus {
   PENDING
+  CONFIRMED
   COMPLETED
-  EXPIRED
+  CANCELED
+  PENDING_SLOT
 }
 
 enum CertificateType {
@@ -1158,13 +943,6 @@ enum CertificateType {
   GOLD
   PLATINUM
   DIAMOND
-}
-
-enum WaitlistStatus {
-  WAITING
-  NOTIFIED
-  BOOKED
-  EXPIRED
 }
 
 enum DiscountType {
@@ -1179,6 +957,26 @@ enum DisputeStatus {
   CLOSED
 }
 
+enum GoalStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum KycAppStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  NEEDS_MORE_INFO
+  APPROVED
+  REJECTED
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum NotificationType {
   BOOKING
   MESSAGE
@@ -1186,3 +984,74 @@ enum NotificationType {
   REMINDER
   SYSTEM
 }
+
+enum OtpChannel {
+  EMAIL
+  SMS
+}
+
+enum OtpPurpose {
+  PASSWORD_RESET
+}
+
+enum PaymentProvider {
+  RAZORPAY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+enum ReconSide {
+  BANK
+  GATEWAY
+}
+
+enum ReferralStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+}
+
+enum Role {
+  ADMIN
+  TUTOR
+  STUDENT
+}
+
+enum TokenReason {
+  BOOKING
+  REFUND
+  ADMIN_ADJUSTMENT
+}
+
+enum TutorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WaitlistStatus {
+  WAITING
+  NOTIFIED
+  BOOKED
+  EXPIRED
+}
+
+enum WalletReason {
+  BOOKING_EARNED
+  BOOKING_CHARGE
+  ADJUSTMENT
+  PAYOUT
+}
+

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import TutorCard from '../components/TutorCard';
-import { searchTutors, listTutors } from '../services/tutorService';
+import { searchTutors, listTutors, getFilterOptions } from '../services/tutorService';
 import type { Tutor } from '../services/tutorService';
 import { SUBJECT_OPTIONS } from '../constants/subjects';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
@@ -29,6 +29,7 @@ export default function FindTutors() {
   const pageSize = Number(sp.get('pageSize') || 12);
   const qRaw = sp.get('q') || '';
   const subject = sp.get('subject') || '';
+  const language = sp.get('language') || '';
   const sort = (sp.get('sort') || 'rating_desc') as 'rating_desc' | 'price_asc' | 'price_desc';
   const minRating = Number(sp.get('minRating') || 0);
 
@@ -54,10 +55,30 @@ export default function FindTutors() {
   const [err, setErr] = useState<string | null>(null);
   const [items, setItems] = useState<TutorWithDemo[]>([]);
   const [total, setTotal] = useState(0);
+  
+  // Dynamic filter options
+  const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
+  const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
+  const [availableRatingOptions, setAvailableRatingOptions] = useState<Array<{ value: number; label: string }>>([
+    { value: 0, label: 'Any rating' },
+    { value: 3, label: '3.0+' },
+    { value: 4, label: '4.0+' },
+    { value: 4.5, label: '4.5+' },
+  ]);
+
+  // Load filter options on mount
+  useEffect(() => {
+    getFilterOptions().then((options) => {
+      setAvailableSubjects(options.subjects);
+      setAvailableLanguages(options.languages);
+      setAvailableRatingOptions(options.ratingOptions);
+    });
+  }, []);
 
   const hasFilters =
     q.length > 0 ||
     !!subject ||
+    !!language ||
     !!minRating ||
     priceMin !== undefined ||
     priceMax !== undefined ||
@@ -73,8 +94,8 @@ export default function FindTutors() {
 
         // 1) fetch tutors
         const res = hasFilters
-          ? await searchTutors({ q, subject, minRating, priceMin, priceMax, sort, page, pageSize })
-          : await listTutors({ page, pageSize, subject: subject || undefined });
+          ? await searchTutors({ q, subject, language, minRating, priceMin, priceMax, sort, page, pageSize })
+          : await listTutors({ page, pageSize, subject: subject || undefined, language: language || undefined });
 
         if (!mounted) return;
 
@@ -110,7 +131,7 @@ export default function FindTutors() {
       mounted = false;
     };
     // include qRaw so the debounce updates
-  }, [q, qRaw, subject, minRating, priceMin, priceMax, sort, page, pageSize, hasFilters]);
+  }, [q, qRaw, subject, language, minRating, priceMin, priceMax, sort, page, pageSize, hasFilters]);
 
   const setParam = (k: string, v?: string) => {
     const nxt = new URLSearchParams(sp);
@@ -127,7 +148,7 @@ export default function FindTutors() {
       <h1 className="text-2xl font-bold">Find Tutors</h1>
 
       {/* Filters */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_200px_160px_160px]">
+      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_200px_200px_160px_160px]">
         <input
           value={qRaw}
           onChange={(e) => setParam('q', e.target.value)}
@@ -141,9 +162,22 @@ export default function FindTutors() {
           className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
         >
           <option value="">All subjects</option>
-          {SUBJECT_OPTIONS.map((s) => (
+          {availableSubjects.map((s) => (
             <option key={s} value={s}>
               {s}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={language}
+          onChange={(e) => setParam('language', e.target.value)}
+          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">All languages</option>
+          {availableLanguages.map((lang) => (
+            <option key={lang} value={lang}>
+              {lang}
             </option>
           ))}
         </select>
@@ -153,10 +187,11 @@ export default function FindTutors() {
           onChange={(e) => setParam('minRating', e.target.value)}
           className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
         >
-          <option value="0">Any rating</option>
-          <option value="3">3.0+</option>
-          <option value="4">4.0+</option>
-          <option value="4.5">4.5+</option>
+          {availableRatingOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
         </select>
 
         {/* sort: rating + price */}

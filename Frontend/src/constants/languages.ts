@@ -1,0 +1,18 @@
+export const LANGUAGE_OPTIONS = [
+  'English',
+  'Hindi',
+  'Hinglish',
+  'Kannada',
+  'Tamil',
+  'Telugu',
+  'Malayalam',
+  'Marathi',
+  'Gujarati',
+  'Bengali',
+  'Punjabi',
+  'Urdu',
+  'French',
+  'Spanish',
+  'German',
+  'Mandarin',
+];

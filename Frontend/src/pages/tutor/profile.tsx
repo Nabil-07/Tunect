@@ -4,19 +4,21 @@ import { getMyProfile, updateMyProfile } from '../../services/tutorService';
 import { getCountries } from '../../utils/countryData';
 import { formatCurrency, getUsdRates } from '../../utils/currency';
 import { SUBJECT_OPTIONS } from '../../constants/subjects';
+import { LANGUAGE_OPTIONS } from '../../constants/languages';
 
 type ProfileData = {
   name: string;
   email?: string;
   bio: string;
   subjects: string[];
+  languages: string[];
   hourlyRate?: number;
   country?: string;
   avatarUrl?: string | null;
 };
 
 export default function Profile() {
-  const [data, setData] = useState<ProfileData>({ name: '', bio: '', subjects: [] });
+  const [data, setData] = useState<ProfileData>({ name: '', bio: '', subjects: [], languages: [] });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [rates, setRates] = useState<Record<string, number>>({ USD: 1 });
@@ -24,7 +26,9 @@ export default function Profile() {
     localStorage.getItem('preferred_currency') || 'INR'
   );
   const [subjectQuery, setSubjectQuery] = useState('');
+  const [languageQuery, setLanguageQuery] = useState('');
   const [showSubjectOptions, setShowSubjectOptions] = useState(false);
+  const [showLanguageOptions, setShowLanguageOptions] = useState(false);
 
   const countries = useMemo(() => getCountries(), []);
 
@@ -39,6 +43,7 @@ export default function Profile() {
             email: data?.user?.email ?? '',
             bio: data?.tutor?.bio ?? '',
             subjects: data?.tutor?.subjects ?? [],
+            languages: data?.tutor?.languages ?? [],
             hourlyRate: data?.tutor?.hourlyRate ?? undefined,
             country: data?.tutor?.country ?? undefined,
             avatarUrl: data?.user?.avatarUrl ?? null,
@@ -50,6 +55,7 @@ export default function Profile() {
           email: raw?.email ?? raw?.user?.email ?? undefined,
           bio: raw?.bio ?? raw?.tutor?.bio ?? '',
           subjects: Array.isArray(raw?.subjects) ? raw.subjects : raw?.tutor?.subjects ?? [],
+          languages: Array.isArray(raw?.languages) ? raw.languages : raw?.tutor?.languages ?? [],
           hourlyRate: Number.isFinite(raw?.hourlyRate) ? Number(raw.hourlyRate) : raw?.tutor?.hourlyRate,
           country: raw?.country ?? undefined,
           avatarUrl: raw?.avatarUrl ?? raw?.user?.avatarUrl ?? null,
@@ -62,6 +68,7 @@ export default function Profile() {
   }, []);
 
   const selectedSubjects = data.subjects ?? [];
+  const selectedLanguages = data.languages ?? [];
 
   const filteredSubjectOptions = useMemo(() => {
     const query = subjectQuery.trim().toLowerCase();
@@ -73,7 +80,18 @@ export default function Profile() {
     });
   }, [selectedSubjects, subjectQuery]);
 
+  const filteredLanguageOptions = useMemo(() => {
+    const query = languageQuery.trim().toLowerCase();
+    const taken = new Set(selectedLanguages.map((l) => l.toLowerCase()));
+    return LANGUAGE_OPTIONS.filter((option) => {
+      if (taken.has(option.toLowerCase())) return false;
+      if (!query) return true;
+      return option.toLowerCase().includes(query);
+    });
+  }, [selectedLanguages, languageQuery]);
+
   const visibleSubjectOptions = filteredSubjectOptions;
+  const visibleLanguageOptions = filteredLanguageOptions;
 
   const addSubject = (subject: string) => {
     setData((prev) => {
@@ -94,16 +112,39 @@ export default function Profile() {
     }));
   };
 
+  const addLanguage = (language: string) => {
+    setData((prev) => {
+      const current = prev.languages ?? [];
+      if (current.some((l) => l.toLowerCase() === language.toLowerCase())) {
+        return prev;
+      }
+      return { ...prev, languages: [...current, language] };
+    });
+    setLanguageQuery('');
+    setShowLanguageOptions(false);
+  };
+
+  const removeLanguage = (language: string) => {
+    setData((prev) => ({
+      ...prev,
+      languages: (prev.languages ?? []).filter((l) => l !== language),
+    }));
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
       const normalizedSubjects = Array.from(
         new Set(selectedSubjects.map((s) => s.trim()).filter(Boolean))
       );
+      const normalizedLanguages = Array.from(
+        new Set(selectedLanguages.map((l) => l.trim()).filter(Boolean))
+      );
       const payload: any = {
         name: data.name?.trim(),
         bio: data.bio?.trim(),
         subjects: normalizedSubjects,
+        languages: normalizedLanguages,
       };
       if (Number.isFinite(data.hourlyRate as any)) {
         payload.hourlyRate = Math.round(Number(data.hourlyRate));
@@ -255,6 +296,80 @@ export default function Profile() {
                   Pick from the supported subjects list. Students use the same options when filtering tutors.
                 </p>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Languages</label>
+                <div className="mt-1">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedLanguages.length > 0 ? (
+                      selectedLanguages.map((language) => (
+                        <span
+                          key={language}
+                          className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700"
+                        >
+                          {language}
+                          <button
+                            type="button"
+                            onClick={() => removeLanguage(language)}
+                            className="ml-1 text-green-400 hover:text-green-600"
+                            aria-label={`Remove ${language}`}
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500">No languages selected yet.</span>
+                    )}
+                  </div>
+                  <div className="relative mt-2">
+                    <input
+                      value={languageQuery}
+                      onChange={(e) => {
+                        setLanguageQuery(e.target.value);
+                        setShowLanguageOptions(true);
+                      }}
+                      onFocus={() => setShowLanguageOptions(true)}
+                      onBlur={() => setTimeout(() => setShowLanguageOptions(false), 120)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && filteredLanguageOptions.length > 0) {
+                          e.preventDefault();
+                          addLanguage(filteredLanguageOptions[0]);
+                        }
+                        if (e.key === 'Backspace' && !languageQuery && selectedLanguages.length > 0) {
+                          e.preventDefault();
+                          removeLanguage(selectedLanguages[selectedLanguages.length - 1]);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Start typing to search languages"
+                    />
+                    {showLanguageOptions && (
+                      <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                        {filteredLanguageOptions.length > 0 ? (
+                          filteredLanguageOptions.map((option) => (
+                            <button
+                              type="button"
+                              key={option}
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-green-50"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => addLanguage(option)}
+                            >
+                              {option}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-3 py-2 text-sm text-slate-500">No matches</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Select languages you can teach in. Students can filter tutors by language.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700">Hourly rate (INR)</label>
                 <input

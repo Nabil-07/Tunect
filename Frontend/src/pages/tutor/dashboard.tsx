@@ -16,33 +16,40 @@ function combineToDate(date: string | undefined, time: string): Date | null {
 export default function TutorDashboard() {
   const [avail, setAvail] = useState<AvailabilitySlot[]>([]);
   const [sessions, setSessions] = useState<TutorSession[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingAvail, setLoadingAvail] = useState(true);
+  const [loadingSessions, setLoadingSessions] = useState(true);
 
   useEffect(() => {
-    let mounted = true;
+    const now = new Date();
+    const from = new Date(now);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    // ✅ Load availability independently
     (async () => {
       try {
-        setLoading(true);
-        const now = new Date();
-        // Start from beginning of today to show all today's slots
-        const from = new Date(now);
-        from.setHours(0, 0, 0, 0);
-        const to = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // next 7 days
-        const [a, s] = await Promise.all([
-          getAvailability({ from, to }),
-          getMySessions(),
-        ]);
-        if (!mounted) return;
-        console.log('Dashboard availability response:', a); // Debug log
+        const a = await getAvailability({ from, to });
         setAvail(a);
-        setSessions(s);
       } catch (error) {
-        console.error('Failed to load dashboard data:', error);
+        console.error('Failed to load availability:', error);
+        setAvail([]);
       } finally {
-        if (mounted) setLoading(false);
+        setLoadingAvail(false);
       }
     })();
-    return () => { mounted = false; };
+
+    // ✅ Load sessions independently
+    (async () => {
+      try {
+        const s = await getMySessions();
+        setSessions(s);
+      } catch (error) {
+        console.error('Failed to load sessions:', error);
+        setSessions([]);
+      } finally {
+        setLoadingSessions(false);
+      }
+    })();
   }, []);
 
   const upcomingAvail = useMemo(() => {
@@ -114,8 +121,8 @@ export default function TutorDashboard() {
             <Link to="/tutor/availability" className="text-sm text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">See all <ArrowRight className="h-4 w-4"/></Link>
           </div>
           <div className="p-4">
-            {loading ? (
-              <div className="text-sm text-slate-500">Loading…</div>
+            {loadingAvail ? (
+              <div className="h-32 rounded-lg animate-pulse bg-slate-50" />
             ) : upcomingAvail.length === 0 ? (
               <div className="text-sm text-slate-500">No upcoming slots. Add some in Availability.</div>
             ) : (
@@ -144,8 +151,8 @@ export default function TutorDashboard() {
             <Link to="/tutor/sessions" className="text-sm text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">See all <ArrowRight className="h-4 w-4"/></Link>
           </div>
           <div className="p-4">
-            {loading ? (
-              <div className="text-sm text-slate-500">Loading…</div>
+            {loadingSessions ? (
+              <div className="h-32 rounded-lg animate-pulse bg-slate-50" />
             ) : recentBookings.length === 0 ? (
               <div className="text-sm text-slate-500">No bookings yet.</div>
             ) : (

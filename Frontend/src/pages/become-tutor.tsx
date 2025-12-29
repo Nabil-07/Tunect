@@ -15,7 +15,8 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import api, { readToken, setAuthHeader } from "../lib/apiClient";
+import { http } from "../api/http";
+import { getAccessToken, setTokens } from "../lib/auth";
 
 type TutorApplication = {
   fullName: string;
@@ -53,7 +54,7 @@ export default function BecomeTutor() {
    *  - logged in → set role TUTOR server-side, store role, go to /tutor/kyc
    */
   const startApplication = async () => {
-    const token = readToken();
+    const token = getAccessToken();
 
     if (!token) {
       // No drafts. No prefill. Just a clean auth → choose role.
@@ -62,12 +63,21 @@ export default function BecomeTutor() {
     }
 
     try {
-      setAuthHeader(token);
-      // Prefer profiles route if present
-      await api.post("/profiles/choose-role", { role: "TUTOR" });
-    } catch {
-      // Fallback to auth route if profiles not available
-      await api.post("/auth/choose-role", { role: "TUTOR" });
+      let response;
+      try {
+        // Prefer profiles route if present
+        response = await http.post("/profiles/choose-role", { role: "TUTOR" });
+      } catch {
+        // Fallback to auth route if profiles not available
+        response = await http.post("/auth/choose-role", { role: "TUTOR" });
+      }
+      
+      // Store the new JWT token with updated role using the proper auth utility
+      if (response?.data?.access_token) {
+        setTokens({ accessToken: response.data.access_token });
+      }
+    } catch (err) {
+      console.error('Failed to choose TUTOR role:', err);
     }
 
     try {

@@ -173,6 +173,17 @@ export class BookingsService {
         await this.ensureNoTutorOverlap(dto.tutorId, start, end);
         await this.ensureNoStudentOverlap(dto.studentId!, start, end);
 
+        // Cancel any pending demo bookings for this student-tutor pair
+        await this.prisma.booking.updateMany({
+          where: {
+            studentId: dto.studentId!,
+            tutorId: dto.tutorId,
+            isDemo: true,
+            status: BookingStatus.PENDING,
+          },
+          data: { status: BookingStatus.CANCELED },
+        });
+
         return this.prisma.booking.create({
           data: {
             tutorId: dto.tutorId,

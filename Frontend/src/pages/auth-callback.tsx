@@ -1,11 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import api, {
-  writeToken,
-  writeRefreshToken,
-  setAuthHeader,
-  setAuthStorage,
-} from '../lib/apiClient';
+import { http as api } from '../api/http';
+import { setTokens } from '../lib/auth';
 import { useAuth } from '../contexts/AuthContext';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
@@ -49,18 +45,15 @@ export default function AuthCallback() {
         // ---- protective pre-clean ----
         try { localStorage.removeItem('role'); } catch {}
 
-        // ---- remember-me / storage selection ----
+        // ---- remember-me intent ----
         try {
-          setAuthStorage(remember);
           localStorage.removeItem('remember_intent');
         } catch {}
 
-        // ---- tokens ----
+        // ---- tokens - store using new auth utility ----
         if (access) {
-          writeToken(access);
-          setAuthHeader(access);
+          setTokens({ accessToken: access, refreshToken: refresh || undefined });
         }
-        if (refresh) writeRefreshToken(refresh);
 
         // ---- hydrate current user ----
         const me = await api.get('/users/me').then(r => r.data).catch(() => null);
