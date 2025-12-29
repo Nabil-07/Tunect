@@ -251,16 +251,41 @@ export class AuthService {
   }
 
   async chooseRole(userId: string, role: 'STUDENT' | 'TUTOR') {
-    const user = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        role,
-        hasChosenRole: true, // Update hasChosenRole to true
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      // Ensure the corresponding profile exists using upsert
+      if (role === 'STUDENT') {
+        await tx.student.upsert({
+          where: { userId },
+          create: { userId, tokens: 0 },
+          update: {},
+        });
+      } else if (role === 'TUTOR') {
+        await tx.tutor.upsert({
+          where: { userId },
+          create: {
+            userId,
+            subjects: [],
+            languages: [],
+            hourlyRate: 0,
+            status: 'PENDING',
+            isTrending: false,
+          },
+          update: {},
+        });
+      }
 
-    const next = role === 'TUTOR' ? '/tutor/dashboard' : '/student/dashboard';
-    return { user, next };
+      // Update user role
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: {
+          role,
+          hasChosenRole: true,
+        },
+      });
+
+      const next = role === 'TUTOR' ? '/tutor/dashboard' : '/student/dashboard';
+      return { user, next };
+    });
   }
 
   // ======== Forgot/Reset OTP ========

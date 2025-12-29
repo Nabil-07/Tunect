@@ -1,13 +1,17 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { S3Service } from '../common/services/s3.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 
 @Injectable()
 export class StudyMaterialsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private s3Service: S3Service,
+  ) {}
 
-  async create(userId: string, dto: CreateMaterialDto) {
+  async create(userId: string, dto: CreateMaterialDto, file?: Express.Multer.File) {
     const tutor = await this.prisma.tutor.findUnique({
       where: { userId },
     });
@@ -16,13 +20,24 @@ export class StudyMaterialsService {
       throw new NotFoundException('Tutor profile not found');
     }
 
+    let fileUrl = dto.fileUrl;
+
+    // Upload file to S3 if provided
+    if (file) {
+      fileUrl = await this.s3Service.uploadFile(
+        file.buffer,
+        file.originalname,
+        'study-materials',
+      );
+    }
+
     return this.prisma.studyMaterial.create({
       data: {
         tutorId: tutor.id,
         title: dto.title,
         description: dto.description,
-        fileUrl: dto.fileUrl,
-        fileType: dto.fileType,
+        fileUrl: fileUrl || '',
+        fileType: file?.mimetype || dto.fileType || 'LINK',
         subject: dto.subject,
         isPublic: dto.isPublic ?? false,
       },

@@ -37,7 +37,8 @@ export default function StudentTokenBalance() {
   const { showError } = useToast();
   const [balances, setBalances] = useState<TutorTokenBalance[]>([]);
   const [ledger, setLedger] = useState<TokenLedger[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingBalances, setLoadingBalances] = useState(true);
+  const [loadingLedger, setLoadingLedger] = useState(true);
   const [activeTab, setActiveTab] = useState<'balances' | 'history'>('balances');
 
   useEffect(() => {
@@ -45,19 +46,17 @@ export default function StudentTokenBalance() {
   }, []);
 
   async function loadData() {
-    try {
-      setLoading(true);
-      const [balancesRes, ledgerRes] = await Promise.all([
-        api.get<TutorTokenBalance[]>('/students/me/token-balances'),
-        api.get<TokenLedger[]>('/students/me/token-ledger'),
-      ]);
-      setBalances(Array.isArray(balancesRes.data) ? balancesRes.data : []);
-      setLedger(Array.isArray(ledgerRes.data) ? ledgerRes.data : []);
-    } catch (err: any) {
-      showError(err?.response?.data?.message || 'Failed to load token data');
-    } finally {
-      setLoading(false);
-    }
+    // ✅ Load balances independently
+    api.get<TutorTokenBalance[]>('/students/me/token-balances')
+      .then(res => setBalances(Array.isArray(res.data) ? res.data : []))
+      .catch(err => showError(err?.response?.data?.message || 'Failed to load balances'))
+      .finally(() => setLoadingBalances(false));
+    
+    // ✅ Load ledger independently
+    api.get<TokenLedger[]>('/students/me/token-ledger')
+      .then(res => setLedger(Array.isArray(res.data) ? res.data : []))
+      .catch(err => showError(err?.response?.data?.message || 'Failed to load history'))
+      .finally(() => setLoadingLedger(false));
   }
 
   const totalTokens = balances.reduce((sum, b) => sum + Number(b.balance), 0);
@@ -125,18 +124,15 @@ export default function StudentTokenBalance() {
         </div>
       </div>
 
-      {/* Loading State */}
-      {loading && (
-        <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-          <p className="mt-4 text-slate-600">Loading token data...</p>
-        </div>
-      )}
-
       {/* Balances Tab */}
-      {!loading && activeTab === 'balances' && (
+      {activeTab === 'balances' && (
         <div>
-          {balances.length === 0 ? (
+          {loadingBalances ? (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+              <p className="mt-4 text-slate-600">Loading balances...</p>
+            </div>
+          ) : balances.length === 0 ? (
             <div className="text-center py-12 bg-slate-50 rounded-lg">
               <Coins className="mx-auto h-16 w-16 text-slate-400 mb-4" />
               <p className="text-slate-600">No token balances yet</p>
@@ -207,9 +203,14 @@ export default function StudentTokenBalance() {
       )}
 
       {/* History Tab */}
-      {!loading && activeTab === 'history' && (
+      {activeTab === 'history' && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          {ledger.length === 0 ? (
+          {loadingLedger ? (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+              <p className="mt-4 text-slate-600">Loading history...</p>
+            </div>
+          ) : ledger.length === 0 ? (
             <div className="text-center py-12">
               <Clock className="mx-auto h-16 w-16 text-slate-400 mb-4" />
               <p className="text-slate-600">No transaction history yet</p>

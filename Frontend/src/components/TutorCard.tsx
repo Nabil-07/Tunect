@@ -13,6 +13,7 @@ export type TutorCardProps = {
     id: string;
     name: string;
     subjects?: string[];
+    languages?: string[];
     tags?: string[];
     rating?: number;
     reviews?: number;
@@ -237,16 +238,40 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
           </div>
         )}
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(tutor.tags ?? tutor.subjects ?? []).slice(0, 3).map((s) => (
-            <span
-              key={s}
-              className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
-            >
-              {s}
-            </span>
-          ))}
-        </div>
+        {/* Subjects */}
+        {(tutor.tags ?? tutor.subjects ?? []).length > 0 && (
+          <div className="mt-3">
+            <div className="flex flex-wrap gap-2">
+              {(tutor.tags ?? tutor.subjects ?? []).slice(0, 3).map((s) => (
+                <span
+                  key={s}
+                  className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700"
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Languages */}
+        {(tutor.languages ?? []).length > 0 && (
+          <div className="mt-2">
+            <div className="flex flex-wrap gap-2">
+              {(tutor.languages ?? []).slice(0, 3).map((lang) => (
+                <span
+                  key={lang}
+                  className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 flex items-center gap-1"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                  </svg>
+                  {lang}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {tutor.summary && (
           <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-slate-700">{tutor.summary}</p>

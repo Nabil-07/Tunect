@@ -1,4 +1,4 @@
-import { api } from '../lib/apiClient';
+import { http as api } from '../api/http';
 
 /* ---------- Types ---------- */
 
@@ -8,6 +8,7 @@ export type Tutor = {
   email?: string;
   subject?: string;
   subjects?: string[];
+  languages?: string[];
   rating?: number | null;
   reviews?: number;
   hourlyRate?: number;
@@ -58,6 +59,7 @@ const toNum = (v: any, d = 0) => {
 
 function normalizeTutor(raw: any): Tutor {
   const subjectsArr: string[] = Array.isArray(raw?.subjects) ? raw.subjects : [];
+  const languagesArr: string[] = Array.isArray(raw?.languages) ? raw.languages : [];
   const subject = raw?.subject ?? (subjectsArr.length ? subjectsArr.join(', ') : undefined);
 
   const derivedNameFromEmail = () => {
@@ -80,6 +82,7 @@ function normalizeTutor(raw: any): Tutor {
     email: raw?.email ?? raw?.user?.email,
     subject,
     subjects: subjectsArr,
+    languages: languagesArr,
     hourlyRate,
     rating: rating as number | null,
     reviews,
@@ -113,6 +116,7 @@ export async function listTutors(params?: {
   page?: number;
   pageSize?: number;
   subject?: string;
+  language?: string;
 }) {
   const clean: any = {};
   if (params?.page && Number.isFinite(params.page)) clean.page = Number(params.page);
@@ -120,6 +124,8 @@ export async function listTutors(params?: {
     clean.pageSize = Number(params.pageSize);
   if (params?.subject && params.subject.trim())
     clean.subject = params.subject.trim();
+  if (params?.language && params.language.trim())
+    clean.language = params.language.trim();
 
   const { data } = await api.get<ListResponse<any> | any[]>('/tutors', {
     params: clean,
@@ -130,6 +136,7 @@ export async function listTutors(params?: {
 export async function searchTutors(params: {
   q?: string;
   subject?: string;
+  language?: string;
   minRating?: number;
   priceMin?: number;
   priceMax?: number;
@@ -141,6 +148,7 @@ export async function searchTutors(params: {
   const qp: Record<string, any> = {};
   if (params.q && params.q.trim()) qp.q = params.q.trim();
   if (params.subject && params.subject.trim()) qp.subject = params.subject.trim();
+  if (params.language && params.language.trim()) qp.language = params.language.trim();
   if (Number.isFinite(params.priceMin as any)) qp.minRate = Number(params.priceMin);
   if (Number.isFinite(params.priceMax as any)) qp.maxRate = Number(params.priceMax);
 
@@ -172,6 +180,39 @@ export async function getRecommendedTutors(limit = 6) {
   });
   const list = normalizeList(data);
   return list.items;
+}
+
+export async function getFilterOptions(): Promise<{
+  subjects: string[];
+  languages: string[];
+  ratingOptions: Array<{ value: number; label: string }>;
+}> {
+  try {
+    const { data } = await api.get('/tutors/filters/options');
+    return {
+      subjects: data.subjects || [],
+      languages: data.languages || [],
+      ratingOptions: data.ratingOptions || [
+        { value: 0, label: 'Any rating' },
+        { value: 3, label: '3.0+' },
+        { value: 4, label: '4.0+' },
+        { value: 4.5, label: '4.5+' },
+      ],
+    };
+  } catch (error) {
+    console.error('Failed to fetch filter options:', error);
+    // Return defaults on error
+    return {
+      subjects: [],
+      languages: [],
+      ratingOptions: [
+        { value: 0, label: 'Any rating' },
+        { value: 3, label: '3.0+' },
+        { value: 4, label: '4.0+' },
+        { value: 4.5, label: '4.5+' },
+      ],
+    };
+  }
 }
 
 /* ========== Availability ========== */
@@ -403,7 +444,7 @@ export async function getMySessions(): Promise<TutorSession[]> {
 }
 
 export async function updateMyProfile(
-  body: Partial<{ name: string; bio: string; subjects: string[]; hourlyRate: number }>,
+  body: Partial<{ name: string; bio: string; subjects: string[]; languages: string[]; hourlyRate: number; country: string }>,
 ) {
   await api.put('/tutors/me', body);
 }

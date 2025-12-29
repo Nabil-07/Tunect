@@ -11,6 +11,7 @@ export default function CheckoutPage() {
   const tutorId = sp.get('tutorId') || '';
   const [confirming, setConfirming] = useState(false);
   const [msg, setMsg] = useState<string>('');
+  const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
 
   useEffect(() => {
     if (!tutorId) {
@@ -51,12 +52,25 @@ export default function CheckoutPage() {
     } catch (e: any) {
       const status = e?.response?.status;
       const message = e?.response?.data?.message || e?.message || 'Could not create demo booking.';
+      
       if (status === 409) {
-        alert(message || 'Demo already used with this tutor.');
+        setErrorModal({
+          title: 'Demo Already Used',
+          message: message || 'You have already used your free demo with this tutor.'
+        });
       } else if (status === 401) {
         navigate('/login');
+      } else if (status === 400 && message.includes('Student profile not found')) {
+        setErrorModal({
+          title: 'Profile Not Complete',
+          message: 'Please complete your student profile setup before booking a demo.'
+        });
+        setTimeout(() => navigate('/choose-role'), 2000);
       } else {
-        alert(message);
+        setErrorModal({
+          title: 'Booking Failed',
+          message: message
+        });
       }
     } finally {
       setConfirming(false);
@@ -84,6 +98,24 @@ export default function CheckoutPage() {
       <div className="mt-6 text-sm text-slate-600">
         After confirming, you'll select a slot on the tutor's page. If no slots are currently available, the tutor will be notified to add availability and you'll be alerted when it's ready.
       </div>
+
+      {/* Error Modal */}
+      {errorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">{errorModal.title}</h3>
+            <p className="mt-2 text-sm text-slate-600">{errorModal.message}</p>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setErrorModal(null)}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

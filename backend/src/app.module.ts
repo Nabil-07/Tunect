@@ -32,6 +32,10 @@ import { RecurringTemplatesModule } from './recurring-templates/recurring-templa
 import { PerformanceReportsModule } from './performance-reports/performance-reports.module';
 import { WaitlistModule } from './waitlist/waitlist.module';
 import { GoogleMeetModule } from './google-meet/google-meet.module';
+import { AssignmentsModule } from './assignments/assignments.module';
+import { ReferralsModule } from './referrals/referrals.module';
+import { WhiteboardModule } from './whiteboard/whiteboard.module';
+import { CommonModule } from './common/common.module';
 
 import { AppController } from './app.controller';
 import { ReadyController } from './health/ready.controller';
@@ -51,6 +55,7 @@ import { ReconModule } from './finance/recon/recon.module';
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60, limit: 120 }]),
     PrismaModule,
+    CommonModule,
 
     AuthModule,
     UsersModule,
@@ -79,6 +84,9 @@ import { ReconModule } from './finance/recon/recon.module';
     PerformanceReportsModule,
     WaitlistModule,
     GoogleMeetModule,
+    AssignmentsModule,
+    ReferralsModule,
+    WhiteboardModule,
 
     FinanceDashboardModule,
     TokenLedgerModule,

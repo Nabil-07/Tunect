@@ -1,9 +1,11 @@
 import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateOrderDto {
   @IsString()
   tutorId!: string;
 
+  @Type(() => Number)
   @IsInt()
   @Min(10) // enforce minimum purchase of 10 tokens
   tokens!: number;

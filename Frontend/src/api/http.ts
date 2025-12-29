@@ -1,5 +1,5 @@
 // src/api/http.ts
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError } from 'axios';
 import { getAccessToken, clearTokens } from '../lib/auth';
 
 /** Normalize VITE_API_URL and ensure no trailing slash */
@@ -25,22 +25,19 @@ export const http = axios.create({
 });
 
 /** Request interceptor: attach Authorization if we have a token */
-http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = getAccessToken?.();
-
-  // Ensure headers object exists
-  config.headers = config.headers ?? {};
+http.interceptors.request.use((config: any) => {
+  const token = getAccessToken();
+  
+  console.log('[HTTP] Token from storage:', token ? 'EXISTS' : 'MISSING');
+  console.log('[HTTP] Request URL:', config.url);
 
   if (token) {
-    // Set both cases defensively; don't clobber if caller explicitly set it
-    (config.headers as any).Authorization =
-      (config.headers as any).Authorization ?? `Bearer ${token}`;
-    (config.headers as any).authorization =
-      (config.headers as any).authorization ?? `Bearer ${token}`;
-  } else {
-    // Optional: if no token, make sure we don't send a stale header
-    delete (config.headers as any).Authorization;
-    delete (config.headers as any).authorization;
+    // Initialize headers if not present
+    if (!config.headers) {
+      config.headers = {};
+    }
+    config.headers['Authorization'] = `Bearer ${token}`;
+    console.log('[HTTP] Authorization header set');
   }
 
   return config;

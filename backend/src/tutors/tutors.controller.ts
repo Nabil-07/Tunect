@@ -28,6 +28,7 @@ export class TutorsController {
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'pageSize', required: false, example: 8 })
   @ApiQuery({ name: 'subject', required: false, example: 'Math' })
+  @ApiQuery({ name: 'language', required: false, example: 'English' })
   @ApiQuery({ name: 'sortBy', required: false, example: 'hourlyRate' })
   @ApiQuery({ name: 'sortOrder', required: false, example: 'desc' })
   @Get()
@@ -35,6 +36,7 @@ export class TutorsController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('subject') subject?: string,
+    @Query('language') language?: string,
     @Query('sortBy') sortBy?: 'updatedAt' | 'rating' | 'hourlyRate',
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
@@ -42,6 +44,7 @@ export class TutorsController {
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
       subject: subject || undefined,
+      language: language || undefined,
       sortBy,
       sortOrder,
     });
@@ -52,6 +55,7 @@ export class TutorsController {
   search(
     @Query('q') q?: string,
     @Query('subject') subject?: string,
+    @Query('language') language?: string,
     @Query('minRating') minRating?: string,
     @Query('priceMin') priceMin?: string,
     @Query('priceMax') priceMax?: string,
@@ -62,6 +66,7 @@ export class TutorsController {
     return this.svc.search({
       q: q || undefined,
       subject: subject || undefined,
+      language: language || undefined,
       minRating: minRating ? Number(minRating) : undefined,
       priceMin: priceMin ? Number(priceMin) : undefined,
       priceMax: priceMax ? Number(priceMax) : undefined,
@@ -77,6 +82,12 @@ export class TutorsController {
   trending(@Query('limit') limit?: string) {
     const n = Number(limit);
     return this.svc.getTrending(Number.isFinite(n) ? n : 8);
+  }
+
+  @ApiOperation({ summary: 'Get available filter options (subjects and ratings)' })
+  @Get('filters/options')
+  getFilterOptions() {
+    return this.svc.getFilterOptions();
   }
 
   @ApiOperation({ summary: 'Get logged-in tutor sessions' })

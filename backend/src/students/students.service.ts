@@ -64,6 +64,7 @@ export class StudentsService {
 
     const now = new Date();
 
+    // ✅ OPTIMIZED: Single query with joins instead of N+1
     const rawBookings = await this.prisma.booking.findMany({
       where: { studentId: student.id },
       orderBy: { createdAt: 'desc' },
@@ -82,56 +83,51 @@ export class StudentsService {
             user: { select: { name: true, email: true } },
           },
         },
+        tokenLedger: {
+          where: { paymentId: { not: null } },
+          select: {
+            payment: {
+              select: {
+                id: true,
+                amountInMinor: true,
+                currency: true,
+                status: true,
+                createdAt: true,
+                providerOrderId: true,
+              },
+            },
+          },
+          take: 1,
+        },
       },
     });
 
-    // 🔗 Enrich with payments via TokenLedger
-    const enriched = await Promise.all(
-      rawBookings.map(async (b) => {
-        const ledger = await this.prisma.tokenLedger.findFirst({
-          where: { bookingId: b.id, paymentId: { not: null } },
-          select: { paymentId: true },
-        });
-
-        let payment = null;
-        if (ledger?.paymentId) {
-          const p = await this.prisma.payment.findUnique({
-            where: { id: ledger.paymentId },
-            select: {
-              id: true,
-              amountInMinor: true,
-              currency: true,
-              status: true,
-              createdAt: true,
-              providerOrderId: true,
-            },
-          });
-          if (p) {
-            payment = {
-              ...p,
-              amountInMinor: toNum(p.amountInMinor),
-            };
+    // ✅ Map data (no additional queries needed)
+    const enriched = rawBookings.map((b) => {
+      const payment = b.tokenLedger[0]?.payment
+        ? {
+            ...b.tokenLedger[0].payment,
+            amountInMinor: toNum(b.tokenLedger[0].payment.amountInMinor),
           }
-        }
+        : null;
 
-        return {
-          id: b.id,
-          startTime: b.startTime,
-          endTime: b.endTime,
-          status: b.status,
-          isDemo: b.isDemo,
-          createdAt: b.createdAt,
-          tokensCharged: toNum(b.tokensCharged),
-          tutor: {
-            id: b.tutor.id,
-            hourlyRate: b.tutor.hourlyRate,
-            name: b.tutor.user?.name,
-            email: b.tutor.user?.email,
-          },
-          payment,
-        };
-      }),
-    );
+      return {
+        id: b.id,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        status: b.status,
+        isDemo: b.isDemo,
+        createdAt: b.createdAt,
+        tokensCharged: toNum(b.tokensCharged),
+        tutor: {
+          id: b.tutor.id,
+          hourlyRate: b.tutor.hourlyRate,
+          name: b.tutor.user?.name,
+          email: b.tutor.user?.email,
+        },
+        payment,
+      };
+    });
 
     const unscheduled = enriched.filter(
       (b) => b.status === 'PENDING' || b.status === 'PENDING_SLOT',
@@ -385,7 +381,10 @@ export class StudentsService {
     if (!student) throw new NotFoundException('Student profile not found');
 
     const balances = await this.prisma.tutorTokenBalance.findMany({
-      where: { studentId: student.id },
+      where: { 
+        studentId: student.id,
+        balance: { gt: 0 }, // Only fetch non-zero balances
+      },
       select: {
         id: true,
         tutorId: true,
@@ -406,6 +405,7 @@ export class StudentsService {
         },
       },
       orderBy: { balance: 'desc' },
+      take: 50, // Limit to top 50 tutors
     });
 
     return balances.map((b) => ({

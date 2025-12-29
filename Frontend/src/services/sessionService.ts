@@ -1,5 +1,5 @@
 // src/services/sessionService.ts
-import api from '../lib/apiClient';
+import { http as api } from '../api/http';
 
 /** Get sessions for the currently logged-in tutor */
 export const getMySessions = async () => {

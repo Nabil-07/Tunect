@@ -305,11 +305,34 @@ export class AvailabilityService {
       throw new ForbiddenException('Tutor not approved');
     }
 
-    return this.prisma.availabilitySlot.findMany({
+    // Get all slots
+    const slots = await this.prisma.availabilitySlot.findMany({
       where: { tutorId },
       orderBy: { startTime: 'asc' },
       select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
     });
+
+    // Get all confirmed/pending bookings for this tutor
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        tutorId,
+        status: { in: ['CONFIRMED', 'PENDING', 'PENDING_SLOT'] },
+      },
+      select: { startTime: true, endTime: true },
+    });
+
+    // Filter out slots that have bookings
+    const availableSlots = slots.filter(slot => {
+      // Check if any booking overlaps with this slot
+      const hasBooking = bookings.some(booking => {
+        if (!booking.startTime || !booking.endTime) return false;
+        // Check for overlap: booking starts before slot ends AND booking ends after slot starts
+        return booking.startTime < slot.endTime && booking.endTime > slot.startTime;
+      });
+      return !hasBooking; // Only include slots without bookings
+    });
+
+    return availableSlots;
   }
 
   // ready-to-book time slices for a tutor within an optional window

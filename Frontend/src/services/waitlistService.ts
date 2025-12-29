@@ -1,4 +1,4 @@
-import api from "../lib/apiClient";
+import { http as api } from '../api/http';
 
 export type AddToWaitlistPayload = {
   tutorId: string;

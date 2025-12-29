@@ -24,28 +24,32 @@ export default function StudentProgress() {
   const [progress, setProgress] = useState<Progress[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [totalHours, setTotalHours] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(true);
+  const [loadingCerts, setLoadingCerts] = useState(true);
+  const [loadingHours, setLoadingHours] = useState(true);
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
-    try {
-      const [progressRes, certsRes, hoursRes] = await Promise.all([
-        apiClient.get('/student-progress/me'),
-        apiClient.get('/certificates/my'),
-        apiClient.get('/student-progress/me/total-hours'),
-      ]);
-
-      setProgress(progressRes.data || []);
-      setCertificates(certsRes.data || []);
-      setTotalHours(hoursRes.data?.totalHours || 0);
-    } catch (error) {
-      console.error('Failed to load progress:', error);
-    } finally {
-      setLoading(false);
-    }
+    // ✅ Load progress independently
+    apiClient.get('/student-progress/me')
+      .then(res => setProgress(res.data || []))
+      .catch(err => console.error('Failed to load progress:', err))
+      .finally(() => setLoadingProgress(false));
+    
+    // ✅ Load certificates independently
+    apiClient.get('/certificates/my')
+      .then(res => setCertificates(res.data || []))
+      .catch(err => console.error('Failed to load certificates:', err))
+      .finally(() => setLoadingCerts(false));
+    
+    // ✅ Load hours independently
+    apiClient.get('/student-progress/me/total-hours')
+      .then(res => setTotalHours(res.data?.totalHours || 0))
+      .catch(err => console.error('Failed to load hours:', err))
+      .finally(() => setLoadingHours(false));
   };
 
   const getCertificateColor = (type: string) => {
@@ -68,21 +72,6 @@ export default function StudentProgress() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-32 rounded-2xl bg-slate-200"></div>
-          <div className="grid md:grid-cols-3 gap-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-40 rounded-2xl bg-slate-200"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
       {/* Header */}
@@ -96,38 +85,63 @@ export default function StudentProgress() {
             <p className="text-lg text-white/90">Track your journey to mastery</p>
           </div>
           <div className="text-center">
-            <div className="text-5xl font-bold">{totalHours}h</div>
-            <div className="text-sm text-white/80 mt-1">Total Hours</div>
+            {loadingHours ? (
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
+            ) : (
+              <>
+                <div className="text-5xl font-bold">{totalHours}h</div>
+                <div className="text-sm text-white/80 mt-1">Total Hours</div>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       {/* Quick Stats */}
       <div className="grid md:grid-cols-4 gap-6">
-        <StatCard
-          icon={<BookOpen className="h-6 w-6 text-ocean-600" />}
-          label="Subjects Studied"
-          value={progress.length}
-        />
-        <StatCard
-          icon={<Trophy className="h-6 w-6 text-amber-600" />}
-          label="Certificates Earned"
-          value={certificates.length}
-        />
-        <StatCard
-          icon={<Zap className="h-6 w-6 text-purple-600" />}
-          label="Average Level"
-          value={progress.length ? Math.round(progress.reduce((sum, p) => sum + p.level, 0) / progress.length) : 0}
-        />
-        <StatCard
-          icon={<Target className="h-6 w-6 text-green-600" />}
-          label="Next Milestone"
-          value={`${Math.ceil(totalHours / 15) * 15}h`}
-        />
+        {loadingProgress ? (
+          <>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-white rounded-xl p-6 shadow-md animate-pulse">
+                <div className="h-6 w-6 bg-slate-200 rounded mb-3"></div>
+                <div className="h-4 w-20 bg-slate-200 rounded mb-2"></div>
+                <div className="h-8 w-12 bg-slate-200 rounded"></div>
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <StatCard
+              icon={<BookOpen className="h-6 w-6 text-ocean-600" />}
+              label="Subjects Studied"
+              value={progress.length}
+            />
+            <StatCard
+              icon={<Trophy className="h-6 w-6 text-amber-600" />}
+              label="Certificates Earned"
+              value={certificates.length}
+            />
+            <StatCard
+              icon={<Zap className="h-6 w-6 text-purple-600" />}
+              label="Average Level"
+              value={progress.length ? Math.round(progress.reduce((sum, p) => sum + p.level, 0) / progress.length) : 0}
+            />
+            <StatCard
+              icon={<Target className="h-6 w-6 text-green-600" />}
+              label="Next Milestone"
+              value={`${Math.ceil(totalHours / 15) * 15}h`}
+            />
+          </>
+        )}
       </div>
 
       {/* Certificates */}
-      {certificates.length > 0 && (
+      {loadingCerts ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+          <p className="mt-4 text-slate-600">Loading certificates...</p>
+        </div>
+      ) : certificates.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -163,7 +177,12 @@ export default function StudentProgress() {
           Progress by Subject
         </h2>
 
-        {progress.length === 0 ? (
+        {loadingProgress ? (
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+            <p className="mt-4 text-slate-600">Loading progress...</p>
+          </div>
+        ) : progress.length === 0 ? (
           <div className="rounded-2xl border bg-white p-12 text-center">
             <Clock className="h-16 w-16 text-slate-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-slate-700 mb-2">No progress yet</h3>

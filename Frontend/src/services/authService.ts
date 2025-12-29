@@ -1,10 +1,6 @@
 // src/services/authService.ts
-import api, {
-  setAuthHeader,
-  writeToken,
-  writeRefreshToken,
-  readToken,
-} from "../lib/apiClient";
+import { http as api } from '../api/http';
+import { setTokens, getAccessToken, clearTokens } from '../lib/auth';
 
 export type RoleApi = "STUDENT" | "TUTOR" | "ADMIN";
 export type SignupRoleUi = "student" | "tutor";
@@ -53,11 +49,9 @@ function persistAuth(data: LoginResponse) {
   const access = pickAccess(data);
   if (!access) throw new Error("Login succeeded but no access token returned.");
 
-  // Save tokens + prime axios immediately
-  writeToken(access);
+  // Save tokens using the proper auth utility
   const refresh = pickRefresh(data);
-  if (refresh) writeRefreshToken(refresh);
-  setAuthHeader(access);
+  setTokens({ accessToken: access, refreshToken: refresh });
 
   // Persist user + role (default to STUDENT to keep UI predictable)
   const role =
@@ -95,12 +89,10 @@ function saveUserProfileToLS(profile: any) {
 
 /** Try canonical /users/me first; then /me; then role-scoped fallbacks. */
 export async function me(): Promise<any | null> {
-  const t = readToken();
+  const t = getAccessToken();
   if (!t) {
-    setAuthHeader(null);
     return null;
   }
-  setAuthHeader(t);
 
   const candidates = ["/users/me", "/me", "/students/me", "/tutors/me"] as const;
 
@@ -166,7 +158,7 @@ export function logout() {
     localStorage.removeItem("role");
     localStorage.removeItem("user");
   } finally {
-    setAuthHeader(null);
+    clearTokens();
     try {
       window.dispatchEvent(new CustomEvent("auth:unauthorized"));
     } catch {}

@@ -9,6 +9,7 @@ import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import compression from 'compression';
 
 
 async function bootstrap() {
@@ -24,6 +25,12 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+
+  // ⚡ GZIP Compression - reduces response size by 70-90%
+  app.use(compression({
+    threshold: 1024, // Only compress responses > 1KB
+    level: 6, // Balanced compression (1=fast, 9=best compression)
+  }));
 
   // Serve static files for uploads
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
@@ -86,3 +93,4 @@ async function bootstrap() {
 }
 
 bootstrap();
+

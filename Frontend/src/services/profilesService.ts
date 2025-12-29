@@ -1,9 +1,9 @@
-import api, { readToken, setAuthHeader } from '../lib/apiClient';
+import { http as api } from '../api/http';
+import { getAccessToken } from '../lib/auth';
 
 export async function chooseRole(role: 'STUDENT' | 'TUTOR') {
-  const t = readToken();
+  const t = getAccessToken();
   if (!t) throw new Error('Not authenticated');
-  setAuthHeader(t);
   const { data } = await api.post('/profiles/choose-role', { role });
   return data;
 }

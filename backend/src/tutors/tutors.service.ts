@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TutorStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TrendingTutorDto } from './dto/trending-tutor.dto';
+import { Cacheable } from '../common/cache.decorator';
 
 export type TutorPublic = {
   id: string;
@@ -9,6 +10,7 @@ export type TutorPublic = {
   email?: string | null;
   subject?: string | null;
   subjects?: string[] | null;
+  languages?: string[] | null;
   rating?: number | null;
   reviews?: number | null;
   hourlyRate?: number | null;
@@ -23,6 +25,7 @@ function toNum(v: any, d = 0) {
 
 function normalizeTutor(row: any): TutorPublic {
   const subjectsArr: string[] = Array.isArray(row?.subjects) ? row.subjects : [];
+  const languagesArr: string[] = Array.isArray(row?.languages) ? row.languages : [];
   const subject = row?.subject ?? (subjectsArr.length ? subjectsArr.join(', ') : null);
 
   const emailSource: string | null = (row?.email ?? row?.user?.email ?? null) as string | null;
@@ -45,6 +48,7 @@ function normalizeTutor(row: any): TutorPublic {
     email: row?.email ?? row?.user?.email ?? null,
     subject,
     subjects: subjectsArr.length ? subjectsArr : null,
+    languages: languagesArr.length ? languagesArr : null,
     hourlyRate: Number.isFinite(hourlyRate) ? hourlyRate : null,
     rating: Number.isFinite(rating) ? rating : null,
     reviews: Number.isFinite(reviews) ? reviews : null,
@@ -57,11 +61,79 @@ function normalizeTutor(row: any): TutorPublic {
 export class TutorsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ---------- FILTER OPTIONS ----------
+  @Cacheable('filter-options', 300) // Cache for 5 minutes
+  async getFilterOptions() {
+    // Get all approved tutors with their subjects, languages and reviews
+    const tutors = await this.prisma.tutor.findMany({
+      where: { status: TutorStatus.APPROVED },
+      select: {
+        subjects: true,
+        languages: true,
+        reviews: {
+          select: { rating: true },
+        },
+      },
+    });
+
+    // Extract unique subjects
+    const subjectsSet = new Set<string>();
+    tutors.forEach((tutor) => {
+      if (Array.isArray(tutor.subjects)) {
+        tutor.subjects.forEach((subject) => {
+          if (subject && subject.trim()) {
+            subjectsSet.add(subject.trim());
+          }
+        });
+      }
+    });
+
+    // Extract unique languages
+    const languagesSet = new Set<string>();
+    tutors.forEach((tutor) => {
+      if (Array.isArray(tutor.languages)) {
+        tutor.languages.forEach((language) => {
+          if (language && language.trim()) {
+            languagesSet.add(language.trim());
+          }
+        });
+      }
+    });
+
+    // Calculate available rating thresholds
+    const tutorRatings: number[] = [];
+    tutors.forEach((tutor) => {
+      if (tutor.reviews && tutor.reviews.length > 0) {
+        const avgRating =
+          tutor.reviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / tutor.reviews.length;
+        tutorRatings.push(avgRating);
+      }
+    });
+
+    // Determine which rating filters should be available
+    const ratingOptions = [
+      { value: 0, label: 'Any rating', available: true },
+      { value: 3, label: '3.0+', available: tutorRatings.some((r) => r >= 3) },
+      { value: 4, label: '4.0+', available: tutorRatings.some((r) => r >= 4) },
+      { value: 4.5, label: '4.5+', available: tutorRatings.some((r) => r >= 4.5) },
+    ].filter((opt) => opt.available);
+
+    return {
+      subjects: Array.from(subjectsSet).sort(),
+      languages: Array.from(languagesSet).sort(),
+      ratingOptions: ratingOptions.map((opt) => ({
+        value: opt.value,
+        label: opt.label,
+      })),
+    };
+  }
+
   // ---------- LIST ----------
   async list(params?: {
     page?: number;
     pageSize?: number;
     subject?: string;
+    language?: string;
     sortBy?: 'updatedAt' | 'rating' | 'hourlyRate';
     sortOrder?: 'asc' | 'desc';
   }) {
@@ -72,13 +144,32 @@ export class TutorsService {
     // ✅ Only tutors with APPROVED status
     const where: any = { status: TutorStatus.APPROVED };
 
+    const andConditions: any[] = [];
+
     if (params?.subject && params.subject.trim()) {
       const s = params.subject.trim();
-      where.OR = [
-        { subjects: { has: s } },
-        { subjects: { has: s.toUpperCase() } },
-        { subjects: { has: s.toLowerCase() } },
-      ];
+      andConditions.push({
+        OR: [
+          { subjects: { has: s } },
+          { subjects: { has: s.toUpperCase() } },
+          { subjects: { has: s.toLowerCase() } },
+        ],
+      });
+    }
+
+    if (params?.language && params.language.trim()) {
+      const lang = params.language.trim();
+      andConditions.push({
+        OR: [
+          { languages: { has: lang } },
+          { languages: { has: lang.toUpperCase() } },
+          { languages: { has: lang.toLowerCase() } },
+        ],
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     let orderBy: any = { id: 'desc' as const };
@@ -108,6 +199,7 @@ export class TutorsService {
   async search(params?: {
     q?: string;
     subject?: string;
+    language?: string;
     minRating?: number;
     priceMin?: number;
     priceMax?: number;
@@ -138,6 +230,15 @@ export class TutorsService {
         { subjects: { has: s } },
         { subjects: { has: s.toUpperCase() } },
         { subjects: { has: s.toLowerCase() } },
+      );
+    }
+
+    if (params?.language && params.language.trim()) {
+      const lang = params.language.trim();
+      OR.push(
+        { languages: { has: lang } },
+        { languages: { has: lang.toUpperCase() } },
+        { languages: { has: lang.toLowerCase() } },
       );
     }
 
@@ -199,26 +300,35 @@ export class TutorsService {
   }
 
   // ---------- TRENDING ----------
+  @Cacheable('trending', 120) // Cache for 2 minutes
   async getTrending(limit = 8): Promise<TrendingTutorDto[]> {
-    const rows = await this.prisma.tutor.findMany({
-      where: { isTrending: true, status: TutorStatus.APPROVED }, // ✅ only approved
+    const tutors = await this.prisma.tutor.findMany({
+      where: { isTrending: true, status: TutorStatus.APPROVED },
       take: Math.min(Math.max(Number(limit) || 8, 1), 24),
       orderBy: { updatedAt: 'desc' },
       select: {
         id: true,
         subjects: true,
+        languages: true,
         hourlyRate: true,
         country: true,
-        reviews: { select: { rating: true } },
+        _count: { select: { reviews: true } },
         user: { select: { name: true, email: true, avatarUrl: true } },
       },
     });
 
-    return rows.map<TrendingTutorDto>((t) => {
-      const avg =
-        t.reviews.length > 0
-          ? t.reviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / t.reviews.length
-          : 4.7;
+    // Fetch average ratings in bulk instead of loading all reviews
+    const tutorIds = tutors.map(t => t.id);
+    const ratings = tutorIds.length > 0 ? await this.prisma.review.groupBy({
+      by: ['tutorId'],
+      _avg: { rating: true },
+      where: { tutorId: { in: tutorIds } },
+    }) : [];
+
+    const ratingMap = new Map(ratings.map(r => [r.tutorId, r._avg.rating ?? 4.7]));
+
+    return tutors.map<TrendingTutorDto>((t) => {
+      const avg = ratingMap.get(t.id) ?? 4.7;
 
       const fallbackName = t.user?.email
         ? t.user.email.split('@')[0].replace(/\./g, ' ').replace(/^\w/, (c) =>
@@ -252,7 +362,12 @@ export class TutorsService {
         endTime: { not: null },
         status: { notIn: ['CANCELED'] }
       },
-      include: {
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        status: true,
+        isDemo: true,
         tutor: { select: { subjects: true } },
         student: {
           select: {
@@ -262,6 +377,7 @@ export class TutorsService {
         },
       },
       orderBy: { startTime: 'desc' },
+      take: 100, // Limit to recent 100 sessions for performance
     });
 
     console.log('[getSessionsForTutor] Found', bookings.length, 'bookings');
@@ -317,6 +433,7 @@ export class TutorsService {
       avatarUrl: t.user?.avatarUrl ?? null,
       bio: t.bio ?? null,
       subjects: t.subjects ?? [],
+      languages: t.languages ?? [],
       hourlyRate: t.hourlyRate ?? null,
       country: t.country ?? null,
     };
@@ -335,6 +452,7 @@ export class TutorsService {
       avatarUrl: t.user?.avatarUrl ?? null,
       bio: t.bio ?? null,
       subjects: t.subjects ?? [],
+      languages: t.languages ?? [],
       hourlyRate: t.hourlyRate ?? null,
       country: t.country ?? null,
     };
@@ -360,6 +478,12 @@ export class TutorsService {
     if (Array.isArray(body?.subjects)) {
       updatesTutor.subjects = body.subjects
         .map((s: any) => String(s).trim())
+        .filter(Boolean);
+    }
+
+    if (Array.isArray(body?.languages)) {
+      updatesTutor.languages = body.languages
+        .map((l: any) => String(l).trim())
         .filter(Boolean);
     }
 

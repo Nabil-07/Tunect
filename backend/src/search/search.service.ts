@@ -151,20 +151,23 @@ export class SearchService {
     return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
   }
 
-  /** Popular subjects for filter chips (naive frequency over approved tutors) */
+  /** Popular subjects for filter chips (optimized with raw SQL) */
   async listSubjects(limit = 50) {
-    const tutors = await this.prisma.tutor.findMany({
-      where: { status: TutorStatus.APPROVED },
-      select: { subjects: true },
-    });
-    const counts = new Map<string, number>();
-    for (const t of tutors) {
-      for (const s of t.subjects) counts.set(s, (counts.get(s) ?? 0) + 1);
-    }
-    const items = Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
-      .map(([subject, count]) => ({ subject, count }));
+    // Use raw query for better performance on large datasets
+    const result = await this.prisma.$queryRaw<Array<{ subject: string; count: bigint }>>`
+      SELECT unnest(subjects) as subject, COUNT(*) as count
+      FROM "Tutor"
+      WHERE status = 'APPROVED'
+      GROUP BY subject
+      ORDER BY count DESC
+      LIMIT ${limit}
+    `;
+    
+    const items = result.map(r => ({
+      subject: r.subject,
+      count: Number(r.count)
+    }));
+    
     return { items };
   }
 }

@@ -6,6 +6,7 @@ import MainLayout from './layouts/MainLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import { setAuthHeader, readToken } from './lib/apiClient';
 import { ToastProvider } from './contexts/ToastContext';
+import { useAuth } from './contexts/AuthContext';
 
 function Spinner() {
   return (
@@ -56,8 +57,20 @@ function RoleRoute({
   role: 'student' | 'tutor' | 'admin';
   children: React.ReactNode;
 }) {
-  const role = getStoredRoleUpper();
+  const { user, loading } = useAuth();
   const location = useLocation();
+
+  // Get role from JWT token (most authoritative source)
+  const role = user?.role?.toUpperCase() as RoleApi | undefined;
+
+  // While auth is hydrating, avoid redirect loops
+  if (loading) {
+    return (
+      <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">
+        Loading…
+      </div>
+    );
+  }
 
   if (!role) {
     if (location.pathname !== '/choose-role') {

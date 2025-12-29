@@ -15,6 +15,12 @@ export function setTokens(tokens: Partial<AuthTokens>) {
   if (tokens.refreshToken) {
     localStorage.setItem(REFRESH_KEY, tokens.refreshToken);
   }
+  
+  // Dispatch event to notify AuthContext of token change
+  // (storage events only fire cross-tab, not same-tab)
+  try {
+    window.dispatchEvent(new Event('auth:token_updated'));
+  } catch {}
 }
 
 export function getAccessToken(): string | null {

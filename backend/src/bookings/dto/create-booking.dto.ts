@@ -10,18 +10,18 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateBookingDto {
   @ApiProperty({
-    example: 'b5b27c5b-33d8-4e2b-91a2-3a7b93f5d1aa',
-    description: 'UUID of the tutor',
+    example: 'cmjr15hyl0004hxqk8svmw3tf',
+    description: 'ID of the tutor (CUID)',
   })
-  @IsUUID()
+  @IsString()
   tutorId!: string;
 
   @ApiPropertyOptional({
-    example: 'd62e3cd4-8d46-4f0b-8f50-1cdb74b94f4c',
+    example: 'cmjpnroq00000hxk8xq84wvk7',
     description:
-      'UUID of the student. Optional — if omitted, it is derived from the current JWT user.',
+      'ID of the student (CUID). Optional — if omitted, it is derived from the current JWT user.',
   })
-  @IsUUID()
+  @IsString()
   @IsOptional()
   studentId?: string;
 

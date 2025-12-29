@@ -35,7 +35,8 @@ export default function MyBookings() {
   const [unscheduled, setUnscheduled] = useState<Booking[]>([]);
   const [upcoming, setUpcoming] = useState<Booking[]>([]);
   const [completed, setCompleted] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingBookings, setLoadingBookings] = useState(true);
+  const [loadingBalances, setLoadingBalances] = useState(true);
   const [tokenBalances, setTokenBalances] = useState<Map<string, number>>(new Map());
 
   // slot picker state
@@ -104,23 +105,11 @@ export default function MyBookings() {
   }
 
   async function refresh() {
-    setLoading(true);
-    try {
-      const [data, balancesRes] = await Promise.all([
-        getMyBookings(),
-        api.get('/students/me/token-balances').catch(() => ({ data: [] })),
-      ]);
-
-      // Build token balance map
-      const balances = Array.isArray(balancesRes.data) ? balancesRes.data : [];
-      const balanceMap = new Map<string, number>();
-      balances.forEach((b: any) => {
-        if (b.tutorId) {
-          balanceMap.set(b.tutorId, Number(b.balance || 0));
-        }
-      });
-      setTokenBalances(balanceMap);
-
+    setLoadingBookings(true);
+    setLoadingBalances(true);
+    
+    // ✅ Load bookings and balances independently (non-blocking)
+    getMyBookings().then(data => {
       // Normalize shapes (supports {unscheduled, upcoming, completed} OR a single array)
       const all: Booking[] = Array.isArray((data as any)?.all)
         ? (data as any).all
@@ -179,9 +168,27 @@ export default function MyBookings() {
         setParams(params, { replace: true });
         localStorage.removeItem("PROMPT_SELECT_SLOT");
       }
-    } finally {
-      setLoading(false);
-    }
+    })
+    .catch(err => {
+      console.error('Failed to load bookings:', err);
+      showError('Failed to load bookings');
+    })
+    .finally(() => setLoadingBookings(false));
+    
+    // Load balances independently
+    api.get('/students/me/token-balances')
+      .then(res => {
+        const balances = Array.isArray(res.data) ? res.data : [];
+        const balanceMap = new Map<string, number>();
+        balances.forEach((b: any) => {
+          if (b.tutorId) {
+            balanceMap.set(b.tutorId, Number(b.balance || 0));
+          }
+        });
+        setTokenBalances(balanceMap);
+      })
+      .catch(() => setTokenBalances(new Map()))
+      .finally(() => setLoadingBalances(false));
   }
 
   useEffect(() => {
@@ -189,18 +196,21 @@ export default function MyBookings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading) {
-    return <Loader message="Loading your bookings..." />;
-  }
-
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-semibold text-gray-800 mb-6">
         My Bookings
       </h1>
 
-      {/* Tutors with tokens but no pending booking */}
-      {Array.from(tokenBalances.entries()).filter(([tutorId, balance]) => 
+      {loadingBookings ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+          <p className="mt-4 text-slate-600">Loading your bookings...</p>
+        </div>
+      ) : (
+        <>
+          {/* Tutors with tokens but no pending booking */}
+          {!loadingBalances && Array.from(tokenBalances.entries()).filter(([tutorId, balance]) => 
         balance > 0 && !unscheduled.some(b => b.tutor?.id === tutorId)
       ).length > 0 && (
         <Section
@@ -311,6 +321,8 @@ export default function MyBookings() {
           <BookingCard key={b.id} booking={b} />
         ))}
       </Section>
+        </>
+      )}
 
       {/* Slot Picker Modal */}
       {pickerBooking && (

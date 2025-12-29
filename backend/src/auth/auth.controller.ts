@@ -13,6 +13,7 @@ import { IsEmail, IsIn, IsOptional, IsString, Length } from 'class-validator';
 import { AuthGuard } from '@nestjs/passport';
 import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 
 class ForgotStartDto {
   @IsIn(['EMAIL', 'SMS']) channel!: 'EMAIL' | 'SMS';
@@ -42,6 +43,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly cfg: ConfigService,
+    private readonly jwt: JwtService,
   ) {}
 
   @ApiOperation({ summary: 'Register a new user' })
@@ -154,7 +156,15 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('choose-role')
   async chooseRole(@Req() req: any, @Body() dto: ChooseRoleDto) {
-    const { next } = await this.auth.chooseRole(req.user.id, dto.role);
-    return { ok: true, next };
+    const { user, next } = await this.auth.chooseRole(req.user.id, dto.role);
+    
+    // Generate new JWT token with updated role
+    const payload = { sub: user.id, email: user.email, role: user.role };
+    const access_token = await this.jwt.signAsync(payload, {
+      secret: this.cfg.get('JWT_SECRET'),
+      expiresIn: this.cfg.get('JWT_ACCESS_TTL'),
+    });
+    
+    return { ok: true, access_token, next };
   }
 }
