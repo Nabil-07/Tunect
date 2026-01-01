@@ -34,18 +34,45 @@ const getStoredRoleUpper = (): RoleApi | null => {
 const isAuthed = () => !!readToken() && localStorage.getItem('auth_ok') === '1';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  if (!isAuthed()) return <Navigate to="/login" replace />;
+  const { user, loading } = useAuth();
+  
+  // Wait for auth to finish loading before making decisions
+  if (loading) {
+    return <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">Loading...</div>;
+  }
+  
+  // Only redirect to login if definitely not authenticated
+  if (!user && !readToken()) {
+    return <Navigate to="/login" replace />;
+  }
+  
   return <>{children}</>;
 }
 
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
-  if (!isAuthed()) return <>{children}</>;
-  const role = getStoredRoleUpper();
-  if (!role) return <Navigate to="/choose-role" replace />;
+  const { user, loading } = useAuth();
+  
+  // Wait for auth to finish loading before making decisions
+  if (loading) {
+    return <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">Loading...</div>;
+  }
+  
+  // If not authenticated, show the public page
+  if (!user && !readToken()) {
+    return <>{children}</>;
+  }
+  
+  // If authenticated, redirect to dashboard based on role
+  const role = user?.role?.toUpperCase() || getStoredRoleUpper();
+  if (!role) {
+    return <Navigate to="/choose-role" replace />;
+  }
+  
   const target =
     role === 'ADMIN' ? '/admin/dashboard' :
     role === 'TUTOR' ? '/tutor/dashboard' :
     '/student/dashboard';
+  
   return <Navigate to={target} replace />;
 }
 
@@ -144,6 +171,7 @@ const TutorEarnings = lazy(() => import('./pages/tutor/earnings'));
 const ContentLibrary = lazy(() => import('./pages/tutor/content-library'));
 const RecurringTemplates = lazy(() => import('./pages/tutor/recurring-templates'));
 const PerformanceTracking = lazy(() => import('./pages/tutor/performance-tracking'));
+const TutorNotifications = lazy(() => import('./pages/tutor/notifications'));
 /** Phase 4: Tutor Features */
 const CreateGroupSession = lazy(() => import('./pages/tutor/create-group-session'));
 const TutorWaitlist = lazy(() => import('./pages/tutor/waitlist-management'));
@@ -295,6 +323,7 @@ function App() {
           <Route path="/tutor/sessions" element={<TutorSessions />} />
           <Route path="/tutor/messages" element={<TutorChat />} />
           <Route path="/tutor/chat" element={<TutorChat />} />
+          <Route path="/tutor/notifications" element={<TutorNotifications />} />
           <Route path="/tutor/earnings" element={<TutorEarnings />} />
           <Route path="/tutor/content-library" element={<ContentLibrary />} />
           <Route path="/tutor/recurring-templates" element={<RecurringTemplates />} />

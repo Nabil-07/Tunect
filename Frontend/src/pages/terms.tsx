@@ -87,12 +87,22 @@ export default function Terms() {
 
             <h3 className="font-semibold text-lg mb-3 text-slate-800">3.2 Cancellation & Refund Policy</h3>
             <ul className="list-disc pl-6 space-y-2 text-slate-600 mb-4">
-              <li><strong>Cancellations 24+ hours before:</strong> Full refund to token balance</li>
-              <li><strong>Cancellations 6-24 hours before:</strong> 50% refund</li>
-              <li><strong>Cancellations under 6 hours:</strong> No refund (unless tutor cancels)</li>
+              <li><strong>Awaiting Slot Selection:</strong> If you cancel before a time slot is assigned, you receive a 100% refund to your token balance</li>
+              <li><strong>Cancellations 48+ hours before scheduled time:</strong> 100% refund to token balance</li>
+              <li><strong>Cancellations 24-48 hours before scheduled time:</strong> 50% refund to token balance</li>
+              <li><strong>Cancellations less than 24 hours before scheduled time:</strong> No refund</li>
               <li><strong>No-shows:</strong> Full session fee charged, no refund</li>
+              <li><strong>Group bookings:</strong> Non-refundable once booked (no refunds for any cancellations)</li>
+              <li><strong>Demo sessions:</strong> Free of charge, cancellation does not affect token balance</li>
               <li><strong>Tutor cancellation:</strong> Full refund + 10% bonus tokens as compensation</li>
             </ul>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
+              <p className="text-sm text-blue-900">
+                <strong>Note:</strong> All refunds are processed to your token balance, not to the original payment method. 
+                Cancelled slots are automatically released and become available for other students to book. 
+                Refund timing is calculated from the originally scheduled session start time.
+              </p>
+            </div>
 
             <h3 className="font-semibold text-lg mb-3 text-slate-800">3.3 Token System</h3>
             <ul className="list-disc pl-6 space-y-2 text-slate-600 mb-4">
@@ -293,7 +303,7 @@ export default function Terms() {
               In the event of a dispute:
             </p>
             <ol className="list-decimal pl-6 space-y-2 text-slate-600">
-              <li><strong>Contact Support First:</strong> Reach out to support@tunect.com to resolve informally</li>
+              <li><strong>Contact Support First:</strong> Reach out to support@tunectnow.com to resolve informally</li>
               <li><strong>Mediation:</strong> If unresolved, both parties agree to good-faith mediation</li>
               <li><strong>Arbitration:</strong> Disputes will be resolved via binding arbitration under Indian Arbitration Act</li>
               <li><strong>Jurisdiction:</strong> Governed by the laws of India; courts in [Your City] have exclusive jurisdiction</li>
@@ -346,8 +356,8 @@ export default function Terms() {
               For questions about these Terms of Use, please contact us:
             </p>
             <div className="bg-slate-100 rounded-xl p-6">
-              <p className="text-slate-700"><strong>Email:</strong> <a href="mailto:legal@tunect.com" className="text-ocean-700 hover:underline">legal@tunect.com</a></p>
-              <p className="text-slate-700 mt-2"><strong>Support:</strong> <a href="mailto:support@tunect.com" className="text-ocean-700 hover:underline">support@tunect.com</a></p>
+              <p className="text-slate-700"><strong>Official:</strong> <a href="mailto:official@tunectnow.com" className="text-ocean-700 hover:underline">official@tunectnow.com</a></p>
+              <p className="text-slate-700 mt-2"><strong>Support:</strong> <a href="mailto:support@tunectnow.com" className="text-ocean-700 hover:underline">support@tunectnow.com</a></p>
               <p className="text-slate-700 mt-2"><strong>Business Name:</strong> Tunect Technologies Pvt. Ltd.</p>
               <p className="text-slate-700 mt-2"><strong>Address:</strong> [Your Registered Business Address]</p>
             </div>

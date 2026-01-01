@@ -58,9 +58,13 @@ export function readToken(): string | null {
   try {
     for (const k of ["token", ...ACCESS_KEYS]) {
       const v = sessionStorage.getItem(k) || localStorage.getItem(k);
-      if (v) return v;
+      if (v) {
+        return v;
+      }
     }
-  } catch {}
+  } catch (err) {
+    console.error('[readToken] Error reading token:', err);
+  }
   return null;
 }
 
@@ -83,7 +87,9 @@ export function writeToken(token: string | null) {
       try {
         localStorage.removeItem(k);
         sessionStorage.removeItem(k);
-      } catch {}
+      } catch (err) {
+        console.warn('[writeToken] Failed to remove token:', err);
+      }
     }
     setAuthHeader(null);
     return;
@@ -94,7 +100,9 @@ export function writeToken(token: string | null) {
     for (const k of ACCESS_KEYS) store.setItem(k, token);
     other.removeItem("token");
     for (const k of ACCESS_KEYS) other.removeItem(k);
-  } catch {}
+  } catch (err) {
+    console.error('[writeToken] Failed to write token:', err);
+  }
   setAuthHeader(token);
 }
 
@@ -194,25 +202,36 @@ function notifyWaiters(token: string | null) {
 
 async function doRefreshToken(): Promise<string | null> {
   const refreshToken = readRefreshToken();
-  if (!refreshToken) return null;
+  if (!refreshToken) {
+    if (LOG_HTTP) console.log('[REFRESH] No refresh token available');
+    return null;
+  }
 
   try {
+    if (LOG_HTTP) console.log('[REFRESH] Attempting token refresh...');
     const res = await axios.post(`${baseURL}/auth/refresh`, { refreshToken });
 
     const access: string | undefined =
       res.data?.access_token || res.data?.accessToken || res.data?.token;
     const newRefresh: string | undefined =
       res.data?.refresh_token || res.data?.refreshToken;
+    const userData = res.data?.user;
 
     if (access) writeToken(access);
     if (newRefresh) writeRefreshToken(newRefresh);
 
+    // Dispatch user data along with the refresh event
     if (access) {
-      window.dispatchEvent(new CustomEvent("auth:refreshed"));
+      if (LOG_HTTP) console.log('[REFRESH] ✅ Token refreshed successfully');
+      window.dispatchEvent(new CustomEvent("auth:refreshed", { 
+        detail: { user: userData } 
+      }));
       return access;
     }
+    if (LOG_HTTP) console.log('[REFRESH] ❌ No access token in response');
     return null;
-  } catch {
+  } catch (err) {
+    if (LOG_HTTP) console.error('[REFRESH] ❌ Refresh failed:', err);
     return null;
   }
 }
@@ -253,6 +272,10 @@ api.interceptors.response.use(
 
     if (status === 401 && !original?._retry) {
       original._retry = true;
+      
+      // Check if we even have refresh token before trying
+      const hasRefreshToken = !!readRefreshToken();
+      
       if (!isRefreshing) {
         isRefreshing = true;
         const newToken = await doRefreshToken();
@@ -262,6 +285,12 @@ api.interceptors.response.use(
           original.headers = original.headers ?? {};
           (original.headers as any).Authorization = `Bearer ${newToken}`;
           return api.request(original);
+        } else if (hasRefreshToken) {
+          // Only clear and notify if we HAD a refresh token that failed
+          // (Don't trigger on missing token scenarios)
+          writeToken(null);
+          writeRefreshToken(null);
+          window.dispatchEvent(new Event("auth:unauthorized"));
         }
       } else {
         const token = await new Promise<string | null>((resolve) =>
@@ -272,6 +301,7 @@ api.interceptors.response.use(
           (original.headers as any).Authorization = `Bearer ${token}`;
           return api.request(original);
         }
+        // Don't dispatch unauthorized here - the main refresh handler already did
       }
     }
 

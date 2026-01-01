@@ -10,6 +10,7 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const tutorId = sp.get('tutorId') || '';
   const [confirming, setConfirming] = useState(false);
+  const [booked, setBooked] = useState(false); // Track if already booked
   const [msg, setMsg] = useState<string>('');
   const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
 
@@ -43,11 +44,12 @@ export default function CheckoutPage() {
   }
 
   async function confirmDemo() {
-    if (!tutorId) return;
+    if (!tutorId || booked) return; // Prevent if already booked
     try {
       setConfirming(true);
       await createDemoBooking({ tutorId });
-      setMsg('Booking successfully booked.');
+      setBooked(true); // Mark as booked to prevent duplicate clicks
+      // Don't set message here - let afterConfirm handle it
       await afterConfirm();
     } catch (e: any) {
       const status = e?.response?.status;
@@ -58,6 +60,7 @@ export default function CheckoutPage() {
           title: 'Demo Already Used',
           message: message || 'You have already used your free demo with this tutor.'
         });
+        setBooked(true); // Prevent further attempts
       } else if (status === 401) {
         navigate('/login');
       } else if (status === 400 && message.includes('Student profile not found')) {
@@ -88,8 +91,12 @@ export default function CheckoutPage() {
             <div className="font-semibold">Free Demo</div>
             <div className="text-xs text-slate-500">0.00 INR</div>
           </div>
-          <button onClick={confirmDemo} disabled={confirming} className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-60">
-            {confirming ? 'Confirming...' : 'Confirm Booking'}
+          <button 
+            onClick={confirmDemo} 
+            disabled={confirming || booked} 
+            className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {confirming ? 'Confirming...' : booked ? 'Booked' : 'Confirm Booking'}
           </button>
         </div>
         {msg && <div className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">{msg}</div>}

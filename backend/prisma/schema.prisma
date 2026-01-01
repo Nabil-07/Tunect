@@ -738,8 +738,13 @@ model Tutor {
   id                      String                    @id @default(cuid())
   userId              String                @unique
   bio                 String?
+  summary             String?
   subjects            String[]              @default([])
   languages           String[]              @default([])
+  degrees             String[]              @default([])
+  classesTeach        String[]              @default([])
+  qualifications      String?
+  yearsExperience     Int?
   createdAt           DateTime              @default(now())
   hourlyRate          Int                   @default(0)
   updatedAt               DateTime                  @default(now()) @updatedAt

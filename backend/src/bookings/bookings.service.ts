@@ -16,6 +16,7 @@ import { addMinutes, isBefore, differenceInMinutes, differenceInHours } from 'da
 import { Prisma, BookingStatus, TokenReason } from '@prisma/client';
 import { toUtc, fromUtc } from '../common/time.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WaitlistService } from '../waitlist/waitlist.service';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { GoogleMeetService } from '../google-meet/google-meet.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
@@ -30,6 +31,7 @@ export class BookingsService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private googleMeet: GoogleMeetService,
+    private waitlistService: WaitlistService,
   ) {}
 
   // ---------- utils ----------
@@ -169,8 +171,35 @@ export class BookingsService {
           throw new BadRequestException(`Minimum booking is ${MIN_BLOCK_MINUTES} minutes.`);
         }
 
-        await this.ensureWithinAvailabilitySlot(dto.tutorId, start, end);
-        await this.ensureNoTutorOverlap(dto.tutorId, start, end);
+        // If requested window is not within availability or overlaps, add to waitlist
+        try {
+          await this.ensureWithinAvailabilitySlot(dto.tutorId, start, end);
+          await this.ensureNoTutorOverlap(dto.tutorId, start, end);
+        } catch (e) {
+          // Add to waitlist and create a demo booking awaiting slot selection
+          await this.waitlistService.addToWaitlist(
+            {
+              tutorId: dto.tutorId,
+              requestedStartTime: start.toISOString(),
+              requestedEndTime: end.toISOString(),
+              subject: undefined,
+              notes: dto.notes,
+              priority: 1,
+            },
+            dto.studentId!,
+          );
+
+          return this.prisma.booking.create({
+            data: {
+              tutorId: dto.tutorId,
+              studentId: dto.studentId!,
+              isDemo: true,
+              status: BookingStatus.PENDING,
+              tokensCharged: new Prisma.Decimal(0),
+              notes: dto.notes,
+            },
+          });
+        }
         await this.ensureNoStudentOverlap(dto.studentId!, start, end);
 
         // Cancel any pending demo bookings for this student-tutor pair
@@ -197,6 +226,35 @@ export class BookingsService {
           },
         });
       }
+
+      // No specific time chosen: add to waitlist for generic notification
+      // Before creating another PENDING demo, check if one already exists for this tutor
+      const existingDemo = await this.prisma.booking.findFirst({
+        where: {
+          tutorId: dto.tutorId,
+          studentId: dto.studentId!,
+          isDemo: true,
+          status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (existingDemo) {
+        // If already CONFIRMED or PENDING, do not create duplicates; return existing
+        return existingDemo;
+      }
+
+      await this.waitlistService.addToWaitlist(
+        {
+          tutorId: dto.tutorId,
+          requestedStartTime: new Date().toISOString(),
+          requestedEndTime: addMinutes(new Date(), MIN_BLOCK_MINUTES).toISOString(),
+          subject: undefined,
+          notes: dto.notes,
+          priority: 1,
+        },
+        dto.studentId!,
+      );
 
       return this.prisma.booking.create({
         data: {
@@ -304,7 +362,13 @@ export class BookingsService {
       throw new BadRequestException(`Minimum booking is ${MIN_BLOCK_MINUTES} minutes.`);
     }
 
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    const booking = await this.prisma.booking.findUnique({ 
+      where: { id: bookingId },
+      include: {
+        tutor: { include: { user: true } },
+        student: { include: { user: true } },
+      }
+    });
     if (!booking) throw new NotFoundException('Booking not found');
 
     const allowed: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.PENDING_SLOT];
@@ -316,14 +380,86 @@ export class BookingsService {
     await this.ensureNoTutorOverlap(booking.tutorId, start, end, booking.id);
     await this.ensureNoStudentOverlap(booking.studentId, start, end, booking.id);
 
-    const updated = await this.prisma.booking.update({
+    // ✅ For PENDING_SLOT (paid booking without slot), deduct tokens now if not already charged
+    const isPendingSlot = booking.status === BookingStatus.PENDING_SLOT;
+    const alreadyCharged = Number(booking.tokensCharged) > 0;
+    
+    if (isPendingSlot && !alreadyCharged) {
+      const cost = this.requiredTokens(start, end, TOKENS_PER_HOUR);
+      
+      // Check tutor-specific token balance
+      const balance = await this.prisma.tutorTokenBalance.findUnique({
+        where: {
+          studentId_tutorId: {
+            studentId: booking.studentId,
+            tutorId: booking.tutorId,
+          },
+        },
+      });
+      
+      if (!balance || Number(balance.balance) < cost) {
+        throw new BadRequestException(
+          `Insufficient tokens for this tutor. Need ${cost}, have ${balance?.balance || 0}`
+        );
+      }
+
+      await this.prisma.$transaction(async (tx) => {
+        // Deduct from tutor-specific balance
+        await tx.tutorTokenBalance.update({
+          where: {
+            studentId_tutorId: {
+              studentId: booking.studentId,
+              tutorId: booking.tutorId,
+            },
+          },
+          data: { balance: { decrement: cost } },
+        });
+
+        // Deduct from global student tokens
+        await tx.student.update({
+          where: { id: booking.studentId },
+          data: { tokens: { decrement: cost } },
+        });
+
+        // Create ledger entry
+        await tx.tokenLedger.create({
+          data: {
+            studentId: booking.studentId,
+            tutorId: booking.tutorId,
+            bookingId: booking.id,
+            delta: new Prisma.Decimal(-cost),
+            reason: TokenReason.BOOKING,
+          },
+        });
+
+        // Update booking with time and tokens
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: {
+            startTime: start,
+            endTime: end,
+            notes: dto.notes ?? booking.notes,
+            status: BookingStatus.CONFIRMED,
+            tokensCharged: new Prisma.Decimal(cost),
+          },
+        });
+      });
+    } else {
+      // Demo or already charged - just update times
+      await this.prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          startTime: start,
+          endTime: end,
+          notes: dto.notes ?? booking.notes,
+          status: BookingStatus.CONFIRMED,
+        },
+      });
+    }
+
+    // Fetch updated booking
+    const updated = await this.prisma.booking.findUnique({
       where: { id: bookingId },
-      data: {
-        startTime: start,
-        endTime: end,
-        notes: dto.notes ?? booking.notes,
-        status: BookingStatus.CONFIRMED,
-      },
       include: {
         tutor: { include: { user: true } },
         student: { include: { user: true } },
@@ -333,12 +469,12 @@ export class BookingsService {
     // Generate Google Meet link
     try {
       await this.googleMeet.createAndAttachMeeting(
-        updated.id,
-        updated.tutor.user.email,
-        updated.student.user.email,
-        updated.startTime!,
-        updated.endTime!,
-        updated.notes || 'Tutoring Session',
+        updated!.id,
+        updated!.tutor.user.email,
+        updated!.student.user.email,
+        updated!.startTime!,
+        updated!.endTime!,
+        updated!.notes || 'Tutoring Session',
       );
     } catch (error) {
       console.error('[BookingsService] Failed to create Google Meet link:', error);
@@ -518,13 +654,20 @@ export class BookingsService {
             refundReason = TokenReason.REFUND;
           } else if (isStudentCanceling && booking.startTime) {
             // Student cancellation: time-based refund
+            // ✅ NEW POLICY: 48hrs+ = 100%, 24-48hrs = 50%, <24hrs = 0%
             const now = new Date();
             const start = booking.startTime;
             const hoursUntilStart = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-            if (hoursUntilStart >= 24) {
-              // 24+ hours before: 100% refund
+            // No refund for group sessions (student cancellation)
+            if (booking.isGroupSession) {
+              refundAmount = 0;
+            } else if (hoursUntilStart >= 48) {
+              // 48+ hours before: 100% refund
               refundAmount = charged;
+            } else if (hoursUntilStart >= 24) {
+              // 24-48 hours before: 50% refund
+              refundAmount = Math.floor(charged * 0.5);
             } else {
               // Less than 24 hours: No refund
               refundAmount = 0;
@@ -1095,6 +1238,21 @@ export class BookingsService {
     const tokensToReserve = 1;
 
     return this.prisma.$transaction(async (tx) => {
+      // Create PENDING_SLOT booking first to get the ID
+      const booking = await tx.booking.create({
+        data: {
+          tutorId,
+          studentId: student.id,
+          isDemo: false,
+          status: BookingStatus.PENDING_SLOT,
+          tokensCharged: new Prisma.Decimal(tokensToReserve),
+        },
+        include: {
+          tutor: { include: { user: true } },
+          student: { include: { user: true } },
+        },
+      });
+
       // Deduct tokens from tutor-specific balance
       await tx.tutorTokenBalance.update({
         where: {
@@ -1114,28 +1272,14 @@ export class BookingsService {
         data: { tokens: { decrement: tokensToReserve } },
       });
 
-      // Create token ledger entry
+      // Create token ledger entry linked to booking
       await tx.tokenLedger.create({
         data: {
           studentId: student.id,
           tutorId,
+          bookingId: booking.id,
           delta: new Prisma.Decimal(-tokensToReserve),
           reason: 'BOOKING',
-        },
-      });
-
-      // Create PENDING_SLOT booking
-      const booking = await tx.booking.create({
-        data: {
-          tutorId,
-          studentId: student.id,
-          isDemo: false,
-          status: BookingStatus.PENDING_SLOT,
-          tokensCharged: new Prisma.Decimal(tokensToReserve),
-        },
-        include: {
-          tutor: { include: { user: true } },
-          student: { include: { user: true } },
         },
       });
 

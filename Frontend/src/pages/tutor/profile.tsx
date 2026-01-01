@@ -10,15 +10,30 @@ type ProfileData = {
   name: string;
   email?: string;
   bio: string;
+  summary?: string;
   subjects: string[];
   languages: string[];
   hourlyRate?: number;
   country?: string;
   avatarUrl?: string | null;
+  yearsExperience?: number;
+  degrees?: string[];
+  qualifications?: string;
+  classesTeach?: string[];
 };
 
 export default function Profile() {
-  const [data, setData] = useState<ProfileData>({ name: '', bio: '', subjects: [], languages: [] });
+  const [data, setData] = useState<ProfileData>({ 
+    name: '', 
+    bio: '', 
+    summary: '',
+    subjects: [], 
+    languages: [],
+    yearsExperience: undefined,
+    degrees: [],
+    qualifications: '',
+    classesTeach: []
+  });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [rates, setRates] = useState<Record<string, number>>({ USD: 1 });
@@ -29,6 +44,8 @@ export default function Profile() {
   const [languageQuery, setLanguageQuery] = useState('');
   const [showSubjectOptions, setShowSubjectOptions] = useState(false);
   const [showLanguageOptions, setShowLanguageOptions] = useState(false);
+  const [degreeInput, setDegreeInput] = useState('');
+  const [classInput, setClassInput] = useState('');
 
   const countries = useMemo(() => getCountries(), []);
 
@@ -54,11 +71,16 @@ export default function Profile() {
           name: raw?.name ?? raw?.user?.name ?? '',
           email: raw?.email ?? raw?.user?.email ?? undefined,
           bio: raw?.bio ?? raw?.tutor?.bio ?? '',
+          summary: raw?.summary ?? raw?.tutor?.summary ?? '',
           subjects: Array.isArray(raw?.subjects) ? raw.subjects : raw?.tutor?.subjects ?? [],
           languages: Array.isArray(raw?.languages) ? raw.languages : raw?.tutor?.languages ?? [],
           hourlyRate: Number.isFinite(raw?.hourlyRate) ? Number(raw.hourlyRate) : raw?.tutor?.hourlyRate,
           country: raw?.country ?? undefined,
           avatarUrl: raw?.avatarUrl ?? raw?.user?.avatarUrl ?? null,
+          yearsExperience: raw?.yearsExperience ?? raw?.tutor?.yearsExperience ?? undefined,
+          degrees: Array.isArray(raw?.degrees) ? raw.degrees : raw?.tutor?.degrees ?? [],
+          qualifications: raw?.qualifications ?? raw?.tutor?.qualifications ?? '',
+          classesTeach: Array.isArray(raw?.classesTeach) ? raw.classesTeach : raw?.tutor?.classesTeach ?? [],
         };
         setData(next);
       } catch (e) {
@@ -132,6 +154,38 @@ export default function Profile() {
   };
 
   const handleSave = async () => {
+    // Validate required fields
+    if (!data.summary?.trim()) {
+      setToast('Summary is required');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    if (data.yearsExperience === undefined || data.yearsExperience < 0) {
+      setToast('Years of experience is required');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    if (!data.degrees || data.degrees.length === 0) {
+      setToast('At least one degree/education is required');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    if (!data.classesTeach || data.classesTeach.length === 0) {
+      setToast('At least one class/grade is required');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    if (!data.subjects || data.subjects.length === 0) {
+      setToast('At least one subject is required');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    if (!data.languages || data.languages.length === 0) {
+      setToast('At least one language is required');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
     try {
       setSaving(true);
       const normalizedSubjects = Array.from(
@@ -143,8 +197,13 @@ export default function Profile() {
       const payload: any = {
         name: data.name?.trim(),
         bio: data.bio?.trim(),
+        summary: data.summary?.trim(),
         subjects: normalizedSubjects,
         languages: normalizedLanguages,
+        yearsExperience: data.yearsExperience,
+        degrees: data.degrees,
+        qualifications: data.qualifications?.trim(),
+        classesTeach: data.classesTeach,
       };
       if (Number.isFinite(data.hourlyRate as any)) {
         payload.hourlyRate = Math.round(Number(data.hourlyRate));
@@ -152,13 +211,13 @@ export default function Profile() {
       if (data.country) payload.country = data.country;
 
       await updateMyProfile(payload);
-      setToast('Profile saved');
+      setToast('Profile saved successfully! ✓');
     } catch (e) {
       console.error(e);
-      setToast('Failed to save');
+      setToast('Failed to save profile');
     } finally {
       setSaving(false);
-      setTimeout(() => setToast(null), 1800);
+      setTimeout(() => setToast(null), 3000);
     }
   };
 
@@ -222,6 +281,203 @@ export default function Profile() {
                 className="mt-1 w-full min-h-28 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Tell students about your expertise, experience and teaching style."
               />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                Summary <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={data.summary || ''}
+                onChange={(e) => setData((d) => ({ ...d, summary: e.target.value }))}
+                className="mt-1 w-full min-h-24 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="A detailed summary of your teaching philosophy and approach (required)."
+                required
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                This summary will be prominently displayed on your public profile.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">
+                  Years of Experience <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={data.yearsExperience ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const n = val === '' ? undefined : Number(val);
+                    setData((d) => ({ ...d, yearsExperience: n }));
+                  }}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., 5"
+                  required
+                />
+                <p className="mt-1 text-xs text-slate-500">Total years of teaching experience (required).</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700">
+                  Qualifications
+                </label>
+                <input
+                  type="text"
+                  value={data.qualifications || ''}
+                  onChange={(e) => setData((d) => ({ ...d, qualifications: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., M.Ed, B.Sc Mathematics"
+                />
+                <p className="mt-1 text-xs text-slate-500">Your educational qualifications.</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                Degrees/Education <span className="text-red-500">*</span>
+              </label>
+              <div className="mt-1">
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {(data.degrees && data.degrees.length > 0) ? (
+                    data.degrees.map((degree, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700"
+                      >
+                        {degree}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setData((d) => ({
+                              ...d,
+                              degrees: d.degrees?.filter((_, i) => i !== idx),
+                            }));
+                          }}
+                          className="ml-1 text-purple-400 hover:text-purple-600"
+                          aria-label={`Remove ${degree}`}
+                        >
+                          x
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-500">No degrees added yet (required).</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={degreeInput}
+                    onChange={(e) => setDegreeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && degreeInput.trim()) {
+                        e.preventDefault();
+                        setData((d) => ({
+                          ...d,
+                          degrees: [...(d.degrees || []), degreeInput.trim()],
+                        }));
+                        setDegreeInput('');
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="e.g., B.Sc in Mathematics, M.Ed"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (degreeInput.trim()) {
+                        setData((d) => ({
+                          ...d,
+                          degrees: [...(d.degrees || []), degreeInput.trim()],
+                        }));
+                        setDegreeInput('');
+                      }
+                    }}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700"
+                  >
+                    Add
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Add your degrees one by one. Press Enter or click Add (required).
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                Classes/Grades I Teach <span className="text-red-500">*</span>
+              </label>
+              <div className="mt-1">
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {(data.classesTeach && data.classesTeach.length > 0) ? (
+                    data.classesTeach.map((cls, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+                      >
+                        {cls}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setData((d) => ({
+                              ...d,
+                              classesTeach: d.classesTeach?.filter((_, i) => i !== idx),
+                            }));
+                          }}
+                          className="ml-1 text-amber-400 hover:text-amber-600"
+                          aria-label={`Remove ${cls}`}
+                        >
+                          x
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-500">No classes/grades added yet (required).</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={classInput}
+                    onChange={(e) => setClassInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && classInput.trim()) {
+                        e.preventDefault();
+                        setData((d) => ({
+                          ...d,
+                          classesTeach: [...(d.classesTeach || []), classInput.trim()],
+                        }));
+                        setClassInput('');
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="e.g., Grade 1-5, Grade 6-8, High School, College"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (classInput.trim()) {
+                        setData((d) => ({
+                          ...d,
+                          classesTeach: [...(d.classesTeach || []), classInput.trim()],
+                        }));
+                        setClassInput('');
+                      }
+                    }}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700"
+                  >
+                    Add
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Specify which grades or classes you can teach. Press Enter or click Add (required).
+                </p>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

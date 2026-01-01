@@ -59,6 +59,8 @@ export default function NotificationsPage() {
         item.id === id ? { ...item, isRead: true } : item
       ));
       setUnreadCount(Math.max(0, unreadCount - 1));
+      // Notify NotificationBell to update
+      window.dispatchEvent(new Event('notifications:updated'));
     } catch (err) {
       console.error("Failed to mark as read", err);
     }
@@ -66,9 +68,11 @@ export default function NotificationsPage() {
 
   const markAllAsRead = async () => {
     try {
-      await api.patch('/notifications/mark-all-read');
+      await api.post('/notifications/mark-all-read');
       setItems(items.map(item => ({ ...item, isRead: true })));
       setUnreadCount(0);
+      // Notify NotificationBell to update
+      window.dispatchEvent(new Event('notifications:updated'));
     } catch (err) {
       console.error("Failed to mark all as read", err);
     }

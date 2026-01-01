@@ -57,7 +57,9 @@ const ADMIN_CENTER = [
 ];
 
 export default function Navbar() {
-  const { user, logout, accounts, switchAccount } = useAuth();
+  // TODO: Next Release - Multi-account switching
+  // const { user, logout, accounts, switchAccount } = useAuth();
+  const { user, logout } = useAuth();
   const nav = useNavigate();
   const location = useLocation();
 
@@ -287,8 +289,8 @@ export default function Navbar() {
                     <span>Password &amp; security</span>
                   </Link>
                   
-                  {/* Multi-Account Switcher */}
-                  {accounts && accounts.length > 1 && (
+                  {/* TODO: Next Release - Multi-Account Switcher */}
+                  {/* {accounts && accounts.length > 1 && (
                     <>
                       <hr className="my-2 border-slate-100" />
                       <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -329,11 +331,12 @@ export default function Navbar() {
                         ))
                       }
                     </>
-                  )}
+                  )} */}
                   
-                  <hr className="my-2 border-slate-100" />
-                  <button
-                    type="button"
+                  <hr className="my-2 border-slate-100\" />
+                  {/* TODO: Next Release - Add Account feature */}
+                  {/* <button
+                    type=\"button\"
                     onClick={() => {
                       // Store flag that user wants to add account
                       try { 
@@ -348,13 +351,13 @@ export default function Navbar() {
                       // Hard reload to /login to completely reset React state
                       window.location.href = '/login';
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
+                    className=\"w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50\"
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    <svg className=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\">
+                      <path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M12 4v16m8-8H4\" />
                     </svg>
                     <span>Add another account</span>
-                  </button>
+                  </button> */}
                   <button
                     type="button"
                     onClick={() => {
@@ -367,12 +370,12 @@ export default function Navbar() {
                     <span>Logout</span>
                   </button>
                   
-                  {/* Account count */}
-                  {accounts && accounts.length > 0 && (
+                  {/* TODO: Next Release - Account count */}
+                  {/* {accounts && accounts.length > 0 && (
                     <div className="px-3 py-2 mt-1 text-xs text-gray-500 border-t border-slate-100">
                       {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
                     </div>
-                  )}
+                  )} */}
                 </div>
               )}
             </div>

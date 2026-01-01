@@ -132,7 +132,13 @@ export class AuthService {
       throw new UnauthorizedException('Malformed refresh token');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub as string } });
+    const user = await this.prisma.user.findUnique({ 
+      where: { id: payload.sub as string },
+      include: {
+        student: true,
+        tutor: true,
+      }
+    });
     if (!user) throw new UnauthorizedException('User not found');
 
     const access_token = await this.jwt.signAsync(
@@ -155,7 +161,21 @@ export class AuthService {
       },
     );
 
-    return { access_token, refresh_token: new_refresh };
+    // Include user profile data in the response
+    return { 
+      access_token, 
+      refresh_token: new_refresh,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatarUrl,
+        role: user.role,
+        hasChosenRole: user.hasChosenRole,
+        student: user.student,
+        tutor: user.tutor,
+      }
+    };
   }
 
   // ======== Google OAuth (unified user, no persona auto-create) ========

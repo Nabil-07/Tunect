@@ -1,6 +1,7 @@
 // src/services/authService.ts
 import { http as api } from '../api/http';
 import { setTokens, getAccessToken, clearTokens } from '../lib/auth';
+import { writeToken, writeRefreshToken } from '../lib/apiClient';
 
 export type RoleApi = "STUDENT" | "TUTOR" | "ADMIN";
 export type SignupRoleUi = "student" | "tutor";
@@ -49,9 +50,10 @@ function persistAuth(data: LoginResponse) {
   const access = pickAccess(data);
   if (!access) throw new Error("Login succeeded but no access token returned.");
 
-  // Save tokens using the proper auth utility
+  // Save tokens using the proper auth utility that respects storage preference
   const refresh = pickRefresh(data);
-  setTokens({ accessToken: access, refreshToken: refresh });
+  writeToken(access);
+  if (refresh) writeRefreshToken(refresh);
 
   // Persist user + role (default to STUDENT to keep UI predictable)
   const role =

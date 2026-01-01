@@ -47,13 +47,13 @@ export class NotificationsService {
     const secure =
       (process.env.SMTP_SECURE ?? '').toLowerCase() === 'true' || port === 465;
     const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
+    const pass = process.env.SMTP_PASSWORD;
 
     this.enabled = Boolean(host && port && user && pass);
 
     if (!this.enabled) {
       this.logger.warn(
-        'SMTP not fully configured. Emails will be skipped (set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS).',
+        'SMTP not fully configured. Emails will be skipped (set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD).',
       );
     } else {
       this.transporter = nodemailer.createTransport({
@@ -268,6 +268,12 @@ export class NotificationsService {
     return this.prisma.notification.updateMany({
       where: { userId, isRead: false },
       data: { isRead: true },
+    });
+  }
+
+  async deleteNotification(id: string, userId: string) {
+    return this.prisma.notification.deleteMany({
+      where: { id, userId },
     });
   }
 
