@@ -175,7 +175,7 @@ export default function Privacy() {
               <li><strong>Restrict Processing:</strong> Limit how we use your data in certain circumstances</li>
             </ul>
             <p className="text-slate-600 mt-4">
-              To exercise these rights, contact us at <a href="mailto:privacy@tunect.com" className="text-ocean-700 hover:underline font-medium">privacy@tunect.com</a>
+              To exercise these rights, contact us at <a href="mailto:official@tunectnow.com" className="text-ocean-700 hover:underline font-medium">official@tunectnow.com</a>
             </p>
           </PolicySection>
 
@@ -202,7 +202,7 @@ export default function Privacy() {
               Tunect is intended for users 13 years and older. For users under 18, we require 
               parental consent and supervision. We do not knowingly collect information from 
               children under 13. If you believe a child under 13 has provided us information, 
-              please contact us immediately at <a href="mailto:privacy@tunect.com" className="text-ocean-700 hover:underline font-medium">privacy@tunect.com</a>.
+              please contact us immediately at <a href="mailto:official@tunectnow.com" className="text-ocean-700 hover:underline font-medium">official@tunectnow.com</a>.
             </p>
           </PolicySection>
 
@@ -240,8 +240,8 @@ export default function Privacy() {
               If you have questions, concerns, or requests regarding this Privacy Policy or your data:
             </p>
             <div className="bg-slate-100 rounded-xl p-6">
-              <p className="text-slate-700"><strong>Email:</strong> <a href="mailto:privacy@tunect.com" className="text-ocean-700 hover:underline">privacy@tunect.com</a></p>
-              <p className="text-slate-700 mt-2"><strong>Support:</strong> <a href="mailto:support@tunect.com" className="text-ocean-700 hover:underline">support@tunect.com</a></p>
+              <p className="text-slate-700"><strong>Official:</strong> <a href="mailto:official@tunectnow.com" className="text-ocean-700 hover:underline">official@tunectnow.com</a></p>
+              <p className="text-slate-700 mt-2"><strong>Support:</strong> <a href="mailto:support@tunectnow.com" className="text-ocean-700 hover:underline">support@tunectnow.com</a></p>
               <p className="text-slate-700 mt-2"><strong>Address:</strong> Tunect Technologies Pvt. Ltd., [Your Business Address]</p>
             </div>
           </PolicySection>

@@ -1,6 +1,6 @@
 // src/pages/login.tsx
 import { FormEvent, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { login as doLogin } from '../services/authService';
 import { readToken, setAuthStorage } from '../lib/apiClient';
@@ -46,6 +46,9 @@ function ensureRoleStored(loginResult?: any): RoleApi | null {
 
 export default function Login() {
   const auth = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -55,6 +58,8 @@ export default function Login() {
   
   // Check if user is adding another account
   const [isAddingAccount, setIsAddingAccount] = useState(false);
+
+  // Note: Redirect handled by PublicOnlyRoute wrapper in App.tsx
 
   // Check on mount
   useState(() => {
@@ -172,9 +177,11 @@ export default function Login() {
           {/* Logo / brand */}
           <div className="mb-8">
             <Link to="/" className="inline-flex items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-ocean-700 text-white font-bold">
-                T
-              </span>
+              <img 
+                src="/tunect_logo_hd.png" 
+                alt="Tunect Logo" 
+                className="h-10 w-10 rounded-lg shadow-md object-contain"
+              />
               <span className="text-xl font-semibold text-slate-900">Tunect</span>
             </Link>
           </div>

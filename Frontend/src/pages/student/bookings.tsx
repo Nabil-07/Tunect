@@ -87,20 +87,39 @@ export default function MyBookings() {
       return { percent: 0, message: 'This is a free demo session. No refund applies.' };
     }
 
+    // Check if it's a group session
+    const isGroupSession = (booking as any).isGroupSession || false;
+    if (isGroupSession) {
+      return { percent: 0, message: 'Group sessions are non-refundable.' };
+    }
+
+    // PENDING or PENDING_SLOT (no time selected yet) = full refund
     if (!booking.startTime) {
-      return { percent: 100, message: 'Full refund to your token balance.' };
+      return { percent: 100, message: 'Full refund - no slot was scheduled yet.' };
     }
 
     const now = new Date();
     const start = new Date(booking.startTime);
     const hoursUntil = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    if (hoursUntil >= 24) {
-      return { percent: 100, message: '100% refund (cancelled 24+ hours before session).' };
-    } else if (hoursUntil > 0) {
-      return { percent: 0, message: 'No refund (must cancel 24+ hours before session).' };
-    } else {
+    // ✅ NEW POLICY: 48hrs+ = 100%, 24-48hrs = 50%, <24hrs = 0%
+    if (hoursUntil < 0) {
       return { percent: 0, message: 'Cannot cancel - session has already started or passed.' };
+    } else if (hoursUntil >= 48) {
+      return { 
+        percent: 100, 
+        message: '100% refund - Cancelled 48+ hours before the session.' 
+      };
+    } else if (hoursUntil >= 24) {
+      return { 
+        percent: 50, 
+        message: '50% refund - Cancelled 24-48 hours before the session.' 
+      };
+    } else {
+      return { 
+        percent: 0, 
+        message: 'No refund - Must cancel at least 24 hours before the session.' 
+      };
     }
   }
 
@@ -493,7 +512,10 @@ function BookingCard({
           </p>
           <p className="flex items-center justify-end gap-1 text-gray-700 font-medium">
             <IndianRupee size={16} />{" "}
-            {Math.max(0, Number(tokensCharged || 0))}
+            {isDemo 
+              ? 0 
+              : Math.round((tutor?.hourlyRate || 0) * Number(tokensCharged || 1))
+            }
           </p>
 
           {/* Receipt download (if payment exists) */}

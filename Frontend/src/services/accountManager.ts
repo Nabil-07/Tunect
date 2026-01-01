@@ -1,6 +1,10 @@
 /**
  * AccountManager - Manages multiple user accounts in localStorage
  * Allows users to switch between accounts without re-logging in (like Gmail/YouTube)
+ * 
+ * ⚠️ NOTE: Multi-account switching feature is currently DISABLED
+ * This file is ready for next release but not currently in use.
+ * See AuthContext.tsx for restoration instructions.
  */
 
 export interface StoredAccount {

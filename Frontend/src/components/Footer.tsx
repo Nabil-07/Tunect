@@ -17,13 +17,12 @@ export default function Footer() {
           {/* Brand + tagline */}
           <div>
             <div className="flex items-center gap-3">
-              {/* Brand icon chip */}
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-emerald-500 to-blue-600 shadow-[0_8px_20px_-10px_rgba(16,185,129,.6)] ring-1 ring-white/10">
-                {/* graduation cap icon (inline, no deps) */}
-                <svg viewBox="0 0 24 24" className="h-6 w-6 text-white" fill="currentColor" aria-hidden="true">
-                  <path d="M12 3 2 8l10 5 8-4.02V15h2V8L12 3ZM6 12.35V16.5c0 2 3.58 3.5 6 3.5s6-1.5 6-3.5v-4.15l-6 3-6-3Z" />
-                </svg>
-              </div>
+              {/* Tunect Logo */}
+              <img 
+                src="/tunect_logo_hd.png" 
+                alt="Tunect Logo" 
+                className="h-12 w-12 rounded-2xl shadow-[0_8px_20px_-10px_rgba(16,185,129,.6)] ring-1 ring-white/10 object-contain bg-white/5 p-1"
+              />
               <span className="text-2xl font-semibold tracking-tight">Tunect</span>
             </div>
 

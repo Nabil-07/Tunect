@@ -33,6 +33,9 @@ export default function StudentDashboard() {
   const { user, loading: authLoading, isAuthenticated } = useAuth() as any;
   const nav = useNavigate();
 
+  // ✅ Global page loader (shows on initial mount)
+  const [initialLoading, setInitialLoading] = useState(true);
+  
   // ✅ Separate loading states for each section
   const [tokens, setTokens] = useState<number | null>(null);
   const [loadingTokens, setLoadingTokens] = useState(true);
@@ -66,6 +69,8 @@ export default function StudentDashboard() {
   useEffect(() => {
     if (authLoading || isAuthenticated === false) return;
 
+    let isMounted = true; // Cleanup flag
+
     // Ensure only students can access this dashboard
     const userRole = user?.role?.toUpperCase();
     if (userRole && userRole !== 'STUDENT') {
@@ -84,6 +89,7 @@ export default function StudentDashboard() {
     (async () => {
       try {
         const balancesRes = await api.get('/students/me/token-balances');
+        if (!isMounted) return;
         const balances = Array.isArray(balancesRes.data) ? balancesRes.data : [];
         const totalTokens = balances.reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0);
         
@@ -93,13 +99,15 @@ export default function StudentDashboard() {
             balanceMap.set(b.tutorId, Number(b.balance || 0));
           }
         });
-        setTokenBalances(balanceMap);
-        setTokens(totalTokens);
+        if (isMounted) {
+          setTokenBalances(balanceMap);
+          setTokens(totalTokens);
+        }
       } catch (e) {
         console.error('Failed to load token balances:', e);
-        setTokens(0);
+        if (isMounted) setTokens(0);
       } finally {
-        setLoadingTokens(false);
+        if (isMounted) setLoadingTokens(false);
       }
     })();
 
@@ -107,12 +115,12 @@ export default function StudentDashboard() {
     (async () => {
       try {
         const nextRes = await getNextBooking();
-        setNext(nextRes ?? null);
+        if (isMounted) setNext(nextRes ?? null);
       } catch (e) {
         console.error('Failed to load next booking:', e);
-        setNext(null);
+        if (isMounted) setNext(null);
       } finally {
-        setLoadingNext(false);
+        if (isMounted) setLoadingNext(false);
       }
     })();
 
@@ -120,12 +128,12 @@ export default function StudentDashboard() {
     (async () => {
       try {
         const unreadRes = await getUnreadCount();
-        setUnread(typeof unreadRes === 'number' ? unreadRes : unreadRes?.count ?? 0);
+        if (isMounted) setUnread(typeof unreadRes === 'number' ? unreadRes : unreadRes?.count ?? 0);
       } catch (e) {
         console.error('Failed to load unread count:', e);
-        setUnread(0);
+        if (isMounted) setUnread(0);
       } finally {
-        setLoadingUnread(false);
+        if (isMounted) setLoadingUnread(false);
       }
     })();
 
@@ -134,23 +142,23 @@ export default function StudentDashboard() {
       try {
         const recoRes = await getRecommendedTutors(6);
         const baseReco = Array.isArray(recoRes) ? recoRes : [];
-        setReco(baseReco);
+        if (isMounted) setReco(baseReco);
 
         // Fetch demo statuses in background
         try {
           const ids = baseReco.map((t: any) => t.id).filter(Boolean);
           if (ids.length) {
             const map = await getDemoStatusesForTutors(ids);
-            setReco(baseReco.map((t: any) => ({ ...t, demoUsed: !!map[t.id] })));
+            if (isMounted) setReco(baseReco.map((t: any) => ({ ...t, demoUsed: !!map[t.id] })));
           }
         } catch {
           /* ignore */
         }
       } catch (e) {
         console.error('Failed to load recommended tutors:', e);
-        setReco([]);
+        if (isMounted) setReco([]);
       } finally {
-        setLoadingReco(false);
+        if (isMounted) setLoadingReco(false);
       }
     })();
 
@@ -159,33 +167,44 @@ export default function StudentDashboard() {
       try {
         const meRes = await getMe();
         
-        setHoursStudied(
-          typeof meRes?.student?.hoursStudied === 'number' ? meRes.student.hoursStudied : null
-        );
-        setSessionsCompleted(
-          typeof meRes?.student?.sessionsCompleted === 'number'
-            ? meRes.student.sessionsCompleted
-            : null
-        );
+        if (isMounted) {
+          setHoursStudied(
+            typeof meRes?.student?.hoursStudied === 'number' ? meRes.student.hoursStudied : null
+          );
+          setSessionsCompleted(
+            typeof meRes?.student?.sessionsCompleted === 'number'
+              ? meRes.student.sessionsCompleted
+              : null
+          );
 
-        const subjects: SubjectStat[] =
-          Array.isArray(meRes?.student?.subjectProgress)
-            ? meRes.student.subjectProgress
-                .map((s: any) => ({
-                  name: String(s?.name ?? 'Subject'),
-                  progress: clampPercent(s?.progress),
-                }))
-                .slice(0, 6)
-            : [];
-        setSubjectStats(subjects);
+          const subjects: SubjectStat[] =
+            Array.isArray(meRes?.student?.subjectProgress)
+              ? meRes.student.subjectProgress
+                  .map((s: any) => ({
+                    name: String(s?.name ?? 'Subject'),
+                    progress: clampPercent(s?.progress),
+                  }))
+                  .slice(0, 6)
+              : [];
+          setSubjectStats(subjects);
+        }
       } catch (e) {
         console.error('Failed to load student stats:', e);
       } finally {
-        setLoadingStats(false);
+        if (isMounted) setLoadingStats(false);
       }
     })();
 
-  }, [authLoading, isAuthenticated]);
+    // Hide initial loader after short delay
+    setTimeout(() => {
+      if (isMounted) setInitialLoading(false);
+    }, 600);
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, isAuthenticated, user?.role]);
 
   // next session helpers
   const nextStartISO =
@@ -200,13 +219,14 @@ export default function StudentDashboard() {
   const tutorSubject =
     next?.tutor?.subjects?.[0]?.name || next?.tutor?.subject || next?.subject || '—';
 
-  // ✅ No global loading check - each section handles its own loading
-  if (authLoading) {
+  // ✅ Show full-page loader on initial mount
+  if (authLoading || initialLoading) {
     return (
-      <div className="container mx-auto px-4 py-6">
-        <header className="mb-6">
-          <h1 className="text-2xl font-extrabold">Loading...</h1>
-        </header>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-ocean-600 border-t-transparent"></div>
+          <p className="mt-4 text-lg text-slate-600">Loading your dashboard...</p>
+        </div>
       </div>
     );
   }

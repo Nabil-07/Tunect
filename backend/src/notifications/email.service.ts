@@ -8,15 +8,38 @@ export class EmailService {
 
   constructor() {
     // Configure email transporter
+    const host = process.env.SMTP_HOST;
+    const port = parseInt(process.env.SMTP_PORT || '587');
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASSWORD;
+
+    if (!host || !user || !pass) {
+      this.logger.warn(
+        'SMTP not fully configured in EmailService. Emails will be skipped. ' +
+        `Missing: ${!host ? 'SMTP_HOST ' : ''}${!user ? 'SMTP_USER ' : ''}${!pass ? 'SMTP_PASSWORD' : ''}`
+      );
+    }
+
     this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
+      host: host || 'smtp.gmail.com',
+      port,
       secure: false, // true for 465, false for other ports
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
+        user,
+        pass,
       },
     });
+
+    // Verify connection
+    if (host && user && pass) {
+      this.transporter.verify()
+        .then(() => {
+          this.logger.log('[EmailService] SMTP transporter verified successfully.');
+        })
+        .catch((error) => {
+          this.logger.error('[EmailService] SMTP verification failed:', error);
+        });
+    }
   }
 
   async sendSlotAvailableEmail(
@@ -26,7 +49,7 @@ export class EmailService {
   ): Promise<void> {
     try {
       const info = await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Tunect" <noreply@tunect.com>',
+        from: process.env.SMTP_FROM || '"Tunect" <no-reply@tunectnow.com>',
         to,
         subject: `🎓 New Slots Available with ${tutorName}!`,
         html: `
@@ -64,9 +87,11 @@ export class EmailService {
     tutorName: string,
     studentName: string,
   ): Promise<void> {
+    this.logger.log(`[EmailService] Attempting to send waitlist email to ${to}`);
+    
     try {
       const info = await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Tunect" <noreply@tunect.com>',
+        from: process.env.SMTP_FROM || '"Tunect" <no-reply@tunectnow.com>',
         to,
         subject: `⏰ You've been added to ${tutorName}'s waitlist`,
         html: `
@@ -86,9 +111,9 @@ export class EmailService {
         `,
       });
 
-      this.logger.log(`Waitlist email sent to ${to}: ${info.messageId}`);
+      this.logger.log(`[EmailService] ✅ Waitlist email sent to ${to}: ${info.messageId}`);
     } catch (error) {
-      this.logger.error(`Failed to send waitlist email to ${to}:`, error);
+      this.logger.error(`[EmailService] ❌ Failed to send waitlist email to ${to}:`, error);
     }
   }
 }

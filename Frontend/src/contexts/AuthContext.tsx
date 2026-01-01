@@ -1,3 +1,21 @@
+/**
+ * AuthContext.tsx
+ * 
+ * Manages user authentication state across the application.
+ * 
+ * TODO: Next Release - Multi-Account Switching Feature
+ * The following functionality has been commented out and deferred to next release:
+ * - switchAccount(): Switch between multiple logged-in accounts
+ * - addAccount(): Add additional accounts without logging out
+ * - removeAccount(): Remove saved accounts from storage
+ * - accounts state: List of all stored accounts
+ * - accountManager integration: Persistent multi-account storage
+ * 
+ * Related files to uncomment for multi-account feature:
+ * - Frontend/src/services/accountManager.ts
+ * - Frontend/src/lib/auth.ts (getAccessToken, setTokens, clearTokens)
+ * - Frontend/src/components/Navbar.tsx (Account switcher UI)
+ */
 import React, {
   createContext,
   useContext,
@@ -8,10 +26,11 @@ import React, {
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { me as fetchMe, logout as doLogout } from '../services/authService';
-import { readToken, setAuthHeader, getTimeLeftSec, refreshAccessToken } from '../lib/apiClient';
-import { getAccessToken, setTokens, clearTokens } from '../lib/auth';
-import { accountManager, type StoredAccount } from '../services/accountManager';
-import api from '../lib/apiClient';
+import { readToken, setAuthHeader, getTimeLeftSec, refreshAccessToken, writeToken, writeRefreshToken } from '../lib/apiClient';
+// TODO: Next Release - Multi-account imports
+// import { getAccessToken, setTokens, clearTokens } from '../lib/auth';
+// import { accountManager, type StoredAccount } from '../services/accountManager';
+// import api from '../lib/apiClient';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 type User = {
@@ -30,11 +49,11 @@ type AuthCtx = {
   isAuthenticated: boolean | null;
   setUser: React.Dispatch<React.SetStateAction<User>>;
   logout: () => void;
-  // Multi-account methods
-  accounts: StoredAccount[];
-  switchAccount: (accountId: string) => Promise<void>;
-  addAccount: (user: any, accessToken: string, refreshToken: string) => void;
-  removeAccount: (accountId: string) => void;
+  // TODO: Next Release - Multi-account methods
+  // accounts: StoredAccount[];
+  // switchAccount: (accountId: string) => Promise<void>;
+  // addAccount: (user: any, accessToken: string, refreshToken: string) => void;
+  // removeAccount: (accountId: string) => void;
 };
 
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
@@ -59,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const idleTimerRef = useRef<number | null>(null);
   const warnTimerRef = useRef<number | null>(null);
   const hasNavigated = useRef(false); // ✅ bounce guard
+  const isSwitchingAccount = useRef(false); // 🔄 account switch guard
 
   // Initial hydrate
   useEffect(() => {
@@ -72,9 +92,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!t) return;
         const u = await fetchMe();
         const resolved = (u as any)?.user ?? u ?? null;
-        if (alive) setUser(resolved);
-      } catch {
-        if (alive) setUser(null);
+        if (alive) {
+          setUser(resolved);
+          // Reset navigation guard when user is successfully loaded
+          if (resolved && hasProfile(resolved)) {
+            hasNavigated.current = false;
+          }
+        }
+      } catch (err: any) {
+        console.error('❌ Failed to fetch user on hydration:', err?.response?.status, err?.response?.data?.message);
+        // If token expired, try refresh before giving up
+        if (err?.response?.status === 401 || err?.response?.data?.message === 'jwt expired') {
+          console.log('⚠️ Token expired on mount, attempting refresh...');
+          try {
+            const newToken = await refreshAccessToken();
+            if (newToken && alive) {
+              console.log('✅ Refresh successful, retrying user fetch');
+              const u = await fetchMe();
+              const resolved = (u as any)?.user ?? u ?? null;
+              if (alive) setUser(resolved);
+            } else {
+              console.log('❌ Refresh failed, clearing session');
+              if (alive) {
+                setUser(null);
+                setToken(null);
+                writeToken(null);
+                writeRefreshToken(null);
+              }
+            }
+          } catch (refreshErr) {
+            console.error('❌ Refresh failed:', refreshErr);
+            if (alive) {
+              setUser(null);
+              setToken(null);
+              writeToken(null);
+              writeRefreshToken(null);
+            }
+          }
+        } else if (err?.response?.status >= 500 || err?.code === 'ERR_NETWORK') {
+          // Server error or network error - don't clear user, keep existing state
+          console.log('⚠️ Server/Network error during hydrate, keeping existing state');
+          // Don't clear user on server errors
+        } else {
+          // Other errors (404, etc.) - clear user
+          if (alive) {
+            setUser(null);
+            writeToken(null);
+            writeRefreshToken(null);
+          }
+        }
       } finally {
         if (alive) setLoading(false);
       }
@@ -90,15 +156,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 🧠 Redirect to /choose-role if logged in but no profile
   useEffect(() => {
-    if (loading || !token || hasNavigated.current) return;
+    // Don't redirect while loading, switching accounts, or if no token
+    if (loading || isSwitchingAccount.current || !token) return;
+    
+    // Don't redirect if we already navigated
+    if (hasNavigated.current) return;
 
     const path = loc.pathname || '';
     const onChoose = path.startsWith('/choose-role');
     const onAuth = path.startsWith('/login') || path.startsWith('/oauth');
+    
+    // Don't redirect if already on choose-role or auth pages
+    if (onChoose || onAuth) return;
 
-    if (!onChoose && !onAuth && !hasProfile(user)) {
+    // Only redirect if we have a token but user is explicitly null or missing profile
+    // Wait for user to be loaded (not just undefined)
+    if (user === null) {
+      // Token exists but user is null - likely invalid token
+      return;
+    }
+
+    // If user exists but has no profile, redirect to choose-role
+    if (user && !hasProfile(user)) {
+      console.log('⚠️ User has no profile, redirecting to choose-role');
       hasNavigated.current = true;
       nav('/choose-role', { replace: true });
+    } else if (user && hasProfile(user)) {
+      // User has profile, mark as navigated so we don't redirect again
+      hasNavigated.current = false;
     }
   }, [loading, token, user, loc.pathname, nav]);
 
@@ -123,15 +208,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    function onRefreshed() {
-      void rehydrate();
+    function onRefreshed(event: Event) {
+      const customEvent = event as CustomEvent;
+      const userData = customEvent.detail?.user;
+      
+      // Update token state FIRST before updating user to avoid race conditions
+      const freshToken = readToken();
+      if (freshToken && alive) {
+        setToken(freshToken);
+        setAuthHeader(freshToken);
+      }
+      
+      // Then update user data if provided, or fetch it
+      if (userData && alive) {
+        setUser(userData);
+        // Reset navigation guard when user is refreshed and has profile
+        if (hasProfile(userData)) {
+          hasNavigated.current = false;
+        }
+      } else if (freshToken && !user) {
+        // Only fetch profile if we don't already have user data
+        // This prevents unnecessary API calls during keepalive refreshes
+        void rehydrate();
+      }
     }
 
     function onUnauthorized() {
+      // Only clear if we actually have a session to clear
+      const hasSession = readToken() !== null || user !== null;
+      if (!hasSession) {
+        console.log('⚠️ onUnauthorized: No session to clear, ignoring');
+        return;
+      }
+      
+      console.log('🚨 Auth session invalidated - clearing tokens and redirecting');
+      // Reset navigation guard to allow fresh login
+      hasNavigated.current = false;
       setToken(null);
       setUser(null);
       setAuthHeader(null);
       localStorage.removeItem('role');
+      // Clear all token storage
+      writeToken(null);
+      writeRefreshToken(null);
+      // Redirect to login if not already there
+      const currentPath = window.location.pathname;
+      if (!currentPath.startsWith('/login') && !currentPath.startsWith('/signup')) {
+        nav('/login', { replace: true });
+      }
     }
 
     function onTokenUpdated() {
@@ -221,54 +345,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // consider "active" if any activity in last 2 minutes
       const activeRecently = Date.now() - lastActivityRef.current < 2 * 60 * 1000;
       const left = getTimeLeftSec(t) ?? 0;
-      if (activeRecently && left > 0 && left <= 120) {
+      // Only refresh if token has less than 2 minutes left AND user is active
+      // Increased from 120 to reduce unnecessary refreshes
+      if (activeRecently && left > 0 && left <= 60) {
+        console.log(`🔄 Keepalive: Refreshing token (${left}s left)`);
         await refreshAccessToken().catch(() => {});
       }
-    }, 60 * 1000);
+    }, 60 * 1000); // Check every minute
     return () => window.clearInterval(interval);
   }, []);
 
+  // TODO: Next Release - Multi-account switching
   // Multi-account state
-  const [accounts, setAccounts] = useState<StoredAccount[]>([]);
+  // const [accounts, setAccounts] = useState<StoredAccount[]>([]);
 
   // Load accounts on mount
-  useEffect(() => {
-    setAccounts(accountManager.getAllAccounts());
-  }, []);
+  // useEffect(() => {
+  //   setAccounts(accountManager.getAllAccounts());
+  // }, []);
 
+  // TODO: Next Release - Multi-account switching
   // Sync current token changes back to accountManager
   // This ensures when you switch accounts, you have the latest token
-  useEffect(() => {
-    if (!user?.id || !token) return;
+  // useEffect(() => {
+  //   if (!user?.id || !token) return;
 
-    const currentAccount = accountManager.getActiveAccount();
-    if (!currentAccount || currentAccount.id !== user.id) return;
+  //   const currentAccount = accountManager.getActiveAccount();
+  //   if (!currentAccount || currentAccount.id !== user.id) return;
 
-    // Check if token has changed
-    if (currentAccount.accessToken !== token) {
-      console.log('🔄 Syncing updated token to accountManager for user:', user.id);
-      accountManager.updateTokens(user.id, token);
-      setAccounts(accountManager.getAllAccounts());
-    }
+  //   // Check if token has changed
+  //   if (currentAccount.accessToken !== token) {
+  //     console.log('🔄 Syncing updated token to accountManager for user:', user.id);
+  //     accountManager.updateTokens(user.id, token);
+  //     setAccounts(accountManager.getAllAccounts());
+  //   }
 
-    // Check if user info has changed (name, avatar, email)
-    const infoChanged = 
-      currentAccount.name !== user.name ||
-      currentAccount.avatar !== user.avatar ||
-      currentAccount.email !== user.email;
+  //   // Check if user info has changed (name, avatar, email)
+  //   const infoChanged = 
+  //     currentAccount.name !== user.name ||
+  //     currentAccount.avatar !== user.avatar ||
+  //     currentAccount.email !== user.email;
 
-    if (infoChanged) {
-      console.log('🔄 Syncing updated user info to accountManager for user:', user.id);
-      accountManager.updateAccountInfo(user.id, {
-        name: user.name,
-        avatar: user.avatar,
-        email: user.email
-      });
-      setAccounts(accountManager.getAllAccounts());
-    }
-  }, [token, user]);
+  //   if (infoChanged) {
+  //     console.log('🔄 Syncing updated user info to accountManager for user:', user.id);
+  //     accountManager.updateAccountInfo(user.id, {
+  //       name: user.name,
+  //       avatar: user.avatar,
+  //       email: user.email
+  //     });
+  //     setAccounts(accountManager.getAllAccounts());
+  //   }
+  // }, [token, user]);
 
+  // TODO: Next Release - Multi-account switching
   // Multi-account methods
+  /*
   const switchAccount = async (accountId: string) => {
     console.log('🔄 switchAccount called with accountId:', accountId);
     const account = accountManager.switchAccount(accountId);
@@ -281,12 +412,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Validate that account has a valid access token
     if (!account.accessToken || account.accessToken.length === 0) {
       console.error('❌ Account has no valid access token, redirecting to login');
-      // Remove this invalid account and redirect to login
       accountManager.removeAccount(accountId);
       setAccounts(accountManager.getAllAccounts());
       window.location.href = '/login';
       return;
     }
+
+    // Set switching flag to prevent redirects during switch
+    isSwitchingAccount.current = true;
+    setLoading(true);
+
+    // Helper to handle failed account
+    const handleFailedAccount = (reason: string) => {
+      console.error('❌ Account switch failed:', reason);
+      accountManager.removeAccount(accountId);
+      setAccounts(accountManager.getAllAccounts());
+      setLoading(false);
+      isSwitchingAccount.current = false;
+      
+      const remainingAccounts = accountManager.getAllAccounts();
+      if (remainingAccounts.length > 0) {
+        alert(`${reason}\n\nYou have other accounts available.`);
+      } else {
+        alert(`${reason}\n\nPlease log in again.`);
+        window.location.href = '/login';
+      }
+    };
 
     // Write tokens to localStorage FIRST
     setTokens({ 
@@ -298,53 +449,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthHeader(account.accessToken);
     setToken(account.accessToken);
     
+    // Reset navigation guard
+    hasNavigated.current = false;
+    
     // Update role in localStorage
     try {
       localStorage.setItem('role', account.role);
     } catch {}
 
-    // Verify token is valid with the newly set token
+    // Verify token with timeout
+    const VALIDATION_TIMEOUT = 10000;
+    
     try {
       console.log('🔄 Testing account token validity...');
-      const response = await api.get('/users/me');
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Validation timeout')), VALIDATION_TIMEOUT);
+      });
+      
+      const response = await Promise.race([
+        api.get('/users/me'),
+        timeoutPromise
+      ]) as any;
       
       if (response.data) {
         console.log('✅ Token is valid, redirecting to dashboard');
-        // Token is valid, redirect to dashboard
-        const role = account.role.toUpperCase();
+        const userData = response.data.user || response.data;
+        
+        // Update account manager with latest data
+        setAccounts(accountManager.getAllAccounts());
+        
+        // Determine dashboard path
+        const roleUpper = account.role.toUpperCase();
         let targetPath = '/student/dashboard';
-        if (role === 'ADMIN') {
+        if (roleUpper === 'ADMIN') {
           targetPath = '/admin/dashboard';
-        } else if (role === 'TUTOR') {
+        } else if (roleUpper === 'TUTOR') {
           targetPath = '/tutor/dashboard';
         }
         
-        setAccounts(accountManager.getAllAccounts());
+        // Use full page reload for cleaner state reset
+        console.log('✅ Full page reload to:', targetPath);
         window.location.href = targetPath;
         return;
       }
     } catch (error: any) {
-      console.log('⚠️ Token validation failed, attempting refresh...');
+      console.log('⚠️ Token validation failed:', error.message);
       
-      // Token might be expired, try to refresh it
+      // Try refresh if token is expired
       if (account.refreshToken) {
         try {
-          const refreshResponse = await api.post('/auth/refresh', {
-            refreshToken: account.refreshToken
+          console.log('🔄 Attempting token refresh...');
+          
+          const refreshTimeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Refresh timeout')), VALIDATION_TIMEOUT);
           });
+          
+          const refreshResponse = await Promise.race([
+            api.post('/auth/refresh', { refreshToken: account.refreshToken }),
+            refreshTimeoutPromise
+          ]) as any;
           
           if (refreshResponse.data?.access_token) {
             console.log('✅ Token refreshed successfully');
             const newAccessToken = refreshResponse.data.access_token;
             const newRefreshToken = refreshResponse.data.refresh_token || account.refreshToken;
             
-            // Update tokens in storage
+            // Update tokens
             setTokens({ 
               accessToken: newAccessToken, 
               refreshToken: newRefreshToken 
             });
-            
-            // Update auth header
             setAuthHeader(newAccessToken);
             setToken(newAccessToken);
             
@@ -352,33 +527,190 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             accountManager.updateTokens(accountId, newAccessToken, newRefreshToken);
             setAccounts(accountManager.getAllAccounts());
             
-            // Redirect to dashboard
-            const role = account.role.toUpperCase();
+            // Determine dashboard path
+            const roleUpper = account.role.toUpperCase();
             let targetPath = '/student/dashboard';
-            if (role === 'ADMIN') {
+            if (roleUpper === 'ADMIN') {
               targetPath = '/admin/dashboard';
-            } else if (role === 'TUTOR') {
+            } else if (roleUpper === 'TUTOR') {
               targetPath = '/tutor/dashboard';
             }
             
+            // Use full page reload
+            console.log('✅ Full page reload after refresh to:', targetPath);
             window.location.href = targetPath;
             return;
           }
-        } catch (refreshError) {
-          console.error('❌ Token refresh failed:', refreshError);
+        } catch (refreshError: any) {
+          console.error('❌ Token refresh failed:', refreshError.message);
+          handleFailedAccount('This account session has expired and cannot be refreshed.');
+          return;
         }
       }
       
-      // If we get here, both validation and refresh failed
-      console.error('❌ Account token is expired and cannot be refreshed, removing account');
-      accountManager.removeAccount(accountId);
-      setAccounts(accountManager.getAllAccounts());
-      alert('This account session has expired. Please log in again.');
-      window.location.href = '/login';
+      handleFailedAccount('This account session has expired.');
       return;
     }
   };
 
+  // TODO: Next Release - Multi-account switching
+  /*
+  const switchAccount = async (accountId: string) => {
+    console.log('🔄 switchAccount called with accountId:', accountId);
+    const account = accountManager.switchAccount(accountId);
+    console.log('🔄 Retrieved account from accountManager:', account);
+    if (!account) {
+      console.error('❌ No account found for ID:', accountId);
+      return;
+    }
+
+    // Validate that account has a valid access token
+    if (!account.accessToken || account.accessToken.length === 0) {
+      console.error('❌ Account has no valid access token, redirecting to login');
+      accountManager.removeAccount(accountId);
+      setAccounts(accountManager.getAllAccounts());
+      window.location.href = '/login';
+      return;
+    }
+
+    // Set switching flag to prevent redirects during switch
+    isSwitchingAccount.current = true;
+    setLoading(true);
+
+    // Helper to handle failed account
+    const handleFailedAccount = (reason: string) => {
+      console.error('❌ Account switch failed:', reason);
+      accountManager.removeAccount(accountId);
+      setAccounts(accountManager.getAllAccounts());
+      setLoading(false);
+      isSwitchingAccount.current = false;
+      
+      const remainingAccounts = accountManager.getAllAccounts();
+      if (remainingAccounts.length > 0) {
+        alert(`${reason}\n\nYou have other accounts available.`);
+      } else {
+        alert(`${reason}\n\nPlease log in again.`);
+        window.location.href = '/login';
+      }
+    };
+
+    // Write tokens to localStorage FIRST
+    setTokens({ 
+      accessToken: account.accessToken, 
+      refreshToken: account.refreshToken 
+    });
+    
+    // Update auth header immediately
+    setAuthHeader(account.accessToken);
+    setToken(account.accessToken);
+    
+    // Reset navigation guard
+    hasNavigated.current = false;
+    
+    // Update role in localStorage
+    try {
+      localStorage.setItem('role', account.role);
+    } catch {}
+
+    // Verify token with timeout
+    const VALIDATION_TIMEOUT = 10000;
+    
+    try {
+      console.log('🔄 Testing account token validity...');
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Validation timeout')), VALIDATION_TIMEOUT);
+      });
+      
+      const response = await Promise.race([
+        api.get('/users/me'),
+        timeoutPromise
+      ]) as any;
+      
+      if (response.data) {
+        console.log('✅ Token is valid, redirecting to dashboard');
+        const userData = response.data.user || response.data;
+        
+        // Update account manager with latest data
+        setAccounts(accountManager.getAllAccounts());
+        
+        // Determine dashboard path
+        const roleUpper = account.role.toUpperCase();
+        let targetPath = '/student/dashboard';
+        if (roleUpper === 'ADMIN') {
+          targetPath = '/admin/dashboard';
+        } else if (roleUpper === 'TUTOR') {
+          targetPath = '/tutor/dashboard';
+        }
+        
+        // Use full page reload for cleaner state reset
+        console.log('✅ Full page reload to:', targetPath);
+        window.location.href = targetPath;
+        return;
+      }
+    } catch (error: any) {
+      console.log('⚠️ Token validation failed:', error.message);
+      
+      // Try refresh if token is expired
+      if (account.refreshToken) {
+        try {
+          console.log('🔄 Attempting token refresh...');
+          
+          const refreshTimeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Refresh timeout')), VALIDATION_TIMEOUT);
+          });
+          
+          const refreshResponse = await Promise.race([
+            api.post('/auth/refresh', { refresh_token: account.refreshToken }),
+            refreshTimeoutPromise
+          ]) as any;
+          
+          if (refreshResponse.data?.access_token) {
+            console.log('✅ Token refreshed successfully');
+            const newAccessToken = refreshResponse.data.access_token;
+            const newRefreshToken = refreshResponse.data.refresh_token || account.refreshToken;
+            
+            // Update tokens
+            setTokens({ 
+              accessToken: newAccessToken, 
+              refreshToken: newRefreshToken 
+            });
+            setAuthHeader(newAccessToken);
+            setToken(newAccessToken);
+            
+            // Update account manager
+            accountManager.updateTokens(accountId, newAccessToken, newRefreshToken);
+            setAccounts(accountManager.getAllAccounts());
+            
+            // Determine dashboard path
+            const roleUpper = account.role.toUpperCase();
+            let targetPath = '/student/dashboard';
+            if (roleUpper === 'ADMIN') {
+              targetPath = '/admin/dashboard';
+            } else if (roleUpper === 'TUTOR') {
+              targetPath = '/tutor/dashboard';
+            }
+            
+            // Use full page reload
+            console.log('✅ Full page reload after refresh to:', targetPath);
+            window.location.href = targetPath;
+            return;
+          }
+        } catch (refreshError: any) {
+          console.error('❌ Token refresh failed:', refreshError.message);
+          handleFailedAccount('This account session has expired and cannot be refreshed.');
+          return;
+        }
+      }
+      
+      handleFailedAccount('This account session has expired.');
+      return;
+    }
+  };
+  */
+
+  // TODO: Next Release - Multi-account add/remove handlers
+  /*
   const addAccountHandler = (user: any, accessToken: string, refreshToken: string) => {
     accountManager.addAccount(user, accessToken, refreshToken);
     setAccounts(accountManager.getAllAccounts());
@@ -404,6 +736,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
   };
+  */
 
   const value = useMemo<AuthCtx>(
     () => ({
@@ -413,27 +746,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: loading ? null : !!token,
       setUser,
       logout: () => {
-        // Logout current account only (explicit logout)
-        if (user?.id) {
-          removeAccountHandler(user.id);
-        } else {
-          // Fallback: logout completely
-          accountManager.clearAll();
-          doLogout();
-          setAuthHeader(null);
-          setToken(null);
-          setUser(null);
-          localStorage.removeItem('role');
-          nav('/login', { replace: true });
-        }
+        // TODO: Next Release - Multi-account aware logout
+        // For now, simple logout that clears everything
+        doLogout();
+        setAuthHeader(null);
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem('role');
+        nav('/login', { replace: true });
       },
-      // Multi-account methods
-      accounts,
-      switchAccount,
-      addAccount: addAccountHandler,
-      removeAccount: removeAccountHandler,
+      // TODO: Next Release - Multi-account methods
+      // accounts,
+      // switchAccount,
+      // addAccount: addAccountHandler,
+      // removeAccount: removeAccountHandler,
     }),
-    [user, token, loading, accounts, nav],
+    [user, token, loading, nav],
   );
 
   return (

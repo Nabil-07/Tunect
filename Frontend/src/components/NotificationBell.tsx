@@ -3,29 +3,46 @@ import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "../lib/apiClient";
+import { useAuth } from "../contexts/AuthContext";
 
 type Notification = {
   id: string;
   message: string;
   createdAt: string;
   bookingId?: string;
+  isRead?: boolean;
 };
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
+  const { user } = useAuth();
+
+  const loadNotifications = async () => {
+    try {
+      const res = await api.get("/notifications/my");
+      setItems(res.data || []);
+    } catch (err) {
+      console.error("Failed to load notifications", err);
+    }
+  };
 
   useEffect(() => {
-    async function load() {
-      try {
-        const res = await api.get("/notifications/my");
-        setItems(res.data || []);
-      } catch (err) {
-        console.error("Failed to load notifications", err);
-      }
-    }
-    load();
+    loadNotifications();
+
+    // Listen for notification updates from the notifications page
+    const handleUpdate = () => {
+      loadNotifications();
+    };
+
+    window.addEventListener('notifications:updated', handleUpdate);
+
+    return () => {
+      window.removeEventListener('notifications:updated', handleUpdate);
+    };
   }, []);
+
+  const unreadCount = items.filter(n => !n.isRead).length;
 
   return (
     <div className="relative">
@@ -34,9 +51,9 @@ export default function NotificationBell() {
         onClick={() => setOpen((prev) => !prev)}
       >
         <Bell className="w-6 h-6" />
-        {items.length > 0 && (
+        {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1">
-            {items.length}
+            {unreadCount}
           </span>
         )}
       </button>
@@ -65,7 +82,7 @@ export default function NotificationBell() {
           )}
           <div className="p-2 text-center">
             <Link
-              to="/student/notifications"
+              to={user?.role === 'TUTOR' ? "/tutor/notifications" : "/student/notifications"}
               className="text-blue-600 text-sm hover:underline"
             >
               View all

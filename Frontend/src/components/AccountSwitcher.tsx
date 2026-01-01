@@ -3,8 +3,9 @@ import { useAuth } from '../contexts/AuthContext';
 import type { StoredAccount } from '../services/accountManager';
 
 export function AccountSwitcher() {
-  const { user, accounts, switchAccount, removeAccount } = useAuth();
+  const { user, accounts, switchAccount, removeAccount, loading } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Debug logs
@@ -193,9 +194,11 @@ export function AccountSwitcher() {
                 <AccountItem
                   key={account.id}
                   account={account}
-                  onClick={() => {
-                    switchAccount(account.id);
+                  onClick={async () => {
+                    setSwitchingTo(account.id);
                     setIsOpen(false);
+                    await switchAccount(account.id);
+                    setSwitchingTo(null);
                   }}
                 />
               ))}
@@ -235,6 +238,21 @@ export function AccountSwitcher() {
           {/* Account Count */}
           <div className="px-3 py-2 border-t border-gray-200 text-xs text-gray-500">
             {accounts?.length || 0} {(accounts?.length || 0) === 1 ? 'account' : 'accounts'}
+          </div>
+        </div>
+      )}
+
+      {/* Loading overlay when switching accounts */}
+      {(loading || switchingTo) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 shadow-xl max-w-sm mx-4">
+            <div className="flex items-center gap-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+              <div>
+                <p className="text-lg font-semibold text-gray-900">Switching Account...</p>
+                <p className="text-sm text-gray-600">Please wait</p>
+              </div>
+            </div>
           </div>
         </div>
       )}

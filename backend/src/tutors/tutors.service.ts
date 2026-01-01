@@ -474,6 +474,8 @@ export class TutorsService {
     const updatesUser: any = {};
 
     if (typeof body?.bio === 'string') updatesTutor.bio = body.bio;
+    if (typeof body?.summary === 'string') updatesTutor.summary = body.summary;
+    if (typeof body?.qualifications === 'string') updatesTutor.qualifications = body.qualifications;
 
     if (Array.isArray(body?.subjects)) {
       updatesTutor.subjects = body.subjects
@@ -485,6 +487,22 @@ export class TutorsService {
       updatesTutor.languages = body.languages
         .map((l: any) => String(l).trim())
         .filter(Boolean);
+    }
+
+    if (Array.isArray(body?.degrees)) {
+      updatesTutor.degrees = body.degrees
+        .map((d: any) => String(d).trim())
+        .filter(Boolean);
+    }
+
+    if (Array.isArray(body?.classesTeach)) {
+      updatesTutor.classesTeach = body.classesTeach
+        .map((c: any) => String(c).trim())
+        .filter(Boolean);
+    }
+
+    if (body?.yearsExperience !== undefined && Number.isFinite(Number(body.yearsExperience))) {
+      updatesTutor.yearsExperience = Number(body.yearsExperience);
     }
 
     if (body?.hourlyRate !== undefined && Number.isFinite(Number(body.hourlyRate))) {

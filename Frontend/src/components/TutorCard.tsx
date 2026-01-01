@@ -157,8 +157,12 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
     return onMessage ? onMessage(tutor.id) : nav(`/student/messages?to=${tutor.id}`);
   };
 
+  const viewProfile = () => {
+    nav(`/tutor/${tutor.id}`);
+  };
+
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md relative">
+    <article className="rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md relative cursor-pointer" onClick={viewProfile}>
       {toast && (
         <div className="absolute top-4 left-4 right-4 z-50 flex items-center gap-2 rounded-lg bg-yellow-50 border border-yellow-300 px-4 py-3 text-sm text-yellow-800 shadow-lg">
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
@@ -294,7 +298,10 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
 
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <button
-            onClick={goMsg}
+            onClick={(e) => {
+              e.stopPropagation();
+              goMsg();
+            }}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
             <MessageSquare className="h-4 w-4" />
@@ -302,7 +309,10 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
           </button>
 
           <button
-            onClick={goBook}
+            onClick={(e) => {
+              e.stopPropagation();
+              goBook();
+            }}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700"
           >
             {tutor.demoUsed 
