@@ -232,7 +232,7 @@ export class SessionNotesService {
 
     // Generate AI summary
     const aiResult = await this.openaiService.generateSessionNotes({
-      chatMessages,
+      chatMessages: chatMessages.filter((msg): msg is string => msg !== null),
       tutorNotes: existingNotes?.content,
       sessionTopic: booking.notes || undefined,
       duration,

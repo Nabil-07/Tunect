@@ -211,7 +211,7 @@ export default function SlotPicker({
                 No available slots at the moment
               </p>
               <p className="text-xs text-purple-700">
-                Click "Notify Me" below to get an email when this tutor adds new availability
+                Click "Notify Me" below to get notified in the app when this tutor adds new availability
               </p>
             </div>
           ) : (
@@ -294,7 +294,7 @@ export default function SlotPicker({
         open={showNotification}
         onClose={handleNotificationClose}
         title="Added to Waitlist!"
-        message="You will be notified via email when this tutor adds new availability."
+        message="You will be notified in the app when this tutor adds new availability."
         type="success"
         confirmText="Got it!"
       />

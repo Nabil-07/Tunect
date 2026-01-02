@@ -20,6 +20,7 @@ import { WaitlistService } from '../waitlist/waitlist.service';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { GoogleMeetService } from '../google-meet/google-meet.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
+import { ChatTriggersService } from '../messages/chat-triggers.service';
 
 const TOKENS_PER_HOUR = Number(process.env.TOKENS_PER_HOUR ?? 1);
 const MIN_BLOCK_MINUTES = 15;
@@ -32,6 +33,7 @@ export class BookingsService {
     private notifications: NotificationsService,
     private googleMeet: GoogleMeetService,
     private waitlistService: WaitlistService,
+    private chatTriggers: ChatTriggersService,
   ) {}
 
   // ---------- utils ----------
@@ -213,7 +215,7 @@ export class BookingsService {
           data: { status: BookingStatus.CANCELED },
         });
 
-        return this.prisma.booking.create({
+        const booking = await this.prisma.booking.create({
           data: {
             tutorId: dto.tutorId,
             studentId: dto.studentId!,
@@ -224,7 +226,24 @@ export class BookingsService {
             tokensCharged: new Prisma.Decimal(0),
             notes: dto.notes,
           },
+          include: {
+            student: { select: { userId: true } },
+            tutor: { select: { userId: true } },
+          },
         });
+
+        // Create direct chat conversation
+        try {
+          await this.chatTriggers.onDirectBookingCreated(
+            booking.id,
+            booking.tutor.userId,
+            booking.student.userId,
+          );
+        } catch (error) {
+          console.error('Failed to create chat conversation:', error);
+        }
+
+        return booking;
       }
 
       // No specific time chosen: add to waitlist for generic notification
@@ -327,6 +346,10 @@ export class BookingsService {
           tokensCharged: new Prisma.Decimal(cost),
           notes: dto.notes,
         },
+        include: {
+          student: { select: { userId: true } },
+          tutor: { select: { userId: true } },
+        },
       });
 
       await tx.student.update({
@@ -343,6 +366,17 @@ export class BookingsService {
           bookingId: booking.id,
         },
       });
+
+      // Create direct chat conversation
+      try {
+        await this.chatTriggers.onDirectBookingCreated(
+          booking.id,
+          booking.tutor.userId,
+          booking.student.userId,
+        );
+      } catch (error) {
+        console.error('Failed to create chat conversation:', error);
+      }
 
       return booking;
     });

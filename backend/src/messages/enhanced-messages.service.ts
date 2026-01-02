@@ -1,0 +1,634 @@
+// src/messages/enhanced-messages.service.ts
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { RequestContext } from '../common/request-context';
+import { CreateBroadcastDto } from './dto/create-broadcast.dto';
+import { AddMembersDto, RemoveMembersDto } from './dto/manage-members.dto';
+import { 
+  ConversationType, 
+  ConversationMemberRole, 
+  MessageAuditAction,
+  Role as DbRole 
+} from '@prisma/client';
+
+const MAX_MESSAGE_LEN = 2000;
+const MESSAGE_RATE_LIMIT = 10; // messages per minute
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute in ms
+
+interface TokenBalance {
+  balance: number;
+  hasTokens: boolean;
+}
+
+@Injectable()
+export class EnhancedMessagesService {
+  private readonly messageTimestamps = new Map<string, number[]>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ctx: RequestContext,
+    @Inject(forwardRef(() => require('./messages.gateway').MessagesGateway))
+    private readonly messagesGateway: any,
+  ) {}
+
+  /**
+   * POST MESSAGE with token gating and permission checks
+   */
+  async postMessage(conversationId: string, content: string) {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    // Validate content
+    const text = (content ?? '').trim();
+    if (!text) throw new BadRequestException('Message content is required');
+    if (text.length > MAX_MESSAGE_LEN) {
+      throw new BadRequestException(`Message too long (max ${MAX_MESSAGE_LEN} chars)`);
+    }
+
+    // Rate limiting
+    this.checkRateLimit(userId);
+
+    // Get conversation with members
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        student: { select: { id: true, userId: true } },
+        tutor: { select: { id: true, userId: true } },
+        members: {
+          where: { leftAt: null },
+          include: { user: { select: { id: true, role: true } } },
+        },
+      },
+    });
+
+    if (!conversation) throw new NotFoundException('Conversation not found');
+    if (!conversation.isActive) throw new BadRequestException('Conversation is archived');
+
+    // Check membership
+    const member = conversation.members.find((m) => m.userId === userId);
+    if (!member) throw new ForbiddenException('You are not a member of this conversation');
+
+    // Check token balance for DIRECT conversations
+    if (conversation.type === ConversationType.DIRECT) {
+      // Determine the tutor for this conversation
+      if (conversation.tutor && conversation.student?.userId === userId) {
+        // Current user is the student, check they have tokens with this tutor
+        const tokenBalance = await this.checkTokenBalance(userId, conversation.tutor.id);
+        if (!tokenBalance.hasTokens) {
+          throw new ForbiddenException(
+            'You need to purchase tokens with this tutor before you can send messages.'
+          );
+        }
+      }
+    }
+
+    // Read-only check for broadcasts
+    if (conversation.type === ConversationType.ADMIN_BROADCAST) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (user?.role !== DbRole.ADMIN) {
+        throw new ForbiddenException('Only admins can send messages in broadcast conversations');
+      }
+    }
+
+    // Create message
+    const message = await this.prisma.message.create({
+      data: {
+        conversationId,
+        senderId: userId,
+        content: text,
+        text: text, // legacy field
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        senderId: true,
+        content: true,
+        isDeleted: true,
+        createdAt: true,
+      },
+    });
+
+    // Create audit log
+    await this.prisma.messageAuditLog.create({
+      data: {
+        messageId: message.id,
+        action: MessageAuditAction.CREATED,
+        performedBy: userId,
+      },
+    });
+
+    // Emit WebSocket event for real-time updates
+    if (this.messagesGateway) {
+      await this.messagesGateway.emitNewMessage(conversationId, message);
+    }
+
+    return message;
+  }
+
+  /**
+   * SOFT DELETE MESSAGE (admin only)
+   */
+  async deleteMessage(messageId: string) {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    // Check admin permission
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.role !== DbRole.ADMIN) {
+      throw new ForbiddenException('Only admins can delete messages');
+    }
+
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+    });
+
+    if (!message) throw new NotFoundException('Message not found');
+    if (message.isDeleted) throw new BadRequestException('Message already deleted');
+
+    // Soft delete
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        isDeleted: true,
+        deletedBy: userId,
+        deletedAt: new Date(),
+      },
+    });
+
+    // Create audit log
+    await this.prisma.messageAuditLog.create({
+      data: {
+        messageId,
+        action: MessageAuditAction.DELETED,
+        performedBy: userId,
+      },
+    });
+
+    return { success: true, message: 'Message deleted successfully' };
+  }
+
+  /**
+   * CREATE ADMIN BROADCAST GROUP
+   */
+  async createBroadcast(dto: CreateBroadcastDto) {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    // Check admin permission
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.role !== DbRole.ADMIN) {
+      throw new ForbiddenException('Only admins can create broadcast groups');
+    }
+
+    // Validate member IDs
+    const members = await this.prisma.user.findMany({
+      where: { id: { in: dto.memberIds } },
+      select: { id: true },
+    });
+
+    if (members.length !== dto.memberIds.length) {
+      throw new BadRequestException('Some user IDs are invalid');
+    }
+
+    // Create conversation
+    const conversation = await this.prisma.conversation.create({
+      data: {
+        type: ConversationType.ADMIN_BROADCAST,
+        isActive: true,
+        members: {
+          create: [
+            {
+              userId,
+              role: ConversationMemberRole.ADMIN,
+            },
+            ...dto.memberIds.map((memberId) => ({
+              userId: memberId,
+              role: ConversationMemberRole.MEMBER,
+            })),
+          ],
+        },
+      },
+      include: {
+        members: {
+          include: {
+            user: { select: { id: true, email: true, name: true } },
+          },
+        },
+      },
+    });
+
+    // Send initial message if provided
+    if (dto.initialMessage) {
+      await this.prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: userId,
+          content: dto.initialMessage,
+          text: dto.initialMessage,
+        },
+      });
+    }
+
+    return conversation;
+  }
+
+  /**
+   * ADD MEMBERS TO BROADCAST
+   */
+  async addMembers(conversationId: string, dto: AddMembersDto) {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const conversation = await this.getConversationForAdmin(userId, conversationId);
+
+    if (conversation.type !== ConversationType.ADMIN_BROADCAST) {
+      throw new BadRequestException('Can only add members to broadcast conversations');
+    }
+
+    // Validate user IDs
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: dto.userIds } },
+      select: { id: true },
+    });
+
+    if (users.length !== dto.userIds.length) {
+      throw new BadRequestException('Some user IDs are invalid');
+    }
+
+    // Add members
+    const createData = dto.userIds.map((memberId) => ({
+      conversationId,
+      userId: memberId,
+      role: ConversationMemberRole.MEMBER,
+    }));
+
+    await this.prisma.conversationMember.createMany({
+      data: createData,
+      skipDuplicates: true,
+    });
+
+    return { success: true, message: 'Members added successfully' };
+  }
+
+  /**
+   * REMOVE MEMBERS FROM BROADCAST
+   */
+  async removeMembers(conversationId: string, dto: RemoveMembersDto) {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const conversation = await this.getConversationForAdmin(userId, conversationId);
+
+    if (conversation.type !== ConversationType.ADMIN_BROADCAST) {
+      throw new BadRequestException('Can only remove members from broadcast conversations');
+    }
+
+    // Mark members as left
+    await this.prisma.conversationMember.updateMany({
+      where: {
+        conversationId,
+        userId: { in: dto.userIds },
+      },
+      data: {
+        leftAt: new Date(),
+      },
+    });
+
+    return { success: true, message: 'Members removed successfully' };
+  }
+
+  /**
+   * GET CONVERSATION DETAILS with permissions
+   */
+  async getConversation(conversationId: string) {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        student: { select: { id: true, userId: true, user: { select: { name: true, email: true } } } },
+        tutor: { select: { id: true, userId: true, user: { select: { name: true, email: true } } } },
+        members: {
+          where: { leftAt: null },
+          include: {
+            user: {
+              select: { id: true, email: true, name: true, role: true },
+            },
+          },
+        },
+        messages: {
+          take: 50,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            senderId: true,
+            content: true,
+            isDeleted: true,
+            deletedBy: true,
+            deletedAt: true,
+            createdAt: true,
+            sender: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!conversation) throw new NotFoundException('Conversation not found');
+
+    // Check permission
+    const isMember = conversation.members.some((m) => m.userId === userId);
+    const isAdmin = user?.role === DbRole.ADMIN;
+
+    if (!isMember && !isAdmin) {
+      throw new ForbiddenException('You do not have access to this conversation');
+    }
+
+    // Check token balance for gating info (only for students, not tutors)
+    let tokenBalance: TokenBalance | null = null;
+    if (
+      conversation.type === ConversationType.DIRECT ||
+      conversation.type === ConversationType.GROUP_SESSION
+    ) {
+      // For DIRECT chats, check balance only if current user is the student
+      if (conversation.type === ConversationType.DIRECT) {
+        // Only check tokens if current user is the student
+        if (conversation.student?.userId === userId && conversation.tutor) {
+          const tutorId = conversation.tutor.id; // Use tutor.id (Tutor model ID)
+          tokenBalance = await this.checkTokenBalance(userId, tutorId);
+        }
+        // If current user is the tutor, no token check needed (tutorId stays null)
+      }
+    }
+
+    // Determine if user can post
+    const canPost = this.canUserPost(conversation.type, user?.role, isMember, tokenBalance);
+
+    // Determine conversation name for DIRECT chats
+    let conversationName: string | undefined;
+    if (conversation.type === ConversationType.DIRECT) {
+      if (conversation.student?.userId === userId && conversation.tutor) {
+        conversationName = conversation.tutor.user.name || conversation.tutor.user.email;
+      } else if (conversation.tutor?.userId === userId && conversation.student) {
+        conversationName = conversation.student.user.name || conversation.student.user.email;
+      }
+    }
+
+    return {
+      id: conversation.id,
+      type: conversation.type,
+      name: conversationName,
+      referenceId: conversation.referenceId,
+      isActive: conversation.isActive,
+      createdAt: conversation.createdAt,
+      members: conversation.members,
+      messages: conversation.messages.reverse().map((m) => ({
+        ...m,
+        content: m.isDeleted ? 'Message removed by admin' : m.content,
+      })),
+      canPost,
+      tokenBalance,
+    };
+  }
+
+  /**
+   * LIST ALL CONVERSATIONS for user
+   */
+  async listConversations() {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const conversations = await this.prisma.conversation.findMany({
+      where: {
+        members: {
+          some: {
+            userId,
+            leftAt: null,
+          },
+        },
+      },
+      include: {
+        student: { select: { userId: true, user: { select: { name: true, email: true } } } },
+        tutor: { select: { userId: true, user: { select: { name: true, email: true } } } },
+        members: {
+          where: { leftAt: null },
+          include: {
+            user: { select: { id: true, name: true, email: true, role: true } },
+          },
+        },
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            content: true,
+            isDeleted: true,
+            createdAt: true,
+            senderId: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Remove duplicates - keep only the most recent conversation per student-tutor pair
+    const uniqueConversations = new Map<string, typeof conversations[0]>();
+    
+    for (const c of conversations) {
+      if (!c.student || !c.tutor) continue;
+      
+      const key = `${c.student.userId}-${c.tutor.userId}`;
+      const existing = uniqueConversations.get(key);
+      
+      // Keep the one with messages, or the most recent one
+      if (!existing || 
+          (c.messages.length > 0 && existing.messages.length === 0) ||
+          (c.messages.length === existing.messages.length && c.createdAt > existing.createdAt)) {
+        uniqueConversations.set(key, c);
+      }
+    }
+
+    return Array.from(uniqueConversations.values()).map((c) => {
+      // Determine conversation name based on type and current user
+      let conversationName = 'Chat';
+      if (c.type === ConversationType.DIRECT) {
+        // For DIRECT chats, show the OTHER person's name
+        if (c.student?.userId === userId && c.tutor) {
+          conversationName = c.tutor.user.name || c.tutor.user.email;
+        } else if (c.tutor?.userId === userId && c.student) {
+          conversationName = c.student.user.name || c.student.user.email;
+        }
+      } else if (c.type === ConversationType.GROUP_SESSION) {
+        conversationName = 'Group Session';
+      } else if (c.type === ConversationType.ADMIN_BROADCAST) {
+        conversationName = 'Announcement';
+      }
+
+      return {
+        id: c.id,
+        type: c.type,
+        name: conversationName,
+        referenceId: c.referenceId,
+        isActive: c.isActive,
+        memberCount: c.members.length,
+        lastMessage: c.messages[0]
+          ? {
+              ...c.messages[0],
+              content: c.messages[0].isDeleted ? 'Message removed by admin' : c.messages[0].content,
+            }
+          : null,
+        createdAt: c.createdAt,
+      };
+    });
+  }
+
+  /**
+   * EXPORT CONVERSATION (admin only)
+   */
+  async exportConversation(conversationId: string) {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.role !== DbRole.ADMIN) {
+      throw new ForbiddenException('Only admins can export conversations');
+    }
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        members: {
+          include: {
+            user: { select: { id: true, email: true, name: true } },
+          },
+        },
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            sender: { select: { id: true, email: true, name: true } },
+            auditLogs: {
+              include: {
+                user: { select: { id: true, email: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!conversation) throw new NotFoundException('Conversation not found');
+
+    return {
+      conversation: {
+        id: conversation.id,
+        type: conversation.type,
+        referenceId: conversation.referenceId,
+        createdAt: conversation.createdAt,
+        members: conversation.members,
+      },
+      messages: conversation.messages,
+      exportedAt: new Date(),
+      exportedBy: { id: userId, email: user.email, name: user.name },
+    };
+  }
+
+  // ===== HELPER METHODS =====
+
+  private async checkTokenBalance(userId: string, tutorId: string | null = null): Promise<TokenBalance> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { student: true },
+    });
+
+    if (!user?.student) {
+      return { balance: 0, hasTokens: false };
+    }
+
+    // If tutorId is provided, check per-tutor balance
+    if (tutorId) {
+      const tutorBalance = await this.prisma.tutorTokenBalance.findUnique({
+        where: {
+          studentId_tutorId: {
+            studentId: user.student.id,
+            tutorId: tutorId,
+          },
+        },
+      });
+
+      if (!tutorBalance) {
+        return { balance: 0, hasTokens: false };
+      }
+
+      const balance = Number(tutorBalance.balance);
+      return { balance, hasTokens: balance > 0 };
+    }
+
+    // Otherwise, check overall token balance (legacy)
+    const balance = user.student.tokens || 0;
+    return { balance, hasTokens: balance > 0 };
+  }
+
+  private canUserPost(
+    type: ConversationType,
+    userRole: DbRole | null | undefined,
+    isMember: boolean,
+    tokenBalance: TokenBalance | null,
+  ): boolean {
+    if (!isMember) return false;
+
+    if (type === ConversationType.ADMIN_BROADCAST) {
+      return userRole === DbRole.ADMIN;
+    }
+
+    if (type === ConversationType.DIRECT || type === ConversationType.GROUP_SESSION) {
+      // If tokenBalance is null, user is a tutor (no check needed) - allow posting
+      // If tokenBalance exists, user is a student - check if they have tokens
+      return tokenBalance === null ? true : tokenBalance.hasTokens;
+    }
+
+    return true;
+  }
+
+  private async getConversationForAdmin(userId: string, conversationId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.role !== DbRole.ADMIN) {
+      throw new ForbiddenException('Admin access required');
+    }
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+
+    if (!conversation) throw new NotFoundException('Conversation not found');
+    return conversation;
+  }
+
+  private checkRateLimit(userId: string) {
+    const now = Date.now();
+    const timestamps = this.messageTimestamps.get(userId) || [];
+
+    // Remove timestamps outside the window
+    const recentTimestamps = timestamps.filter((ts) => now - ts < RATE_LIMIT_WINDOW);
+
+    if (recentTimestamps.length >= MESSAGE_RATE_LIMIT) {
+      throw new BadRequestException('Rate limit exceeded. Please slow down.');
+    }
+
+    recentTimestamps.push(now);
+    this.messageTimestamps.set(userId, recentTimestamps);
+  }
+}

@@ -53,7 +53,7 @@ export class MessagesService {
     await this.ensureParticipant(convo.id, me.id);
 
     return this.prisma.message.create({
-      data: { conversationId: convo.id, senderId: me.id, text },
+      data: { conversationId: convo.id, senderId: me.id, text, content: text },
       select: { id: true, conversationId: true, senderId: true, text: true, createdAt: true },
     });
   }

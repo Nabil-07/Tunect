@@ -1,38 +1,46 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { GraphEmailSender } from './graph-email.sender';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: nodemailer.Transporter;
+  private readonly transporter?: nodemailer.Transporter;
+  private readonly graph?: GraphEmailSender;
+  private readonly smtpEnabled: boolean;
 
   constructor() {
-    // Configure email transporter
+    this.graph = GraphEmailSender.fromEnv(this.logger) ?? undefined;
+
+    // Configure email transporter (optional fallback)
     const host = process.env.SMTP_HOST;
     const port = parseInt(process.env.SMTP_PORT || '587');
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASSWORD;
 
-    if (!host || !user || !pass) {
+    this.smtpEnabled = Boolean(host && user && pass);
+
+    if (!this.graph && !this.smtpEnabled) {
       this.logger.warn(
         'SMTP not fully configured in EmailService. Emails will be skipped. ' +
         `Missing: ${!host ? 'SMTP_HOST ' : ''}${!user ? 'SMTP_USER ' : ''}${!pass ? 'SMTP_PASSWORD' : ''}`
       );
     }
 
-    this.transporter = nodemailer.createTransport({
-      host: host || 'smtp.gmail.com',
-      port,
-      secure: false, // true for 465, false for other ports
-      auth: {
-        user,
-        pass,
-      },
-    });
+    if (this.smtpEnabled) {
+      this.transporter = nodemailer.createTransport({
+        host: host!,
+        port,
+        secure: false,
+        auth: {
+          user,
+          pass,
+        },
+      });
 
-    // Verify connection
-    if (host && user && pass) {
-      this.transporter.verify()
+      // Verify connection
+      this.transporter
+        .verify()
         .then(() => {
           this.logger.log('[EmailService] SMTP transporter verified successfully.');
         })
@@ -42,17 +50,53 @@ export class EmailService {
     }
   }
 
+  private async sendEmail(to: string, subject: string, html: string): Promise<void> {
+    if ((process.env.DISABLE_NOTIFICATION_EMAILS ?? '').toLowerCase() === 'true') {
+      this.logger.debug(
+        `[EmailService] Email skipped (DISABLE_NOTIFICATION_EMAILS=true): to=${to} | subject="${subject}"`,
+      );
+      return;
+    }
+
+    const from = process.env.SMTP_FROM || '"Tunect" <no-reply@tunectnow.com>';
+
+    // 1) Prefer Graph (works with Security Defaults)
+    if (this.graph) {
+      try {
+        await this.graph.sendHtmlEmail(to, subject, html);
+        this.logger.log(`[EmailService] Graph email sent → ${to} | ${subject}`);
+        return;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`[EmailService] Graph email failed (fallback to SMTP if available): ${msg}`);
+      }
+    }
+
+    // 2) Fallback to SMTP
+    if (this.smtpEnabled && this.transporter) {
+      const info = await this.transporter.sendMail({
+        from,
+        to,
+        subject,
+        html,
+      });
+      this.logger.log(`[EmailService] SMTP email sent → ${to}: ${info.messageId}`);
+      return;
+    }
+
+    this.logger.warn(`[EmailService] Email skipped (no Graph/SMTP configured): to=${to} | subject="${subject}"`);
+  }
+
   async sendSlotAvailableEmail(
     to: string,
     tutorName: string,
     studentName: string,
   ): Promise<void> {
     try {
-      const info = await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Tunect" <no-reply@tunectnow.com>',
+      await this.sendEmail(
         to,
-        subject: `🎓 New Slots Available with ${tutorName}!`,
-        html: `
+        `🎓 New Slots Available with ${tutorName}!`,
+        `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #0ea5e9;">Hi ${studentName}! 🎉</h2>
             <p style="font-size: 16px; line-height: 1.6;">
@@ -73,9 +117,7 @@ export class EmailService {
             </p>
           </div>
         `,
-      });
-
-      this.logger.log(`Email sent to ${to}: ${info.messageId}`);
+      );
     } catch (error) {
       this.logger.error(`Failed to send email to ${to}:`, error);
       // Don't throw - email is not critical
@@ -90,11 +132,10 @@ export class EmailService {
     this.logger.log(`[EmailService] Attempting to send waitlist email to ${to}`);
     
     try {
-      const info = await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || '"Tunect" <no-reply@tunectnow.com>',
+      await this.sendEmail(
         to,
-        subject: `⏰ You've been added to ${tutorName}'s waitlist`,
-        html: `
+        `⏰ You've been added to ${tutorName}'s waitlist`,
+        `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #0ea5e9;">Hi ${studentName}!</h2>
             <p style="font-size: 16px; line-height: 1.6;">
@@ -109,9 +150,9 @@ export class EmailService {
             </p>
           </div>
         `,
-      });
+      );
 
-      this.logger.log(`[EmailService] ✅ Waitlist email sent to ${to}: ${info.messageId}`);
+      this.logger.log(`[EmailService] ✅ Waitlist email sent to ${to}`);
     } catch (error) {
       this.logger.error(`[EmailService] ❌ Failed to send waitlist email to ${to}:`, error);
     }

@@ -156,7 +156,6 @@ const PaymentFailure = lazy(() => import('./pages/student/payment-failure'));   
 const TokenBalance = lazy(() => import('./pages/student/token-balance'));        // NEW
 /** Phase 4: Student Features */
 const GroupSessions = lazy(() => import('./pages/student/group-sessions'));
-const StudentWaitlist = lazy(() => import('./pages/student/waitlist'));
 const StudentManageAccount = lazy(() => import('./pages/student/manage-account'));
 
 /** Tutor */
@@ -174,7 +173,6 @@ const PerformanceTracking = lazy(() => import('./pages/tutor/performance-trackin
 const TutorNotifications = lazy(() => import('./pages/tutor/notifications'));
 /** Phase 4: Tutor Features */
 const CreateGroupSession = lazy(() => import('./pages/tutor/create-group-session'));
-const TutorWaitlist = lazy(() => import('./pages/tutor/waitlist-management'));
 const TutorManageAccount = lazy(() => import('./pages/tutor/manage-account'));
 
 /** Admin */
@@ -282,6 +280,7 @@ function App() {
           <Route path="/student/token-balance" element={<TokenBalance />} />
           <Route path="/student/messages" element={<StudentChat />} />
           <Route path="/student/chat" element={<StudentChat />} />
+          <Route path="/student/chat/:conversationId" element={<StudentChat />} />
           <Route path="/student/notifications" element={<StudentNotifications />} />
           <Route path="/student/favorites" element={<StudentFavorites />} />
           <Route path="/student/progress" element={<StudentProgress />} />
@@ -296,7 +295,6 @@ function App() {
           
           {/* Phase 4: Student Routes */}
           <Route path="/student/group-sessions" element={<GroupSessions />} />
-          <Route path="/student/waitlist" element={<StudentWaitlist />} />
           <Route path="/student/manage-account" element={<StudentManageAccount />} />
 
           {/* NEW paid checkout flow + result pages */}
@@ -323,6 +321,7 @@ function App() {
           <Route path="/tutor/sessions" element={<TutorSessions />} />
           <Route path="/tutor/messages" element={<TutorChat />} />
           <Route path="/tutor/chat" element={<TutorChat />} />
+          <Route path="/tutor/chat/:conversationId" element={<TutorChat />} />
           <Route path="/tutor/notifications" element={<TutorNotifications />} />
           <Route path="/tutor/earnings" element={<TutorEarnings />} />
           <Route path="/tutor/content-library" element={<ContentLibrary />} />
@@ -331,7 +330,6 @@ function App() {
           
           {/* Phase 4: Tutor Routes */}
           <Route path="/tutor/create-group-session" element={<CreateGroupSession />} />
-          <Route path="/tutor/waitlist" element={<TutorWaitlist />} />
           <Route path="/tutor/manage-account" element={<TutorManageAccount />} />
         </Route>
 
@@ -351,6 +349,8 @@ function App() {
           <Route path="/admin/kyc-verification" element={<KycVerification />} />
           <Route path="/admin/reports" element={<AdminReports />} />
           <Route path="/admin/messages" element={<AdminMessages />} />
+          <Route path="/admin/chat" element={<AdminMessages />} />
+          <Route path="/admin/chat/:conversationId" element={<AdminMessages />} />
           <Route path="/admin/reviews" element={<AdminReviews />} />
           <Route path="/admin/finance/recon" element={<AdminFinanceRecon />} />
         </Route>
