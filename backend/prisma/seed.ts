@@ -261,22 +261,24 @@ async function main() {
     const numMessages = getRandomInt(3, 10);
     for (let j = 0; j < numMessages; j++) {
       const isFromStudent = j % 2 === 0;
+      const messageText = getRandomElement([
+        'Hi, I need help with calculus.',
+        'Sure, when would you like to schedule a session?',
+        'How about tomorrow at 3 PM?',
+        'That works for me!',
+        'Great! See you then.',
+        'Can you help me with derivatives?',
+        'Of course! I specialize in that.',
+        'Thank you so much!',
+        'What topics should I prepare?',
+        'Let me know if you have any questions.',
+      ]);
       await prisma.message.create({
         data: {
           conversationId: conversation.id,
           senderId: isFromStudent ? studentUser.id : tutorUser.id,
-          text: getRandomElement([
-            'Hi, I need help with calculus.',
-            'Sure, when would you like to schedule a session?',
-            'How about tomorrow at 3 PM?',
-            'That works for me!',
-            'Great! See you then.',
-            'Can you help me with derivatives?',
-            'Of course! I specialize in that.',
-            'Thank you so much!',
-            'What topics should I prepare?',
-            'Let me know if you have any questions.',
-          ]),
+          text: messageText,
+          content: messageText,
         },
       });
       messageCount++;

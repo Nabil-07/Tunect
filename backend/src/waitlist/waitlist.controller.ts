@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -26,11 +27,19 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 export class WaitlistController {
   constructor(private readonly service: WaitlistService) {}
 
+  private ensureWaitlistEnabled() {
+    const enabled = (process.env.ENABLE_WAITLIST ?? '').toLowerCase() === 'true';
+    if (!enabled) {
+      throw new ServiceUnavailableException('Waitlist is temporarily disabled');
+    }
+  }
+
   @ApiOperation({ summary: 'Add student to waitlist' })
   @Post()
   @Roles(Role.STUDENT, Role.ADMIN)
   @UseGuards(RolesGuard)
   addToWaitlist(@Body() dto: AddToWaitlistDto, @CurrentUser('studentId') studentId: string) {
+    this.ensureWaitlistEnabled();
     if (!studentId) {
       throw new NotFoundException('Student account not found for logged-in user');
     }
@@ -42,6 +51,7 @@ export class WaitlistController {
   @Roles(Role.STUDENT, Role.ADMIN)
   @UseGuards(RolesGuard)
   getMyWaitlist(@CurrentUser('studentId') studentId: string) {
+    this.ensureWaitlistEnabled();
     if (!studentId) {
       throw new NotFoundException('Student account not found for logged-in user');
     }
@@ -53,6 +63,7 @@ export class WaitlistController {
   @Roles(Role.TUTOR, Role.ADMIN)
   @UseGuards(RolesGuard)
   getTutorWaitlist(@CurrentUser('tutorId') tutorId: string) {
+    this.ensureWaitlistEnabled();
     if (!tutorId) {
       throw new NotFoundException('Tutor account not found for logged-in user');
     }
@@ -69,6 +80,7 @@ export class WaitlistController {
     @CurrentUser('tutorId') tutorId: string,
     @Body('bookingId') bookingId: string,
   ) {
+    this.ensureWaitlistEnabled();
     if (!tutorId) {
       throw new NotFoundException('Tutor account not found for logged-in user');
     }
@@ -81,6 +93,7 @@ export class WaitlistController {
   @Roles(Role.STUDENT, Role.ADMIN)
   @UseGuards(RolesGuard)
   bookFromWaitlist(@Param('id') waitlistId: string, @CurrentUser('studentId') studentId: string) {
+    this.ensureWaitlistEnabled();
     if (!studentId) {
       throw new NotFoundException('Student account not found for logged-in user');
     }
@@ -93,6 +106,7 @@ export class WaitlistController {
   @Roles(Role.STUDENT, Role.ADMIN)
   @UseGuards(RolesGuard)
   removeFromWaitlist(@Param('id') waitlistId: string, @CurrentUser('studentId') studentId: string) {
+    this.ensureWaitlistEnabled();
     if (!studentId) {
       throw new NotFoundException('Student account not found for logged-in user');
     }

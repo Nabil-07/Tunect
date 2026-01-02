@@ -39,7 +39,7 @@ export default function CheckoutPage() {
     if (slots.length > 0) {
       navigate(`/tutor/${tutorId}?demo=1#slots`, { replace: true, state: { toast: 'Demo booked! Pick any available slot.' } });
     } else {
-      setMsg("Booking successfully booked. The tutor has been notified to add slots. You'll get a notification when slots are available.");
+      setMsg("Booking successfully booked. The tutor has been notified to add slots. You'll be notified in the app when slots are available.");
     }
   }
 
@@ -103,7 +103,7 @@ export default function CheckoutPage() {
       </div>
 
       <div className="mt-6 text-sm text-slate-600">
-        After confirming, you'll select a slot on the tutor's page. If no slots are currently available, the tutor will be notified to add availability and you'll be alerted when it's ready.
+        After confirming, you'll select a slot on the tutor's page. If no slots are currently available, the tutor will be notified to add availability and you'll be notified in the app when it's ready.
       </div>
 
       {/* Error Modal */}

@@ -86,11 +86,12 @@ export class WaitlistService {
     });
 
     // Send confirmation email to student
-    await this.emailService.sendWaitlistNotificationEmail(
-      student.user.email,
-      tutor.user.name || 'Tutor',
-      student.user.name || 'Student',
-    );
+    // NOTE (release): waitlist notification emails are disabled
+    // await this.emailService.sendWaitlistNotificationEmail(
+    //   student.user.email,
+    //   tutor.user.name || 'Tutor',
+    //   student.user.name || 'Student',
+    // );
 
     return waitlistEntry;
   }
@@ -159,11 +160,12 @@ export class WaitlistService {
     });
 
     // Send email notification
-    await this.emailService.sendSlotAvailableEmail(
-      entry.student.user.email,
-      entry.tutor.user.name || 'Tutor',
-      entry.student.user.name || 'Student',
-    );
+    // NOTE (release): waitlist notification emails are disabled
+    // await this.emailService.sendSlotAvailableEmail(
+    //   entry.student.user.email,
+    //   entry.tutor.user.name || 'Tutor',
+    //   entry.student.user.name || 'Student',
+    // );
 
     return updated;
   }
@@ -195,11 +197,12 @@ export class WaitlistService {
       });
 
       // Send email notification
-      await this.emailService.sendSlotAvailableEmail(
-        entry.student.user.email,
-        entry.tutor.user.name || 'Tutor',
-        entry.student.user.name || 'Student',
-      );
+      // NOTE (release): waitlist notification emails are disabled
+      // await this.emailService.sendSlotAvailableEmail(
+      //   entry.student.user.email,
+      //   entry.tutor.user.name || 'Tutor',
+      //   entry.student.user.name || 'Student',
+      // );
     }
 
     return { notifiedCount: waitingStudents.length };

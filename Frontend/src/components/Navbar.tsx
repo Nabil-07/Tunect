@@ -2,10 +2,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Menu, X, LogIn, UserPlus, ChevronDown, LogOut, User, Settings, KeyRound,
+  MessageSquare, Bell,
 } from 'lucide-react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import NotificationBell from './NotificationBell'; // ✅ ADDED
+import NotificationBell from './NotificationBell';
 
 /* ---------------- helpers ---------------- */
 function normalizeRole(r?: string): 'student' | 'tutor' | 'admin' {
@@ -19,6 +20,18 @@ function roleDashboard(role?: 'student' | 'tutor' | 'admin') {
   if (role === 'admin') return '/admin/dashboard';
   return '/student/dashboard';
 }
+
+function roleMessages(role?: 'student' | 'tutor' | 'admin') {
+  if (role === 'tutor') return '/tutor/messages';
+  if (role === 'admin') return '/admin/messages';
+  return '/student/messages';
+}
+
+const roleNotifications = (role?: 'student' | 'tutor' | 'admin') => {
+  if (role === 'tutor') return '/tutor/notifications';
+  if (role === 'admin') return '/admin/notifications';
+  return '/student/notifications';
+};
 
 /* -------- public menus (before login) -------- */
 const PUBLIC_MAIN = [
@@ -45,7 +58,6 @@ const STUDENT_CENTER = [
 const STUDENT_MORE = [
   { to: '/student/token-balance', label: 'Token Balance' },
   { to: '/student/group-sessions', label: 'Group Sessions' },
-  { to: '/student/waitlist', label: 'My Waitlist' },
   { to: '/support', label: 'Support' },
 ];
 
@@ -210,7 +222,6 @@ export default function Navbar() {
                   <div className="absolute right-0 mt-2 w-56 rounded-none border border-slate-200 bg-white shadow-md p-0 z-50 overflow-hidden">
                     <Link to="/tutor/profile" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Profile</Link>
                     <Link to="/tutor/create-group-session" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Create Group Session</Link>
-                    <Link to="/tutor/waitlist" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Waitlist Management</Link>
                     <Link to="/tutor/recurring-templates" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Recurring Templates</Link>
                     <Link to="/tutor/earnings" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Total Earnings</Link>
                     <Link to="/find-tutors" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Find Tutor</Link>
@@ -227,7 +238,22 @@ export default function Navbar() {
 
         {/* RIGHT actions */}
         <div className="hidden md:flex items-center gap-4">
-          {isAuthed && <NotificationBell />} {/* ✅ ADDED */}
+          {isAuthed && (
+            <>
+              <Link
+                to={roleMessages(role)}
+                className="inline-flex items-center justify-center rounded-xl p-2 hover:bg-slate-100"
+                aria-label="Open messages"
+                title="Messages"
+              >
+                <MessageSquare className="h-5 w-5 text-slate-700" />
+              </Link>
+
+              <div className="inline-flex items-center justify-center rounded-xl hover:bg-slate-100">
+                <NotificationBell />
+              </div>
+            </>
+          )}
           {!isAuthed ? (
             <>
               <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-ink">
@@ -396,6 +422,30 @@ export default function Navbar() {
       {open && (
         <div className="md:hidden border-t border-slate-100 bg-white">
           <div className="container mx-auto max-w-7xl px-3 sm:px-4 md:px-6 py-2 flex flex-col gap-1">
+            {isAuthed && (
+              <div className="flex items-center gap-2 px-3 py-2">
+                <NavLink
+                  to={roleMessages(role)}
+                  className="btn-ghost inline-flex items-center gap-2"
+                  onClick={() => setOpen(false)}
+                  aria-label="Open messages"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  <span>Messages</span>
+                </NavLink>
+
+                <NavLink
+                  to={roleNotifications(role)}
+                  className="btn-ghost inline-flex items-center gap-2"
+                  onClick={() => setOpen(false)}
+                  aria-label="Open notifications"
+                >
+                  <Bell className="h-5 w-5" />
+                  <span>Notifications</span>
+                </NavLink>
+              </div>
+            )}
+
             {centerNav.map((n) => (
               <NavLink
                 key={n.to}

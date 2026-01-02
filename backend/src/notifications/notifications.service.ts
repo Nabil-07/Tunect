@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import nodemailer, { Transporter } from 'nodemailer';
 import { CreateNotificationDto } from './dto/create-notification.dto';
+import { GraphEmailSender } from './graph-email.sender';
 
 type BookingConfirmationPayload = {
   studentEmail: string;
@@ -26,6 +27,9 @@ export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly enabled: boolean;
   private readonly transporter?: Transporter;
+  private readonly graph?: GraphEmailSender;
+  private readonly smtpEnabled: boolean;
+  private readonly disableNotificationEmails: boolean;
 
   // ✅ NEW: Twilio (optional)
   private readonly smsEnabled: boolean;
@@ -41,6 +45,11 @@ export class NotificationsService {
   }
 
   constructor(private prisma: PrismaService) {
+    this.graph = GraphEmailSender.fromEnv(this.logger) ?? undefined;
+
+    this.disableNotificationEmails =
+      (process.env.DISABLE_NOTIFICATION_EMAILS ?? '').toLowerCase() === 'true';
+
     // ---------- EMAIL ----------
     const host = process.env.SMTP_HOST;
     const port = Number(process.env.SMTP_PORT ?? 587);
@@ -49,13 +58,14 @@ export class NotificationsService {
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASSWORD;
 
-    this.enabled = Boolean(host && port && user && pass);
+    this.smtpEnabled = Boolean(host && port && user && pass);
+    this.enabled = Boolean(this.graph || this.smtpEnabled);
 
     if (!this.enabled) {
       this.logger.warn(
         'SMTP not fully configured. Emails will be skipped (set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD).',
       );
-    } else {
+    } else if (this.smtpEnabled) {
       this.transporter = nodemailer.createTransport({
         host,
         port,
@@ -98,16 +108,34 @@ export class NotificationsService {
    * Returns true on success, false on failure or if email is disabled.
    */
   async sendEmail(to: string, subject: string, html: string): Promise<boolean> {
-    if (!this.enabled || !this.transporter) {
+    const from = this.fromAddress();
+
+    if (!this.enabled) {
       this.logger.debug(
         `Email skipped (disabled): to=${to} | subject="${subject}"`,
       );
       return false;
     }
 
-    const from = this.fromAddress();
+    // Prefer Graph (works with Security Defaults)
+    if (this.graph) {
+      try {
+        await this.graph.sendHtmlEmail(to, subject, html);
+        this.logger.log(`Email sent (Graph) → ${to} | ${subject}`);
+        return true;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`Email failed (Graph, fallback to SMTP if available): ${msg}`);
+      }
+    }
 
     try {
+      if (!this.transporter) {
+        this.logger.debug(
+          `Email skipped (SMTP not configured): to=${to} | subject="${subject}"`,
+        );
+        return false;
+      }
       await this.transporter.sendMail({ from, to, subject, html });
       this.logger.log(`Email sent → ${to} | ${subject}`);
       return true;
@@ -116,6 +144,23 @@ export class NotificationsService {
       this.logger.error(`Email failed → ${to} | ${subject}`, msg as any);
       return false;
     }
+  }
+
+  /**
+   * Notification email sender (non-critical). Can be disabled for a release.
+   */
+  async sendNotificationEmail(
+    to: string,
+    subject: string,
+    html: string,
+  ): Promise<boolean> {
+    if (this.disableNotificationEmails) {
+      this.logger.debug(
+        `Notification email skipped (DISABLE_NOTIFICATION_EMAILS=true): to=${to} | subject="${subject}"`,
+      );
+      return false;
+    }
+    return this.sendEmail(to, subject, html);
   }
 
   // ✅ NEW: Low-level SMS sender (Twilio). Returns true/false.
@@ -177,7 +222,7 @@ export class NotificationsService {
       </div>
     `;
 
-    await this.sendEmail(payload.studentEmail, subject, html);
+    await this.sendNotificationEmail(payload.studentEmail, subject, html);
 
     if (payload.tutorEmail) {
       const tSub = `New lesson booked (Booking #${payload.bookingId.slice(
@@ -188,7 +233,7 @@ export class NotificationsService {
         '<h2>Booking Confirmed</h2>',
         '<h2>New Booking</h2>',
       );
-      await this.sendEmail(payload.tutorEmail, tSub, tutorHtml);
+      await this.sendNotificationEmail(payload.tutorEmail, tSub, tutorHtml);
     }
   }
 
@@ -211,7 +256,7 @@ export class NotificationsService {
       </div>
     `;
 
-    await this.sendEmail(payload.to, subject, html);
+    await this.sendNotificationEmail(payload.to, subject, html);
   }
 
   /* =========================

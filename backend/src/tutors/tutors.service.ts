@@ -427,6 +427,54 @@ export class TutorsService {
     });
     if (!t) throw new NotFoundException('Tutor not found for logged-in user');
 
+    // Get active students count (students with CONFIRMED or COMPLETED bookings)
+    const activeStudentsResult = await this.prisma.booking.groupBy({
+      by: ['studentId'],
+      where: {
+        tutorId,
+        status: { in: ['CONFIRMED', 'COMPLETED'] },
+      },
+    });
+    const activeStudentsCount = activeStudentsResult.length;
+
+    // Get total earnings and sessions completed
+    const completedBookings = await this.prisma.booking.findMany({
+      where: {
+        tutorId,
+        status: 'COMPLETED',
+      },
+      select: {
+        tokensCharged: true,
+      },
+    });
+
+    const totalEarnings = completedBookings.reduce((sum, b) => sum + Number(b.tokensCharged || 0), 0);
+    const sessionsCompleted = completedBookings.length;
+
+    // Get monthly earnings (this month)
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthlyBookings = await this.prisma.booking.findMany({
+      where: {
+        tutorId,
+        status: 'COMPLETED',
+        endTime: { gte: startOfMonth },
+      },
+      select: {
+        tokensCharged: true,
+      },
+    });
+    const monthlyEarnings = monthlyBookings.reduce((sum, b) => sum + Number(b.tokensCharged || 0), 0);
+
+    // Get rating and reviews
+    const reviews = await this.prisma.review.findMany({
+      where: { tutorId },
+      select: { rating: true },
+    });
+    const averageRating = reviews.length > 0
+      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+      : 0;
+
     return {
       name: t.user?.name ?? null,
       email: t.user?.email ?? null,
@@ -436,6 +484,13 @@ export class TutorsService {
       languages: t.languages ?? [],
       hourlyRate: t.hourlyRate ?? null,
       country: t.country ?? null,
+      // Dashboard stats
+      activeStudents: activeStudentsCount,
+      totalEarnings,
+      sessionsCompleted,
+      monthlyEarnings,
+      rating: parseFloat(averageRating.toFixed(1)),
+      reviews: reviews.length,
     };
   }
 
