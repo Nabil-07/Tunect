@@ -113,8 +113,6 @@ export default function Profile() {
   }, [selectedLanguages, languageQuery]);
 
   const visibleSubjectOptions = filteredSubjectOptions;
-  const visibleLanguageOptions = filteredLanguageOptions;
-
   const addSubject = (subject: string) => {
     setData((prev) => {
       const current = prev.subjects ?? [];

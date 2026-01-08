@@ -56,7 +56,7 @@ export default function Certificates() {
     }
   };
 
-  const handleDownload = (cert: Certificate) => {
+  const handleDownload = () => {
     // TODO: Generate PDF certificate
     alert('PDF download coming soon!');
   };
@@ -183,7 +183,7 @@ export default function Certificates() {
                 {/* Actions */}
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleDownload(cert)}
+                    onClick={handleDownload}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition text-sm font-medium"
                   >
                     <Download className="h-4 w-4" />

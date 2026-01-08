@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 
 /** CONFIG */
 const IST_TZ = 'Asia/Kolkata';
@@ -22,12 +23,28 @@ type BatchLine = {
 
 @Injectable()
 export class FinancePayoutsService {
+  constructor(private readonly prisma: PrismaService) {}
+
   /** -------- Utilities (timezone-safe) -------- */
 
   private nowIST(): Date {
     // Convert "now" to IST by re-parsing a locale string in that TZ.
     const now = new Date();
     return new Date(now.toLocaleString('en-US', { timeZone: IST_TZ }));
+  }
+  
+  private async assertTutorNotBanned(tutorId: string) {
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      select: { user: { select: { id: true, isBanned: true, bannedScope: true } } },
+    });
+    
+    if (!tutor) throw new BadRequestException('Tutor not found');
+    
+    const scope = tutor.user?.bannedScope;
+    if (tutor.user?.isBanned && (scope === 'ALL' || scope === 'PAYOUTS')) {
+      throw new ForbiddenException('Tutor is banned from payouts');
+    }
   }
 
   private ymFrom(month?: string): { y: number; m: number } {
@@ -92,6 +109,9 @@ export class FinancePayoutsService {
 
   async previewBatch(batchKey: string, tutorId?: string) {
     this.parseBatchKey(batchKey);
+    if (tutorId) {
+      await this.assertTutorNotBanned(tutorId);
+    }
     // TODO: Sum PENDING TokenLedger rows where batchKey matches (and optional tutorId)
     // then compute commission, GST, TDS, net per tutor.
 

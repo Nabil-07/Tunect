@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../../lib/apiClient';
 
 type Wallet = { tutorId: string; balance: number; updatedAt: string };

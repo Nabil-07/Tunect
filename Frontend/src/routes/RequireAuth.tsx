@@ -18,11 +18,15 @@ export default function RequireAuth({
   const token =
     localStorage.getItem('accessToken') || localStorage.getItem('token');
 
+  const normalizedRole = (user?.role ?? '').toLowerCase();
+  const isKnownRole = normalizedRole === 'student' || normalizedRole === 'tutor' || normalizedRole === 'admin';
+  const safeRole: 'student' | 'tutor' | 'admin' = isKnownRole ? (normalizedRole as 'student' | 'tutor' | 'admin') : 'student';
+
   if (loading) return null; // or a spinner
   if (!token) return <Navigate to="/login" replace />;
 
-  if (role && user && user.role !== role) {
-    return <Navigate to={roleDashboard(user.role)} replace />;
+  if (role && user && safeRole !== role) {
+    return <Navigate to={roleDashboard(safeRole)} replace />;
   }
   return <>{children}</>;
 }

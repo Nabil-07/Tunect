@@ -161,13 +161,15 @@ export default function TutorPublicProfile() {
 
       if (isDemoIntent) {
         // schedule demo immediately in the chosen slice
-        await createDemoBooking({
-          tutorId: id,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
-          notes: 'Demo from public profile',
-          timezone, // important: backend uses this for toUtc()
-        });
+        await createDemoBooking(
+          {
+            tutorId: id,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            notes: 'Demo from public profile',
+          },
+          timezone,
+        );
       } else {
         // paid booking flow (requires tokens)
         await api.post(

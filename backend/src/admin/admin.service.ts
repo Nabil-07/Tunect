@@ -1,4 +1,4 @@
-import { Prisma, BookingStatus, PaymentStatus, TutorStatus, TokenReason, KycStatus } from '@prisma/client';
+import { Prisma, PrismaPromise, BookingStatus, PaymentStatus, TutorStatus, TokenReason, KycStatus } from '@prisma/client';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto } from './dto/pagination.dto';
@@ -93,13 +93,32 @@ export class AdminService {
         where, skip, take: pageSize, orderBy: { updatedAt: 'desc' },
         select: {
           id: true, bio: true, hourlyRate: true, status: true, subjects: true, createdAt: true,
-          user: { select: { id: true, email: true } },
+          user: { select: { id: true, email: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
       this.prisma.tutor.count({ where }),
     ]);
 
-    return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    const tutorUserIds = items.map((t) => t.user.id);
+    const strikeCounts = tutorUserIds.length
+      ? await this.prisma.piiViolationLog.groupBy({
+          by: ['userId'],
+          where: { userId: { in: tutorUserIds } },
+          _count: { _all: true },
+        })
+      : [];
+    const strikeMap = new Map(strikeCounts.map((row) => [row.userId, row._count._all]));
+
+    const enriched = items.map((item) => ({
+      ...item,
+      user: {
+        ...item.user,
+        piiStrikes: strikeMap.get(item.user.id) ?? 0,
+        piiMaxStrikes: 3,
+      },
+    }));
+
+    return { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
   }
 
   async setTutorStatus(tutorId: string, dto: SetTutorStatusDto) {
@@ -129,13 +148,32 @@ export class AdminService {
         where, skip, take: pageSize, orderBy: { createdAt: 'desc' },
         select: {
           id: true, grade: true, tokens: true, createdAt: true,
-          user: { select: { id: true, email: true } },
+          user: { select: { id: true, email: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
       this.prisma.student.count({ where }),
     ]);
 
-    return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    const studentUserIds = items.map((s) => s.user.id);
+    const studentStrikeCounts = studentUserIds.length
+      ? await this.prisma.piiViolationLog.groupBy({
+          by: ['userId'],
+          where: { userId: { in: studentUserIds } },
+          _count: { _all: true },
+        })
+      : [];
+    const studentStrikeMap = new Map(studentStrikeCounts.map((row) => [row.userId, row._count._all]));
+
+    const enriched = items.map((item) => ({
+      ...item,
+      user: {
+        ...item.user,
+        piiStrikes: studentStrikeMap.get(item.user.id) ?? 0,
+        piiMaxStrikes: 3,
+      },
+    }));
+
+    return { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
   }
 
   async listBookings(q: PaginationDto & { status?: BookingStatus }) {
@@ -220,5 +258,52 @@ export class AdminService {
     });
 
     return { ok: true };
+  }
+
+  async unbanUser(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isBanned: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    // Reduce strikes by one (if any) so the user has room for another warning
+    const latestViolation = await this.prisma.piiViolationLog.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    const operations: PrismaPromise<any>[] = [
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          isBanned: false,
+          bannedScope: null,
+          bannedAt: null,
+        },
+      }),
+      this.prisma.banLedger.updateMany({
+        where: {
+          userId,
+          isActive: true,
+        },
+        data: {
+          isActive: false,
+          liftedAt: new Date(),
+          liftReason: 'ADMIN_UNBAN',
+        },
+      }),
+    ];
+
+    if (latestViolation) {
+      operations.push(
+        this.prisma.piiViolationLog.delete({ where: { id: latestViolation.id } }),
+      );
+    }
+
+    await this.prisma.$transaction(operations);
+
+    return { ok: true, message: 'User has been unbanned successfully', strikesCleared: latestViolation ? 1 : 0 };
   }
 }

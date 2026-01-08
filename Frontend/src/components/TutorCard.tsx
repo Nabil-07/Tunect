@@ -1,6 +1,6 @@
 // src/components/TutorCard.tsx
 import React, { useMemo, useState, useEffect } from "react";
-import { BadgeCheck, MessageSquare, Star, AlertCircle, CheckCircle2, Heart, Coins } from "lucide-react";
+import { BadgeCheck, MessageSquare, Star, AlertCircle, Heart, Coins } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatCurrency } from "../utils/currency";
 import { useDisplayCurrency } from "../hooks/useDisplayCurrency";
@@ -11,11 +11,11 @@ import TutorVideoHover from "./TutorVideoHover";
 export type TutorCardProps = {
   tutor: {
     id: string;
-    name: string;
+    name?: string;
     subjects?: string[];
     languages?: string[];
     tags?: string[];
-    rating?: number;
+    rating?: number | null;
     reviews?: number;
     country?: string;
     timezone?: string;
@@ -23,9 +23,10 @@ export type TutorCardProps = {
     hourlyRate?: number;     // INR/hour (canonical)
     pricePerHour?: number;   // alt name
     summary?: string;
-    avatarUrl?: string;
+    avatarUrl?: string | null;
     verified?: boolean;
     demoUsed?: boolean; // if student already took demo with this tutor
+    user?: { name?: string; email?: string } | null;
     video?: {
       id: string;
       videoUrl: string;
@@ -53,6 +54,7 @@ const Stars: React.FC<{ value?: number }> = ({ value = 0 }) => {
 };
 
 const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBalance, onBookDemo, onMessage }) => {
+  const displayName = tutor.name || tutor.user?.name || 'Tutor';
   const nav = useNavigate();
   const { user } = useAuth();
   const [toast, setToast] = useState<{ type: 'error' | 'success' | 'warning'; message: string } | null>(null);
@@ -171,16 +173,15 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
       )}
       <div className="relative h-36 w-full overflow-hidden rounded-t-2xl bg-gradient-to-br from-ocean-500 to-emerald-500">
         {tutor.video ? (
-          <TutorVideoHover
-            videoUrl={tutor.video.videoUrl}
-            thumbnail={tutor.video.thumbnail || tutor.avatarUrl}
-            tutorName={tutor.name}
-            duration={tutor.video.duration}
-          />
+            <TutorVideoHover
+              videoUrl={tutor.video.videoUrl}
+              thumbnail={tutor.video.thumbnail || tutor.avatarUrl || undefined}
+              duration={tutor.video.duration}
+            />
         ) : tutor.avatarUrl ? (
           <img
             src={tutor.avatarUrl}
-            alt={tutor.name}
+            alt={displayName}
             className="h-full w-full object-cover"
             loading="lazy"
           />
@@ -214,7 +215,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
       <div className="p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-slate-900">{tutor.name}</h3>
+            <h3 className="text-lg font-semibold text-slate-900">{displayName}</h3>
             <div className="mt-1 flex items-center gap-2 text-sm text-slate-600">
               <Stars value={tutor.rating ?? 0} />
               <span className="text-slate-500">({tutor.reviews ?? 0} reviews)</span>

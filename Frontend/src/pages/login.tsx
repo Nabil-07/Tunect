@@ -1,10 +1,9 @@
 // src/pages/login.tsx
-import { FormEvent, useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { type FormEvent, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { login as doLogin } from '../services/authService';
 import { readToken, setAuthStorage } from '../lib/apiClient';
-import { useAuth } from '../contexts/AuthContext';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 
@@ -45,32 +44,12 @@ function ensureRoleStored(loginResult?: any): RoleApi | null {
 }
 
 export default function Login() {
-  const auth = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  
-  // Check if user is adding another account
-  const [isAddingAccount, setIsAddingAccount] = useState(false);
-
-  // Note: Redirect handled by PublicOnlyRoute wrapper in App.tsx
-
-  // Check on mount
-  useState(() => {
-    try {
-      const adding = localStorage.getItem('adding_account');
-      if (adding === 'true') {
-        setIsAddingAccount(true);
-        localStorage.removeItem('adding_account');
-      }
-    } catch {}
-  });
 
   const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
 
@@ -94,38 +73,13 @@ export default function Login() {
       try { localStorage.setItem('auth_ok', '1'); } catch {}
 
       // Extract user data and tokens from response
-      const user = res?.user || res?.data?.user;
-      const accessToken = res?.access_token || res?.accessToken || res?.token || res?.jwt;
-      const refreshToken = res?.refresh_token || res?.refreshToken;
+      const role = ensureRoleStored(res);
+      try { window.dispatchEvent(new Event('auth:login')); } catch {}
 
-      console.log('Login response:', { user, hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken });
-
-      if (user && accessToken) {
-        // Add account to multi-account system
-        console.log('Calling addAccount with:', { userId: user.id, email: user.email, role: user.role });
-        await auth.addAccount(user, accessToken, refreshToken);
-        
-        console.log('Account added. All accounts:', auth.accounts);
-        console.log('LocalStorage after addAccount:', JSON.parse(localStorage.getItem('tunect_accounts') || '{}'));
-
-        try { window.dispatchEvent(new Event('auth:login')); } catch {}
-
-        // Small delay to ensure localStorage is written
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        console.log('About to navigate to dashboard');
-
-        // Navigate to appropriate dashboard
-        const role = user.role?.toUpperCase();
-        if (role === 'ADMIN') window.location.assign('/admin/dashboard');
-        else if (role === 'TUTOR') window.location.assign('/tutor/dashboard');
-        else window.location.assign('/student/dashboard');
-      } else {
-        // Fallback to old flow if user data not found
-        const role = ensureRoleStored(res);
-        try { window.dispatchEvent(new Event('auth:login')); } catch {}
-        if (!role) setTimeout(fallbackRedirect, 150);
-      }
+      if (role === 'ADMIN') window.location.assign('/admin/dashboard');
+      else if (role === 'TUTOR') window.location.assign('/tutor/dashboard');
+      else if (role === 'STUDENT') window.location.assign('/student/dashboard');
+      else setTimeout(fallbackRedirect, 150);
     } catch (e: any) {
       const msg =
         e?.response?.data?.message ||
@@ -188,18 +142,6 @@ export default function Login() {
 
           <h1 className="text-3xl font-bold text-slate-900">Welcome back</h1>
           <p className="mt-2 text-slate-600">Please enter your details</p>
-
-          {isAddingAccount && (
-            <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3">
-              <svg className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="text-sm font-medium text-blue-900">Adding another account</p>
-                <p className="text-xs text-blue-700 mt-0.5">Sign in with a different account to switch between them easily.</p>
-              </div>
-            </div>
-          )}
 
           <form onSubmit={onSubmit} className="mt-8 space-y-5" autoComplete="on" noValidate>
             {err && (

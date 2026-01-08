@@ -5,6 +5,7 @@ import { getConversation, sendMessage, deleteMessage } from '../../services/chat
 import type { ConversationDetail, Message } from '../../services/chatService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../hooks/useSocket';
+import Modal from '../Modal';
 
 interface ChatWindowProps {
   conversationId: string;
@@ -18,11 +19,36 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
   const [error, setError] = useState('');
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
+  const [hardBlocked, setHardBlocked] = useState(false);
+  const [guardModal, setGuardModal] = useState<{ open: boolean; title: string; body: string }>(
+    { open: false, title: '', body: '' },
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadConversation();
   }, [conversationId]);
+
+  // Restore persisted hard block if present
+  useEffect(() => {
+    if (!user?.id) return;
+    const stored = localStorage.getItem(`piiBlock:${user.id}`);
+    if (stored === '1') {
+      setHardBlocked(true);
+    }
+  }, [user?.id]);
+
+  // Clear persisted hard block if the account is no longer blocked
+  useEffect(() => {
+    if (!user?.id) return;
+    const strikes = user.piiStrikes ?? 0;
+    const max = user.piiMaxStrikes ?? 3;
+    const active = !!user.messagingBlocked || strikes >= max;
+    if (!active) {
+      setHardBlocked(false);
+      localStorage.removeItem(`piiBlock:${user.id}`);
+    }
+  }, [user]);
 
   useEffect(() => {
     scrollToBottom();
@@ -32,11 +58,9 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
   useEffect(() => {
     if (isConnected && conversationId) {
       emit('joinConversation', { conversationId });
-      console.log('Joined conversation:', conversationId);
 
       return () => {
         emit('leaveConversation', { conversationId });
-        console.log('Left conversation:', conversationId);
       };
     }
   }, [isConnected, conversationId, emit]);
@@ -44,7 +68,6 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
   // WebSocket: Listen for new messages
   useEffect(() => {
     const handleNewMessage = (message: Message) => {
-      console.log('New message received:', message);
       setConversation((prev) => {
         if (!prev || message.conversationId !== conversationId) return prev;
         
@@ -67,14 +90,11 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
 
   const loadConversation = async () => {
     try {
-      console.log('Loading conversation:', conversationId);
       setLoading(true);
       const data = await getConversation(conversationId);
-      console.log('Conversation loaded:', data);
       setConversation(data);
       setError('');
     } catch (err: any) {
-      console.error('Error loading conversation:', err);
       setError(err.response?.data?.message || 'Failed to load conversation');
     } finally {
       setLoading(false);
@@ -89,10 +109,51 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
       setSending(true);
       const newMessage = await sendMessage(conversationId, messageText);
       setMessageText('');
-      // No need to reload - WebSocket will update the message list
-      // await loadConversation();
+
+      // Rely on websocket for live updates; only append if socket not connected
+      if (!isConnected) {
+        setConversation((prev) => {
+          if (!prev) return prev;
+          if (prev.messages.some((m) => m.id === newMessage.id)) return prev;
+          return { ...prev, messages: [...prev.messages, newMessage] };
+        });
+      }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to send message');
+      const data = err?.response?.data || {};
+      const apiMessage = (data?.message as string) || 'Message blocked.';
+      const strikes = data?.strikes as number | undefined;
+      const maxStrikes = data?.maxStrikes as number | undefined;
+      const remaining = data?.remaining as number | undefined;
+      const isPiiBlock = apiMessage?.toLowerCase().includes('personal contact') || data?.code?.toString().includes('PII');
+
+      if (isPiiBlock) {
+        const roleTone =
+          user?.role === 'TUTOR'
+            ? 'Please keep chats on-platform to protect students.'
+            : 'For your safety, keep your contact details private until the platform allows sharing.';
+
+        const strikesLine =
+          strikes !== undefined && maxStrikes !== undefined
+            ? `Strikes: ${strikes}/${maxStrikes}. ${remaining !== undefined ? `${remaining} attempt(s) left before messaging is blocked.` : ''}`
+            : '';
+
+        setGuardModal({
+          open: true,
+          title: strikes && maxStrikes && strikes >= maxStrikes ? 'Account blocked' : 'Message blocked for safety',
+          body: `${apiMessage}\n${strikesLine}\n\n${roleTone}`.trim(),
+        });
+
+        if (strikes && maxStrikes && strikes >= maxStrikes && user?.id) {
+          setHardBlocked(true);
+          localStorage.setItem(`piiBlock:${user.id}`, '1');
+        }
+      } else {
+        setGuardModal({
+          open: true,
+          title: 'Unable to send message',
+          body: apiMessage || 'Something went wrong while sending your message. Please try again.',
+        });
+      }
     } finally {
       setSending(false);
     }
@@ -212,11 +273,7 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
             </div>
             <div>
               <h2 className="text-2xl font-bold text-gray-900">
-                {conversation.name || (
-                  conversation.type === 'DIRECT' ? 'Direct Chat' :
-                  conversation.type === 'GROUP_SESSION' ? 'Group Session' :
-                  'Announcement'
-                )}
+                {conversation.name || 'Chat'}
               </h2>
               <div className="text-sm text-gray-600 font-medium mt-1">
                 {getConversationBadge()}
@@ -344,6 +401,66 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
           animation: fade-in 0.3s ease-out;
         }
       `}</style>
+
+      {/* Safety / error modal */}
+      <Modal
+        isOpen={guardModal.open}
+        onClose={() => setGuardModal({ open: false, title: '', body: '' })}
+        title={guardModal.title || 'Message blocked'}
+        size="md"
+      >
+        <div className="p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 text-amber-600">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">
+                {guardModal.body || 'Please remove contact details (phone, email, social handles) and try again.'}
+              </p>
+              <ul className="text-sm text-slate-600 list-disc ml-5 space-y-1">
+                <li>Do not share phone numbers, emails, or social links.</li>
+                <li>Keep conversation on the platform for safety.</li>
+                <li>If you need help, contact support.</li>
+              </ul>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => setGuardModal({ open: false, title: '', body: '' })}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Hard block full-screen notice (non-dismissable) */}
+      {hardBlocked && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/75 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-8 border border-red-200">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+              <h3 className="text-xl font-bold text-slate-900">Account blocked</h3>
+            </div>
+            <p className="text-sm text-slate-700 leading-relaxed mb-4">
+              Your account is blocked due to repeated personal-info violations. This block is permanent until an admin reviews your account.
+            </p>
+            <p className="text-sm text-slate-700 leading-relaxed mb-4">
+              {user?.role === 'TUTOR'
+                ? 'As per policy, any pending earnings that are not yet disbursed will not be returned.'
+                : 'All purchased tokens are canceled and you will not be able to attend classes with any tutor.'}
+            </p>
+            <ul className="text-sm text-slate-700 list-disc ml-5 space-y-1 mb-4">
+              <li>Do not share phone numbers, emails, or social links.</li>
+              <li>Keep conversation on the platform for safety.</li>
+              <li>If you have any questions, contact us at <a className="text-blue-600" href="mailto:support@tunectnow.com">support@tunectnow.com</a>.</li>
+            </ul>
+            <div className="text-sm text-red-700 font-semibold">Messaging is disabled until an admin unblocks your account.</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

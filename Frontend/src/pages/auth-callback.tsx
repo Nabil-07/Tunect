@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { http as api } from '../api/http';
 import { setTokens } from '../lib/auth';
-import { useAuth } from '../contexts/AuthContext';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 
@@ -29,7 +28,6 @@ function safeNext(s: string | null) {
  */
 export default function AuthCallback() {
   const { search } = useLocation();
-  const auth = useAuth();
 
   useEffect(() => {
     (async () => {
@@ -39,9 +37,6 @@ export default function AuthCallback() {
         const access   = params.get('access');
         const refresh  = params.get('refresh');
         const nextQ    = safeNext(params.get('next'));
-        const remember = params.get('remember') === '1'
-          || localStorage.getItem('remember_intent') === '1';
-
         // ---- protective pre-clean ----
         try { localStorage.removeItem('role'); } catch {}
 
@@ -58,17 +53,6 @@ export default function AuthCallback() {
         // ---- hydrate current user ----
         const me = await api.get('/users/me').then(r => r.data).catch(() => null);
         if (!me) { window.location.replace('/choose-role'); return; }
-
-        // ---- Add account to multi-account system ----
-        if (access && refresh) {
-          auth.addAccount(me, access, refresh);
-          console.log('✅ OAuth account added to multi-account system:', {
-            userId: me?.id,
-            email: me?.email,
-            role: me?.role,
-            totalAccounts: auth.accounts.length
-          });
-        }
 
         const hasStudent = !!me?.student?.id;
         const hasTutor   = !!me?.tutor?.id;

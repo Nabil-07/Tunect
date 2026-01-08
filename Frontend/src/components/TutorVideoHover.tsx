@@ -4,16 +4,15 @@ import { Maximize2, Minimize2, X } from 'lucide-react';
 interface TutorVideoHoverProps {
   videoUrl: string;
   thumbnail?: string;
-  tutorName: string;
   duration?: number;
 }
 
-export default function TutorVideoHover({ videoUrl, thumbnail, tutorName, duration }: TutorVideoHoverProps) {
+export default function TutorVideoHover({ videoUrl, thumbnail, duration }: TutorVideoHoverProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleMouseEnter = () => {
     // Delay video playback by 500ms to avoid accidental hovers

@@ -1,9 +1,10 @@
 // Frontend/src/components/chat/ChatList.tsx
 import { useState, useEffect } from 'react';
-import { MessageSquare, Users, Lock, AlertTriangle } from 'lucide-react';
+import { MessageSquare, Users, Lock } from 'lucide-react';
 import { listConversations } from '../../services/chatService';
 import type { Conversation } from '../../services/chatService';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useSocket } from '../../hooks/useSocket';
 
 export default function ChatList() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -11,6 +12,7 @@ export default function ChatList() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const { on, off, isConnected } = useSocket();
   
   // Determine the base path based on current route
   const getBasePath = () => {
@@ -22,6 +24,13 @@ export default function ChatList() {
   useEffect(() => {
     loadConversations();
   }, []);
+
+  // Live refresh when new messages arrive via websocket
+  useEffect(() => {
+    const handler = () => loadConversations();
+    on('conversationUpdate', handler);
+    return () => off('conversationUpdate', handler);
+  }, [on, off, isConnected]);
 
   const loadConversations = async () => {
     try {

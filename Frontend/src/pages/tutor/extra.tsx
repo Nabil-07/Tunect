@@ -1,9 +1,10 @@
 // src/pages/tutor/extra.tsx
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { BadgeCheck, FileText, UserCircle, Wallet, Users, LifeBuoy } from 'lucide-react';
 
-function Card(props: { to: string; title: string; desc: string; icon: JSX.Element }) {
+function Card(props: { to: string; title: string; desc: string; icon: ReactNode }) {
   return (
     <Link
       to={props.to}

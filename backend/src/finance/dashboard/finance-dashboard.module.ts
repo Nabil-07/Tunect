@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { FinanceDashboardController } from './finance-dashboard.controller';
 import { FinanceDashboardService } from './finance-dashboard.service';
+import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
+  imports: [PrismaModule],
   controllers: [FinanceDashboardController],
   providers: [FinanceDashboardService],
   exports: [FinanceDashboardService],

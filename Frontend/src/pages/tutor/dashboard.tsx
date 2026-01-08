@@ -18,16 +18,6 @@ import {
 import { getAvailability, type AvailabilitySlot, getMySessions, type TutorSession } from '../../services/tutorService';
 import api from '../../lib/apiClient';
 
-function combineToDate(date: string | undefined, time: string): Date | null {
-  const d = date || undefined;
-  if (!d) return null;
-  const [h, m] = String(time || '').split(':').map((x) => Number(x) || 0);
-  const dt = new Date(`${d}T00:00:00`);
-  if (Number.isNaN(dt.getTime())) return null;
-  dt.setHours(h, m, 0, 0);
-  return dt;
-}
-
 export default function TutorDashboard() {
   const [avail, setAvail] = useState<AvailabilitySlot[]>([]);
   const [sessions, setSessions] = useState<TutorSession[]>([]);

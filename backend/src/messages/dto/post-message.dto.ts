@@ -1,6 +1,11 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class PostMessageDto {
+  // Explicit conversation id (used when posting to an existing thread)
+  @IsOptional()
+  @IsString()
+  conversationId?: string;
+
   @IsOptional()
   @IsString()
   bookingId?: string;

@@ -5,23 +5,6 @@ import { getConversation, sendMessage, deleteMessage } from '../../services/chat
 import type { ConversationDetail, Message } from '../../services/chatService';
 import { useAuth } from '../../contexts/AuthContext';
 
-// Add CSS animation
-const fadeInAnimation = `
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  .animate-fade-in {
-    animation: fade-in 0.3s ease-out;
-  }
-`;
-
 interface ChatWindowProps {
   conversationId: string;
 }

@@ -104,7 +104,7 @@ export class AuthService {
     return {
       access_token,
       refresh_token,
-      user: { id: user.id, email: user.email, role: user.role },
+      user: { id: user.id, email: user.email, role: user.role, isDirector: user.isDirector },
     };
   }
 
@@ -171,6 +171,7 @@ export class AuthService {
         name: user.name,
         avatar: user.avatarUrl,
         role: user.role,
+        isDirector: user.isDirector,
         hasChosenRole: user.hasChosenRole,
         student: user.student,
         tutor: user.tutor,

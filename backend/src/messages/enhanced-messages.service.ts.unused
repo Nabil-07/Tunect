@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RequestContext } from '../common/request-context';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
 import { AddMembersDto, RemoveMembersDto } from './dto/manage-members.dto';
+import { PiiGuardService } from '../common/pii-guard.service';
 import { 
   ConversationType, 
   ConversationMemberRole, 
@@ -34,6 +35,7 @@ export class EnhancedMessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ctx: RequestContext,
+    private readonly piiGuard: PiiGuardService,
     @Inject(forwardRef(() => require('./messages.gateway').MessagesGateway))
     private readonly messagesGateway: any,
   ) {}
@@ -50,6 +52,27 @@ export class EnhancedMessagesService {
     if (!text) throw new BadRequestException('Message content is required');
     if (text.length > MAX_MESSAGE_LEN) {
       throw new BadRequestException(`Message too long (max ${MAX_MESSAGE_LEN} chars)`);
+    }
+
+    // PII DETECTION - BLOCK messages with personal information
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const piiResult = this.piiGuard.detectPii(text);
+    
+    if (!piiResult.isClean) {
+      // Log the violation
+      await this.prisma.piiViolationLog.create({
+        data: {
+          userId,
+          messageContent: text,
+          violationType: piiResult.violations.map(v => v.type).join(', '),
+          detectedPatterns: piiResult.violations,
+          action: 'BLOCKED',
+        },
+      });
+
+      // Throw error with role-specific warning
+      const warningMessage = this.piiGuard.getWarningMessage(user?.role as 'STUDENT' | 'TUTOR');
+      throw new ForbiddenException(warningMessage);
     }
 
     // Rate limiting
@@ -91,7 +114,6 @@ export class EnhancedMessagesService {
 
     // Read-only check for broadcasts
     if (conversation.type === ConversationType.ADMIN_BROADCAST) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
       if (user?.role !== DbRole.ADMIN) {
         throw new ForbiddenException('Only admins can send messages in broadcast conversations');
       }

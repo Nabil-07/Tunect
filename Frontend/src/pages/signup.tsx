@@ -1,5 +1,5 @@
 // src/pages/signup.tsx
-import { FormEvent, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { signup, login } from '../services/authService';
 import { setAuthStorage } from '../lib/apiClient';
@@ -31,7 +31,7 @@ export default function Signup() {
     try {
       setAuthStorage(remember);
 
-      await signup({ email: email.trim(), password, role, name: name.trim() });
+      await signup({ email: email.trim(), password, role });
       await login(email.trim(), password);
 
       const r = (localStorage.getItem('role') as Role) || role;

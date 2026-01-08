@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Excalidraw, MainMenu, WelcomeScreen } from '@excalidraw/excalidraw';
-import { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types';
-import { AppState } from '@excalidraw/excalidraw/types/types';
-import { useParams } from 'react-router-dom';
+import {
+  Excalidraw,
+  MainMenu,
+  WelcomeScreen,
+  type ExcalidrawElement,
+  type AppState,
+  type ExcalidrawImperativeAPI,
+} from '@excalidraw/excalidraw';
 
 interface WhiteboardProps {
   bookingId: string;
@@ -10,7 +14,7 @@ interface WhiteboardProps {
 }
 
 export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = false }) => {
-  const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
+  const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -49,9 +53,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
 
   // Debounced auto-save function
   const debounceAutoSave = (() => {
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     return (data: any) => {
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       timeoutId = setTimeout(() => {
         saveWhiteboardData(data);
       }, 5000);
@@ -103,7 +109,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
   return (
     <div className="h-screen w-full">
       <Excalidraw
-        ref={(api) => setExcalidrawAPI(api)}
+        ref={(api: ExcalidrawImperativeAPI | null) => setExcalidrawAPI(api)}
         onChange={handleChange}
         viewModeEnabled={isReadOnly}
         theme="light"

@@ -4,7 +4,6 @@ import { useSearchParams } from 'react-router-dom';
 import TutorCard from '../components/TutorCard';
 import { searchTutors, listTutors, getFilterOptions } from '../services/tutorService';
 import type { Tutor } from '../services/tutorService';
-import { SUBJECT_OPTIONS } from '../constants/subjects';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
 import { getDemoStatusesForTutors } from '../services/bookingsService';
 
@@ -94,7 +93,7 @@ export default function FindTutors() {
 
         // 1) fetch tutors
         const res = hasFilters
-          ? await searchTutors({ q, subject, language, minRating, priceMin, priceMax, sort, page, pageSize })
+          ? await searchTutors({ q, subject, language, minRating, priceMin, priceMax, page, pageSize })
           : await listTutors({ page, pageSize, subject: subject || undefined, language: language || undefined });
 
         if (!mounted) return;

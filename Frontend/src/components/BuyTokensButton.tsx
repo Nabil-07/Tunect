@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { createOrder, verifyPayment } from "../services/paymentsService";
 import { ensureRazorpayLoaded, openRazorpay } from "../utils/razorpay";
 

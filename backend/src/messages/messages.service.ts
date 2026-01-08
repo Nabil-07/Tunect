@@ -8,7 +8,9 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RequestContext } from '../common/request-context';
 import { PostMessageDto } from './dto/post-message.dto';
+import { PiiGuardService } from '../common/pii-guard.service';
 import { Role as DbRole } from '@prisma/client';
+import { MessagesGateway } from './messages.gateway';
 
 const MAX_MESSAGE_LEN = 2000;
 const THREAD_PAGE_SIZE = 50;
@@ -19,11 +21,24 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ctx: RequestContext,
+    private readonly piiGuard: PiiGuardService,
+    private readonly gateway: MessagesGateway,
   ) {}
 
   async post(dto: PostMessageDto) {
     const userId = this.ctx.userId;
     if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const existingStrikes = await this.prisma.piiViolationLog.count({ where: { userId } });
+    const maxStrikes = 3;
+    if (existingStrikes >= maxStrikes) {
+      throw new ForbiddenException({
+        message: 'Your account is blocked from messaging due to repeated personal-info violations.',
+        code: 'PII_ACCOUNT_BLOCKED',
+        strikes: existingStrikes,
+        maxStrikes,
+      });
+    }
 
     const text = (dto.text ?? '').trim();
     if (!text) throw new BadRequestException('Message text is required');
@@ -36,11 +51,145 @@ export class MessagesService {
       select: {
         id: true,
         role: true,
+        isBanned: true,
+        bannedScope: true,
         student: { select: { id: true } },
         tutor: { select: { id: true } },
       },
     });
     if (!me) throw new ForbiddenException('User not found');
+
+    if (me.isBanned && (me.bannedScope === 'ALL' || me.bannedScope === 'MESSAGING')) {
+      throw new ForbiddenException({
+        message: 'Your account is banned from messaging.',
+        code: 'ACCOUNT_BANNED',
+        scope: me.bannedScope,
+      });
+    }
+
+    // PII DETECTION - Block messages with personal information
+    const piiResult = this.piiGuard.detectPii(text);
+    
+    if (!piiResult.isClean) {
+      const violationCount = existingStrikes + 1;
+
+      await this.prisma.piiViolationLog.create({
+        data: {
+          userId,
+          messageContent: text,
+          violationType: piiResult.violations.map(v => v.type).join(', '),
+          detectedPatterns: JSON.stringify(piiResult.violations),
+          action: violationCount >= maxStrikes ? 'ACCOUNT_BLOCKED' : 'BLOCKED',
+        },
+      });
+
+      // Ban user and forfeit funds after 3rd violation
+      if (violationCount >= maxStrikes && !me.isBanned) {
+        // Update user ban status
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: {
+            isBanned: true,
+            bannedScope: 'ALL',
+            bannedAt: new Date(),
+          },
+        });
+
+        // Create ban ledger entry
+        const banLedger = await this.prisma.banLedger.create({
+          data: {
+            userId,
+            actorId: userId, // Self-ban from automated system
+            actorRole: 'ADMIN',
+            scope: 'ALL',
+            reason: 'PII_VIOLATION',
+            note: `Automatically banned after ${violationCount} PII violations. Attempted to share: ${piiResult.violations.map(v => v.type).join(', ')}`,
+            isActive: true,
+          },
+        });
+
+        // Forfeit tutor earnings
+        if (me.role === 'TUTOR' && me.tutor) {
+          const tutorWallet = await this.prisma.tutorWallet.findUnique({
+            where: { tutorId: me.tutor.id },
+            select: { balance: true },
+          });
+
+          if (tutorWallet && tutorWallet.balance.toNumber() > 0) {
+            // Create forfeiture record
+            await this.prisma.banForfeitureLedger.create({
+              data: {
+                userId,
+                amount: tutorWallet.balance,
+                type: 'TUTOR_EARNING_FORFEIT',
+                banLedgerId: banLedger.id,
+              },
+            });
+
+            // Zero out tutor wallet
+            await this.prisma.tutorWallet.update({
+              where: { tutorId: me.tutor.id },
+              data: { balance: 0 },
+            });
+
+            // Record in wallet ledger
+            await this.prisma.tutorWalletLedger.create({
+              data: {
+                tutorId: me.tutor.id,
+                delta: tutorWallet.balance.mul(-1),
+                reason: 'FORFEITED',
+                note: `Earnings forfeited due to PII violations (Ban ID: ${banLedger.id})`,
+              },
+            });
+          }
+        }
+
+        // Forfeit student tokens
+        if (me.role === 'STUDENT' && me.student) {
+          const studentTokens = await this.prisma.tutorTokenBalance.findMany({
+            where: { studentId: me.student.id },
+            select: { id: true, tutorId: true, balance: true, pricePerToken: true },
+          });
+
+          let totalForfeited = 0;
+          for (const tokenBalance of studentTokens) {
+            if (tokenBalance.balance.toNumber() > 0) {
+              const amountValue = tokenBalance.balance.mul(tokenBalance.pricePerToken);
+              totalForfeited += amountValue.toNumber();
+
+              // Zero out token balance
+              await this.prisma.tutorTokenBalance.update({
+                where: { id: tokenBalance.id },
+                data: { balance: 0 },
+              });
+            }
+          }
+
+          if (totalForfeited > 0) {
+            // Create forfeiture record
+            await this.prisma.banForfeitureLedger.create({
+              data: {
+                userId,
+                amount: totalForfeited,
+                type: 'STUDENT_TOKEN_FORFEIT',
+                banLedgerId: banLedger.id,
+              },
+            });
+          }
+        }
+      }
+
+      const warningMessage = this.piiGuard.getWarningMessage(me.role as 'STUDENT' | 'TUTOR');
+      const remaining = Math.max(0, maxStrikes - violationCount);
+
+      throw new ForbiddenException({
+        message: `${warningMessage}`,
+        code: violationCount >= maxStrikes ? 'PII_ACCOUNT_BLOCKED' : 'PII_WARNING',
+        strikes: violationCount,
+        maxStrikes,
+        remaining,
+      });
+    }
 
     const convo = await this.resolveConversation(
       dto,
@@ -52,10 +201,45 @@ export class MessagesService {
 
     await this.ensureParticipant(convo.id, me.id);
 
-    return this.prisma.message.create({
-      data: { conversationId: convo.id, senderId: me.id, text, content: text },
-      select: { id: true, conversationId: true, senderId: true, text: true, createdAt: true },
+    const participantUserIds = await this.getParticipantUserIds(convo.id);
+
+    const created = await this.prisma.message.create({
+      data: { conversationId: convo.id, senderId: me.id, text },
+      select: {
+        id: true,
+        conversationId: true,
+        senderId: true,
+        text: true,
+        createdAt: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
     });
+
+    const payload = {
+      id: created.id,
+      conversationId: created.conversationId,
+      senderId: created.senderId,
+      content: created.text,
+      isDeleted: false,
+      createdAt: created.createdAt.toISOString(),
+      sender: {
+        id: created.user.id,
+        name: created.user.name,
+        email: created.user.email,
+      },
+    };
+
+    // Emit realtime message to both participants
+    await this.gateway.emitNewMessage(convo.id, payload);
+    participantUserIds.forEach((uid) => {
+      this.gateway.emitConversationUpdate(uid, {
+        conversationId: convo.id,
+        lastMessage: payload,
+        fromUserId: me.id,
+      });
+    });
+
+    return payload;
   }
 
   async getThread(id: string, cursor?: string) {
@@ -68,8 +252,26 @@ export class MessagesService {
         id: true,
         bookingId: true,
         createdAt: true,
-        student: { select: { userId: true } },
-        tutor: { select: { userId: true } },
+        student: { 
+          select: { 
+            id: true,
+            userId: true,
+            user: { select: { id: true, name: true, email: true } }
+          } 
+        },
+        tutor: { 
+          select: { 
+            id: true,
+            userId: true,
+            user: { select: { id: true, name: true, email: true } }
+          } 
+        },
+        booking: {
+          select: {
+            id: true,
+            status: true,
+          }
+        },
       },
     });
     if (!convo) throw new NotFoundException('Conversation not found');
@@ -83,6 +285,18 @@ export class MessagesService {
       throw new ForbiddenException('You are not a participant of this conversation');
     }
 
+    // Determine participant name
+    const [student, tutor] = await Promise.all([
+      this.prisma.student.findUnique({ where: { userId } }),
+      this.prisma.tutor.findUnique({ where: { userId } }),
+    ]);
+    
+    const isStudent = student && convo.student.id === student.id;
+    const otherParticipant = isStudent ? convo.tutor : convo.student;
+    const otherParticipantName = otherParticipant?.user?.name || 
+                                  otherParticipant?.user?.email?.split('@')[0] || 
+                                  'Unknown User';
+
     const take = THREAD_PAGE_SIZE;
 
     const messages = await this.prisma.message.findMany({
@@ -90,18 +304,81 @@ export class MessagesService {
       take,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true, senderId: true, text: true, createdAt: true },
+      select: { 
+        id: true, 
+        senderId: true, 
+        text: true, 
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          }
+        }
+      },
     });
 
     const nextCursor = messages.length === take ? messages[messages.length - 1].id : null;
 
+    const memberRecords = [
+      convo.student
+        ? {
+            id: convo.student.id,
+            userId: convo.student.userId,
+            role: 'MEMBER' as const,
+            joinedAt: convo.createdAt.toISOString(),
+            user: {
+              id: convo.student.user.id,
+              email: convo.student.user.email,
+              name: convo.student.user.name,
+              role: 'STUDENT',
+            },
+          }
+        : null,
+      convo.tutor
+        ? {
+            id: convo.tutor.id,
+            userId: convo.tutor.userId,
+            role: 'MEMBER' as const,
+            joinedAt: convo.createdAt.toISOString(),
+            user: {
+              id: convo.tutor.user.id,
+              email: convo.tutor.user.email,
+              name: convo.tutor.user.name,
+              role: 'TUTOR',
+            },
+          }
+        : null,
+    ].filter(Boolean);
+
+    const isActive =
+      !convo.booking ||
+      (convo.booking.status !== 'CANCELED' && convo.booking.status !== 'COMPLETED');
+
     return {
-      conversation: {
-        id: convo.id,
-        bookingId: convo.bookingId ?? null,
-        createdAt: convo.createdAt,
-      },
-      messages: messages.reverse(),
+      id: convo.id,
+      type: 'DIRECT' as const,
+      name: otherParticipantName,
+      referenceId: convo.bookingId ?? null,
+      isActive,
+      createdAt: convo.createdAt.toISOString(),
+      members: memberRecords,
+      messages: messages.reverse().map((msg) => ({
+        id: msg.id,
+        conversationId: convo.id,
+        senderId: msg.senderId,
+        content: msg.text,
+        isDeleted: false,
+        createdAt: msg.createdAt.toISOString(),
+        sender: {
+          id: msg.user.id,
+          name: msg.user.name,
+          email: msg.user.email,
+        },
+      })),
+      canPost: true,
+      tokenBalance: { balance: 100, hasTokens: true },
       nextCursor,
     };
   }
@@ -122,7 +399,10 @@ export class MessagesService {
       return { items: [], nextCursor: null };
     }
 
-    const where: any = { OR: ors };
+    const where: any = { 
+      OR: ors,
+      isArchived: false, // Only show non-archived conversations
+    };
     if (cursor) {
       const dt = new Date(cursor);
       if (!isNaN(dt.getTime())) {
@@ -138,12 +418,35 @@ export class MessagesService {
         id: true,
         bookingId: true,
         createdAt: true,
-        student: { select: { id: true, user: { select: { id: true, email: true } } } },
-        tutor: { select: { id: true, user: { select: { id: true, email: true } } } },
+        student: { 
+          select: { 
+            id: true, 
+            userId: true,
+            user: { select: { id: true, email: true, name: true } } 
+          } 
+        },
+        tutor: { 
+          select: { 
+            id: true, 
+            userId: true,
+            user: { select: { id: true, email: true, name: true } } 
+          } 
+        },
+        booking: {
+          select: {
+            id: true,
+            status: true,
+          }
+        },
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { id: true, text: true, createdAt: true, senderId: true },
+          select: { 
+            id: true, 
+            text: true, 
+            createdAt: true, 
+            senderId: true,
+          },
         },
       },
     });
@@ -151,19 +454,226 @@ export class MessagesService {
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
 
-    const items = page.map((c) => ({
-      id: c.id,
-      bookingId: c.bookingId ?? null,
-      createdAt: c.createdAt,
-      student: c.student ? { id: c.student.id, user: c.student.user } : null,
-      tutor: c.tutor ? { id: c.tutor.id, user: c.tutor.user } : null,
-      lastMessage: c.messages[0] ?? null,
-    }));
+    const seenByOtherUser = new Set<string>();
+    const items = page.reduce<Array<Record<string, any>>>((acc, c) => {
+      const isStudent = student && c.student.id === student.id;
+      const otherParticipant = isStudent ? c.tutor : c.student;
+      const otherParticipantName =
+        otherParticipant?.user?.name ||
+        otherParticipant?.user?.email?.split('@')[0] ||
+        'Unknown User';
 
-    const nextCursor =
-      hasMore && items.length > 0 ? items[items.length - 1].createdAt.toISOString() : null;
+      const otherUserId = otherParticipant?.userId || otherParticipant?.user?.id || c.id;
+      if (seenByOtherUser.has(otherUserId)) return acc;
+      seenByOtherUser.add(otherUserId);
+
+      const isActive =
+        !c.booking ||
+        (c.booking.status !== 'CANCELED' && c.booking.status !== 'COMPLETED');
+
+      acc.push({
+        id: c.id,
+        type: 'DIRECT' as const,
+        name: otherParticipantName,
+        referenceId: c.bookingId,
+        isActive,
+        memberCount: 2,
+        lastMessage: c.messages[0]
+          ? {
+              id: c.messages[0].id,
+              content: c.messages[0].text,
+              isDeleted: false,
+              createdAt: c.messages[0].createdAt.toISOString(),
+              senderId: c.messages[0].senderId,
+            }
+          : null,
+        createdAt: c.createdAt.toISOString(),
+      });
+
+      return acc;
+    }, []);
+
+    const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].createdAt.toISOString() : null;
 
     return { items, nextCursor };
+  }
+
+  /**
+   * List archived conversations
+   */
+  async listArchivedConversations(userId: string, cursor?: string, limit = CONVO_PAGE_SIZE_DEFAULT) {
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const [student, tutor] = await Promise.all([
+      this.prisma.student.findUnique({ where: { userId } }),
+      this.prisma.tutor.findUnique({ where: { userId } }),
+    ]);
+
+    const ors: Array<Record<string, any>> = [];
+    if (student) ors.push({ studentId: student.id });
+    if (tutor) ors.push({ tutorId: tutor.id });
+
+    if (ors.length === 0) {
+      return { items: [], nextCursor: null };
+    }
+
+    const where: any = { 
+      OR: ors,
+      isArchived: true, // Only show archived conversations
+    };
+    if (cursor) {
+      const dt = new Date(cursor);
+      if (!isNaN(dt.getTime())) {
+        where.archivedAt = { lt: dt };
+      }
+    }
+
+    const rows = await this.prisma.conversation.findMany({
+      where,
+      orderBy: { archivedAt: 'desc' },
+      take: Math.max(1, Math.min(100, limit)) + 1,
+      select: {
+        id: true,
+        bookingId: true,
+        createdAt: true,
+        archivedAt: true,
+        student: { 
+          select: { 
+            id: true, 
+            userId: true,
+            user: { select: { id: true, email: true, name: true } } 
+          } 
+        },
+        tutor: { 
+          select: { 
+            id: true, 
+            userId: true,
+            user: { select: { id: true, email: true, name: true } } 
+          } 
+        },
+        booking: {
+          select: {
+            id: true,
+            status: true,
+          }
+        },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { 
+            id: true, 
+            text: true, 
+            createdAt: true, 
+            senderId: true,
+          },
+        },
+      },
+    });
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+
+    const items = page.map((c) => {
+      const isStudent = student && c.student.id === student.id;
+      const otherParticipant = isStudent ? c.tutor : c.student;
+      const otherParticipantName = otherParticipant?.user?.name || 
+                                    otherParticipant?.user?.email?.split('@')[0] || 
+                                    'Unknown User';
+
+      const isActive = !c.booking || 
+                       (c.booking.status !== 'CANCELED' && c.booking.status !== 'COMPLETED');
+
+      return {
+        id: c.id,
+        type: 'DIRECT' as const,
+        name: otherParticipantName,
+        referenceId: c.bookingId,
+        isActive,
+        memberCount: 2,
+        lastMessage: c.messages[0] ? {
+          id: c.messages[0].id,
+          content: c.messages[0].text,
+          isDeleted: false,
+          createdAt: c.messages[0].createdAt.toISOString(),
+          senderId: c.messages[0].senderId,
+        } : null,
+        createdAt: c.createdAt.toISOString(),
+        archivedAt: c.archivedAt?.toISOString(),
+      };
+    });
+
+    const nextCursor =
+      hasMore && items.length > 0 ? items[items.length - 1].archivedAt : null;
+
+    return { items, nextCursor };
+  }
+
+  /**
+   * Archive a conversation
+   */
+  async archiveConversation(conversationId: string, userId: string) {
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        student: { select: { userId: true } },
+        tutor: { select: { userId: true } },
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    // Verify user is part of this conversation
+    if (conversation.student.userId !== userId && conversation.tutor.userId !== userId) {
+      throw new ForbiddenException('You are not part of this conversation');
+    }
+
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        isArchived: true,
+        archivedAt: new Date(),
+      },
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Unarchive a conversation
+   */
+  async unarchiveConversation(conversationId: string, userId: string) {
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        student: { select: { userId: true } },
+        tutor: { select: { userId: true } },
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    // Verify user is part of this conversation
+    if (conversation.student.userId !== userId && conversation.tutor.userId !== userId) {
+      throw new ForbiddenException('You are not part of this conversation');
+    }
+
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        isArchived: false,
+        archivedAt: null,
+      },
+    });
+
+    return { success: true };
   }
 
   /**
@@ -221,6 +731,22 @@ export class MessagesService {
     myStudentId?: string,
     myTutorId?: string,
   ) {
+    if (dto.conversationId) {
+      const convo = await this.prisma.conversation.findUnique({
+        where: { id: dto.conversationId },
+        select: {
+          id: true,
+          student: { select: { userId: true } },
+          tutor: { select: { userId: true } },
+        },
+      });
+      if (!convo) throw new NotFoundException('Conversation not found');
+      if (convo.student?.userId !== userId && convo.tutor?.userId !== userId) {
+        throw new ForbiddenException('You are not a participant of this conversation');
+      }
+      return { id: convo.id };
+    }
+
     if (dto.bookingId) {
       const booking = await this.prisma.booking.findUnique({
         where: { id: dto.bookingId },
@@ -322,5 +848,17 @@ export class MessagesService {
     if (studentUserId !== userId && tutorUserId !== userId) {
       throw new ForbiddenException('Not a participant in this conversation');
     }
+  }
+
+  private async getParticipantUserIds(conversationId: string): Promise<string[]> {
+    const convo = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: {
+        student: { select: { userId: true } },
+        tutor: { select: { userId: true } },
+      },
+    });
+    if (!convo) return [];
+    return [convo.student?.userId, convo.tutor?.userId].filter(Boolean) as string[];
   }
 }

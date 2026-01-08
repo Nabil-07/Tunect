@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Coins, User, TrendingDown, TrendingUp, IndianRupee, Clock } from 'lucide-react';
+import { Coins, TrendingDown, TrendingUp, IndianRupee, Clock } from 'lucide-react';
 import api from '../../lib/apiClient';
 import { useToast } from '../../contexts/ToastContext';
 
