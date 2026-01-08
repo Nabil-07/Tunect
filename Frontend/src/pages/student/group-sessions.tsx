@@ -127,7 +127,7 @@ export default function GroupSessions() {
                     </h3>
                   </div>
                   {session.meetingUrl && (
-                    <Video className="h-5 w-5 text-blue-500" title="Google Meet" />
+                    <Video className="h-5 w-5 text-blue-500" aria-label="Google Meet" />
                   )}
                 </div>
 

@@ -23,7 +23,6 @@ import { getRecommendedTutors } from '../../services/tutorService';
 import { getMe, getNextBooking } from '../../services/studentService';
 import { getUnreadCount } from '../../services/messagesService';
 import { getDemoStatusesForTutors } from '../../services/bookingsService';
-import { formatPriceFromINR } from '../../utils/currency';
 import { PriceDisplay } from '../../components/PriceDisplay';
 import api from '../../lib/apiClient';
 
@@ -59,7 +58,6 @@ export default function StudentDashboard() {
   const [subjectStats, setSubjectStats] = useState<SubjectStat[]>([]);
   const [showSubjects, setShowSubjects] = useState(false);
 
-  const [error, setError] = useState<string | null>(null);
 
   const dtf = useMemo(
     () => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }),
@@ -215,10 +213,6 @@ export default function StudentDashboard() {
     next?.start;
 
   const nextStartText = nextStartISO ? dtf.format(new Date(nextStartISO)) : null;
-  const tutorName = next?.tutor?.user?.name || next?.tutor?.name || next?.tutorName || 'Tutor';
-  const tutorSubject =
-    next?.tutor?.subjects?.[0]?.name || next?.tutor?.subject || next?.subject || '—';
-
   // ✅ Show full-page loader on initial mount
   if (authLoading || initialLoading) {
     return (

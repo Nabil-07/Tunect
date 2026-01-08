@@ -46,6 +46,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         id: true, 
         email: true, 
         role: true,
+        isDirector: true,
+        isBanned: true,
+        bannedScope: true,
         tutor: { select: { id: true } },
         student: { select: { id: true } }
       },
@@ -58,6 +61,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       sub: user.id, 
       email: user.email, 
       role: user.role,
+      isDirector: user.isDirector,
+      isBanned: user.isBanned,
+      bannedScope: user.bannedScope,
       tutorId: user.tutor?.id,
       studentId: user.student?.id
     };

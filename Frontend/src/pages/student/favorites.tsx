@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../lib/apiClient";
-import { Heart, Star, MessageSquare, Calendar, Trash2 } from "lucide-react";
+import { Heart, Star, MessageSquare, Calendar } from "lucide-react";
 
 type FavoriteTutor = {
   id: string;

@@ -15,7 +15,7 @@ let _cache: CountryOption[] | null = null;
 export function getCountries(): CountryOption[] {
   if (_cache) return _cache;
 
-  const names = getNames(); // { IN: "India", AE: "United Arab Emirates", ... }
+  const names: Record<string, string> = getNames(); // { IN: "India", AE: "United Arab Emirates", ... }
 
   const options: CountryOption[] = Object.keys(names).map((code) => {
     let dial = "";

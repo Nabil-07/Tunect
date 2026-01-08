@@ -22,6 +22,7 @@ export interface Conversation {
 
 export interface Message {
   id: string;
+  conversationId?: string;
   senderId: string;
   content: string;
   isDeleted: boolean;
@@ -42,6 +43,7 @@ export interface ConversationDetail {
   referenceId: string | null;
   isActive: boolean;
   createdAt: string;
+  nextCursor?: string | null;
   members: Array<{
     id: string;
     userId: string;
@@ -71,12 +73,12 @@ export interface CreateBroadcastDto {
 // List all conversations for current user
 export async function listConversations(): Promise<Conversation[]> {
   const response = await api.get('/chat/conversations');
-  return response.data;
+  return response.data.items || [];
 }
 
 // Get conversation details with messages
 export async function getConversation(conversationId: string): Promise<ConversationDetail> {
-  const response = await api.get(`/chat/conversations/${conversationId}`);
+  const response = await api.get(`/chat/thread/${conversationId}`);
   return response.data;
 }
 

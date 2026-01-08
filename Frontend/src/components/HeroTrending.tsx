@@ -9,7 +9,14 @@ import { formatCurrency } from '../utils/currency';
 import { useAuth } from '../contexts/AuthContext';
 
 let Motion: any = null;
-try { Motion = require('framer-motion').motion; } catch { Motion = null; }
+void (async () => {
+  try {
+    const fm = await import('framer-motion');
+    Motion = fm.motion;
+  } catch {
+    Motion = null;
+  }
+})();
 
 export type TrendingTutor = {
   id: string;

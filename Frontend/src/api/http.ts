@@ -1,7 +1,7 @@
 // src/api/http.ts
 import axios, { AxiosError } from 'axios';
 import { clearTokens } from '../lib/auth';
-import { refreshAccessToken, writeToken, writeRefreshToken, setAuthHeader, readToken } from '../lib/apiClient';
+import { refreshAccessToken, readToken } from '../lib/apiClient';
 
 /** Normalize VITE_API_URL and ensure no trailing slash */
 const rawBase = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';

@@ -4,14 +4,16 @@ import { http as api } from '../api/http';
 
 export type Tutor = {
   id: string;
-  name?: string;
+  name: string;
   email?: string;
   subject?: string;
+  subjectPrimary?: string;
   subjects?: string[];
   languages?: string[];
   rating?: number | null;
   reviews?: number;
   hourlyRate?: number;
+  pricePerHour?: number;
   avatarUrl?: string | null;
   user?: { name?: string; email?: string } | null;
   video?: {
@@ -72,6 +74,7 @@ function normalizeTutor(raw: any): Tutor {
 
   const name = raw?.name ?? raw?.user?.name ?? derivedNameFromEmail();
   const hourlyRate = toNum(raw?.hourlyRate ?? raw?.pricePerSessionTokens, 0);
+  const pricePerHour = raw?.pricePerHour != null ? toNum(raw.pricePerHour) : undefined;
   const rating =
     raw?.rating === null ? null : toNum(raw?.rating ?? raw?.avgRating, null as any);
   const reviews = toNum(raw?.reviews ?? raw?.reviewCount ?? raw?.reviewsCount, 0);
@@ -81,9 +84,11 @@ function normalizeTutor(raw: any): Tutor {
     name,
     email: raw?.email ?? raw?.user?.email,
     subject,
+    subjectPrimary: raw?.subjectPrimary ?? subject,
     subjects: subjectsArr,
     languages: languagesArr,
     hourlyRate,
+    pricePerHour,
     rating: rating as number | null,
     reviews,
     avatarUrl: raw?.avatarUrl ?? raw?.user?.avatarUrl ?? null,
@@ -100,7 +105,7 @@ function normalizeList(data: ListResponse<any> | any[]) {
       pageSize: data.length,
     };
   }
-  const meta = data.meta ?? {};
+  const meta = data.meta ?? ({} as NonNullable<ListResponse<any>['meta']>);
   return {
     items: (data.items ?? []).map(normalizeTutor),
     total: data.total ?? meta.total ?? 0,

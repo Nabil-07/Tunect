@@ -111,9 +111,13 @@ export default function ReconTable({
   );
 }
 
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
+function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
   return <th className={`px-3 py-2 font-medium text-slate-700 ${className ?? ''}`}>{children}</th>;
 }
-function Td({ children, right, mono }: { children: React.ReactNode; right?: boolean; mono?: boolean }) {
-  return <td className={`px-3 py-2 ${right ? 'text-right' : ''} ${mono ? 'font-mono text-xs' : ''}`}>{children}</td>;
+function Td({ children, right, mono, className }: { children: React.ReactNode; right?: boolean; mono?: boolean; className?: string }) {
+  return (
+    <td className={`px-3 py-2 ${right ? 'text-right' : ''} ${mono ? 'font-mono text-xs' : ''} ${className ?? ''}`}>
+      {children}
+    </td>
+  );
 }

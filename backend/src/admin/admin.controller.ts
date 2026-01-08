@@ -34,7 +34,7 @@ export class AdminController {
   }
 
   @Patch('tutors/:id/status')
-  setTutorStatus(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: SetTutorStatusDto) {
+  setTutorStatus(@Param('id') id: string, @Body() dto: SetTutorStatusDto) {
     return this.svc.setTutorStatus(id, dto);
   }
 
@@ -51,6 +51,11 @@ export class AdminController {
   @Get('payments')
   payments(@Query() q: PaginationDto & { status?: PaymentStatus }) {
     return this.svc.listPayments(q as any);
+  }
+
+  @Post('users/:id/unban')
+  unbanUser(@Param('id') id: string) {
+    return this.svc.unbanUser(id);
   }
 
 }

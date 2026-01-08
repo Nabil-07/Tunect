@@ -1,5 +1,5 @@
 // src/services/reconService.ts
-import api from '../../lib/apiClient';
+import api from '../lib/apiClient';
 
 export type ReconRow = {
   id: string;

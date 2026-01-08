@@ -157,6 +157,8 @@ model Conversation {
   studentId String
   tutorId   String
   bookingId String?
+  isArchived Boolean @default(false)
+  archivedAt DateTime?
   createdAt DateTime  @default(now())
   booking   Booking?  @relation(fields: [bookingId], references: [id])
   student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -165,6 +167,7 @@ model Conversation {
 
   @@unique([studentId, tutorId, bookingId])
   @@index([studentId, tutorId, createdAt])
+  @@index([isArchived])
 }
 
 model Dispute {
@@ -855,6 +858,10 @@ model User {
   email                            String            @unique
   password                         String
   role                             Role?
+  isDirector                       Boolean           @default(false)
+  isBanned                         Boolean           @default(false)
+  bannedScope                      BanScope?
+  bannedAt                         DateTime?
   createdAt                        DateTime          @default(now())
   updatedAt               DateTime                  @default(now()) @updatedAt
   avatarUrl                        String?
@@ -877,9 +884,51 @@ model User {
   sessionNotes                     SessionNote[]
   student                          Student?
   tutor                            Tutor?
+  piiViolationLogs                 PiiViolationLog[]
+  banEvents                        BanLedger[]
+  banActions                       BanLedger[]       @relation("BanActor")
+  forfeitureLedger                 BanForfeitureLedger[]
 
   @@index([email])
   @@index([role, hasChosenRole])
+  @@index([isBanned])
+}
+
+model BanLedger {
+  id          String     @id @default(cuid())
+  userId      String
+  actorId     String
+  actorRole   Role       @default(ADMIN)
+  scope       BanScope
+  reason      String
+  note        String?
+  bannedAt    DateTime   @default(now())
+  liftedAt    DateTime?
+  liftReason  String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actor       User       @relation("BanActor", fields: [actorId], references: [id])
+  forfeitures BanForfeitureLedger[]
+
+  @@index([userId, isActive])
+  @@index([actorId])
+  @@index([scope])
+}
+
+model BanForfeitureLedger {
+  id          String               @id @default(cuid())
+  userId      String
+  amount      Decimal              @db.Decimal(18, 2)
+  type        BanForfeitureType
+  banLedgerId String
+  createdAt   DateTime             @default(now())
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  banLedger   BanLedger            @relation(fields: [banLedgerId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([banLedgerId])
 }
 
 model Waitlist {
@@ -919,6 +968,20 @@ model WhiteboardSession {
   booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
+}
+
+model PiiViolationLog {
+  id                 String   @id @default(cuid())
+  userId             String
+  messageContent     String   @db.Text
+  violationType      String
+  detectedPatterns   Json
+  action             String   @default("BLOCKED")
+  createdAt          DateTime @default(now())
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 enum AiScanStatus {
@@ -1011,6 +1074,18 @@ enum PaymentStatus {
   CANCELED
 }
 
+enum BanScope {
+  ALL
+  BOOKINGS
+  PAYOUTS
+  MESSAGING
+}
+
+enum BanForfeitureType {
+  STUDENT_TOKEN_FORFEIT
+  TUTOR_EARNING_FORFEIT
+}
+
 enum PayoutStatus {
   PENDING
   PAID
@@ -1058,5 +1133,6 @@ enum WalletReason {
   BOOKING_CHARGE
   ADJUSTMENT
   PAYOUT
+  FORFEITED
 }
 

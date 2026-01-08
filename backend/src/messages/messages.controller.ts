@@ -33,7 +33,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'; // or
  * Override here to 60 req / 60s for reads.
  */
 @Throttle({ default: { ttl: 60, limit: 60 } })
-@Controller('messages')
+@Controller('chat')
 export class MessagesController {
   constructor(private readonly svc: MessagesService) {}
 
@@ -67,6 +67,21 @@ export class MessagesController {
     return this.svc.getThread(id, cursor);
   }
 
+  @ApiOperation({ summary: 'Post a message to an existing conversation' })
+  @Throttle({ default: { ttl: 60, limit: 40 } })
+  @Post('conversations/:id/messages')
+  postToConversation(
+    @Param('id') id: string,
+    @Body('content') content?: string,
+    @Body('text') text?: string,
+  ) {
+    const dto: PostMessageDto = {
+      conversationId: id,
+      text: (content ?? text ?? '').toString(),
+    };
+    return this.svc.post(dto);
+  }
+
   @ApiOperation({ summary: 'Mark a thread as read (no-op placeholder)' })
   @HttpCode(204)
   @Post('threads/:id/read')
@@ -97,6 +112,39 @@ export class MessagesController {
     const nRaw = Number(limit ?? 20);
     const n = Number.isFinite(nRaw) ? Math.min(50, Math.max(1, nRaw)) : 20;
     return this.svc.listConversations(userId, cursor, n);
+  }
+
+  /** List archived conversations */
+  @ApiOperation({ summary: 'Get archived conversations' })
+  @Get('conversations/archived')
+  getArchivedConversations(
+    @CurrentUser('id') userId: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const nRaw = Number(limit ?? 20);
+    const n = Number.isFinite(nRaw) ? Math.min(50, Math.max(1, nRaw)) : 20;
+    return this.svc.listArchivedConversations(userId, cursor, n);
+  }
+
+  /** Archive a conversation */
+  @ApiOperation({ summary: 'Archive a conversation' })
+  @Post('conversations/:id/archive')
+  archiveConversation(
+    @Param('id') conversationId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.svc.archiveConversation(conversationId, userId);
+  }
+
+  /** Unarchive a conversation */
+  @ApiOperation({ summary: 'Unarchive a conversation' })
+  @Post('conversations/:id/unarchive')
+  unarchiveConversation(
+    @Param('id') conversationId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.svc.unarchiveConversation(conversationId, userId);
   }
 
   /** Dashboard widget: unread count */

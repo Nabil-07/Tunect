@@ -31,8 +31,6 @@ const getStoredRoleUpper = (): RoleApi | null => {
   return r ? (r.toUpperCase() as RoleApi) : null;
 };
 
-const isAuthed = () => !!readToken() && localStorage.getItem('auth_ok') === '1';
-
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   
@@ -183,7 +181,10 @@ const KycVerification = lazy(() => import('./pages/admin/kyc-verification'));
 const AdminReports = lazy(() => import('./pages/admin/reports'));
 const AdminMessages = lazy(() => import('./pages/admin/messages'));
 const AdminReviews = lazy(() => import('./pages/admin/reviews'));
-const AdminFinanceRecon = lazy(() => import('./pages/admin/finance/recon'));
+const AdminFinanceRecon = lazy(() => import('./pages/admin/finance/Recon'));
+const AdminAnalytics = lazy(() => import('./pages/admin/analytics'));
+const AdminFinance = lazy(() => import('./pages/admin/finance'));
+const AdminPayoutDashboard = lazy(() => import('./pages/admin/finance/PayoutDashboard'));
 
 /** Role chooser */
 const ChooseRole = lazy(() => import('./pages/choose-role'));
@@ -346,12 +347,15 @@ function App() {
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/admin/tutors" element={<TutorList />} />
           <Route path="/admin/students" element={<StudentList />} />
+          <Route path="/admin/analytics" element={<AdminAnalytics />} />
           <Route path="/admin/kyc-verification" element={<KycVerification />} />
           <Route path="/admin/reports" element={<AdminReports />} />
           <Route path="/admin/messages" element={<AdminMessages />} />
           <Route path="/admin/chat" element={<AdminMessages />} />
           <Route path="/admin/chat/:conversationId" element={<AdminMessages />} />
           <Route path="/admin/reviews" element={<AdminReviews />} />
+          <Route path="/admin/finance" element={<AdminFinance />} />
+          <Route path="/admin/finance/payouts" element={<AdminPayoutDashboard />} />
           <Route path="/admin/finance/recon" element={<AdminFinanceRecon />} />
         </Route>
 

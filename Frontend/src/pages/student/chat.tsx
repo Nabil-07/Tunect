@@ -5,8 +5,6 @@ import { ChatWindow } from '../../components/chat/ChatWindow-Enhanced';
 
 export default function StudentChat() {
   const { conversationId } = useParams<{ conversationId?: string }>();
-  
-  console.log('StudentChat - conversationId:', conversationId);
 
   return (
     <div className="h-[calc(100vh-200px)]">

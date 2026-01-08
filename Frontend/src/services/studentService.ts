@@ -16,6 +16,9 @@ export type StudentMe =
         tokens?: number;
         createdAt?: string;
         updatedAt?: string;
+        hoursStudied?: number;
+        sessionsCompleted?: number;
+        subjectProgress?: Array<{ name?: string; progress?: number }>;
       } | null;
       tokens?: number;
       tokenBalance?: number;

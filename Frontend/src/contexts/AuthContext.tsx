@@ -38,6 +38,14 @@ type User = {
   email: string;
   role?: RoleApi | string;
   name?: string;
+  isDirector?: boolean;
+  isBanned?: boolean;
+  bannedScope?: string | null;
+  bannedAt?: string | null;
+  banReason?: string | null;
+  piiStrikes?: number;
+  piiMaxStrikes?: number;
+  messagingBlocked?: boolean;
   student?: { id: string } | null;
   tutor?: { id: string } | null;
 } | null;
@@ -62,7 +70,7 @@ function hasProfile(u: any): boolean {
   if (!u) return false;
   const hasStudent = !!u.student?.id;
   const hasTutor = !!u.tutor?.id;
-  const hasRole = u.role === 'STUDENT' || u.role === 'TUTOR';
+  const hasRole = u.role === 'STUDENT' || u.role === 'TUTOR' || u.role === 'ADMIN';
   return hasStudent || hasTutor || hasRole;
 }
 
@@ -74,6 +82,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loc = useLocation();
   const [idleOpen, setIdleOpen] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState(30);
+  const [blocked, setBlocked] = useState<{ active: boolean; strikes: number; max: number }>({ active: false, strikes: 0, max: 3 });
+
+  useEffect(() => {
+    if (!user) {
+      setBlocked((prev) => ({ ...prev, active: false }));
+      return;
+    }
+    const strikes = user.piiStrikes ?? 0;
+    const max = user.piiMaxStrikes ?? 3;
+    const active = !!user.messagingBlocked || strikes >= max;
+    setBlocked({ active, strikes, max });
+  }, [user]);
   const lastActivityRef = useRef<number>(Date.now());
   const idleTimerRef = useRef<number | null>(null);
   const warnTimerRef = useRef<number | null>(null);
@@ -94,6 +114,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const resolved = (u as any)?.user ?? u ?? null;
         if (alive) {
           setUser(resolved);
+          if (resolved?.messagingBlocked) {
+            setBlocked({
+              active: true,
+              strikes: resolved.piiStrikes ?? 0,
+              max: resolved.piiMaxStrikes ?? 3,
+            });
+          } else {
+            setBlocked({ active: false, strikes: resolved?.piiStrikes ?? 0, max: resolved?.piiMaxStrikes ?? 3 });
+          }
           // Reset navigation guard when user is successfully loaded
           if (resolved && hasProfile(resolved)) {
             hasNavigated.current = false;
@@ -805,6 +834,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 Logout now
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {blocked.active && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-8 border border-red-200">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-red-600 text-2xl">⚠️</span>
+              <h3 className="text-xl font-bold text-slate-900">Account blocked</h3>
+            </div>
+            <p className="text-sm text-slate-700 leading-relaxed mb-3">
+              Due to repeated attempts to share personal contact information, this account is blocked until an admin reviews it.
+            </p>
+            <p className="text-sm text-slate-700 mb-3 font-semibold">Strikes: {blocked.strikes}/{blocked.max}</p>
+            <p className="text-sm text-slate-700 leading-relaxed mb-3">
+              {user?.role === 'TUTOR'
+                ? 'As per policy, any pending earnings that are not yet disbursed will not be returned.'
+                : 'All purchased tokens are canceled and you will not be able to attend classes with any tutor.'}
+            </p>
+            <ul className="text-sm text-slate-700 list-disc ml-5 space-y-1 mb-4">
+              <li>Do not share phone numbers, emails, or social links.</li>
+              <li>Keep conversations on the platform for safety.</li>
+              <li>If you have questions, contact <a className="text-blue-600" href="mailto:support@tunectnow.com">support@tunectnow.com</a>.</li>
+            </ul>
+            <div className="text-sm text-red-700 font-semibold">Access is restricted until an admin unblocks your account.</div>
           </div>
         </div>
       )}

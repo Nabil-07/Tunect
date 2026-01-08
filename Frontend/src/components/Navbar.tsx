@@ -1,5 +1,5 @@
 // src/components/Navbar.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Menu, X, LogIn, UserPlus, ChevronDown, LogOut, User, Settings, KeyRound,
   MessageSquare, Bell,
@@ -55,17 +55,13 @@ const STUDENT_CENTER = [
   { to: '/student/messages', label: 'Messages' },
 ];
 
-const STUDENT_MORE = [
-  { to: '/student/token-balance', label: 'Token Balance' },
-  { to: '/student/group-sessions', label: 'Group Sessions' },
-  { to: '/support', label: 'Support' },
-];
-
 const ADMIN_CENTER = [
   { to: '/', label: 'Home' },
   { to: '/admin/tutors', label: 'Tutors' },
   { to: '/admin/students', label: 'Students' },
+  { to: '/admin/dashboard', label: 'Dashboard' },
   { to: '/support', label: 'Support' },
+  { to: '/admin/analytics', label: 'Analytics' },
 ];
 
 export default function Navbar() {
@@ -203,6 +199,28 @@ export default function Navbar() {
                         {n.label}
                       </Link>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Admin More dropdown */}
+            {isAuthed && role === 'admin' && (
+              <div className="relative" ref={extraRef}>
+                <button
+                  type="button"
+                  onClick={() => setExtraOpen((v) => !v)}
+                  className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
+                >
+                  More <ChevronDown size={16} className="text-slate-500" />
+                </button>
+                {extraOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-none border border-slate-200 bg-white shadow-md p-0 z-50 overflow-hidden">
+                    <Link to="/admin/kyc-verification" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>KYC Verification</Link>
+                    <Link to="/admin/reports" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Reports</Link>
+                    <Link to="/admin/messages" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Messages</Link>
+                    <Link to="/admin/reviews" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Reviews</Link>
+                    <Link to="/admin/finance" className="block px-4 py-2 text-sm hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Finance</Link>
                   </div>
                 )}
               </div>

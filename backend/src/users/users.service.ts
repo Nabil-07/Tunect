@@ -24,6 +24,10 @@ export class UsersService {
         avatarUrl: true,
         phone: true,
         preferredCurrency: true,
+        isDirector: true,
+        isBanned: true,
+        bannedScope: true,
+        bannedAt: true,
         createdAt: true,
         updatedAt: true,
         // personas → let frontend decide routing correctly
@@ -32,7 +36,32 @@ export class UsersService {
       },
     });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+
+    const activeBan = await this.prisma.banLedger.findFirst({
+      where: { userId, isActive: true },
+      orderBy: { bannedAt: 'desc' },
+      select: { scope: true, reason: true, bannedAt: true },
+    });
+
+    const piiStrikes = await this.prisma.piiViolationLog.count({ where: { userId } });
+    const piiMaxStrikes = 3;
+    const isBannedForMessaging =
+      user.isBanned ||
+      user.bannedScope === 'MESSAGING' ||
+      user.bannedScope === 'ALL' ||
+      activeBan?.scope === 'MESSAGING' ||
+      activeBan?.scope === 'ALL';
+    const messagingBlocked = piiStrikes >= piiMaxStrikes || isBannedForMessaging;
+
+    return {
+      ...user,
+      piiStrikes,
+      piiMaxStrikes,
+      messagingBlocked,
+      banReason: activeBan?.reason ?? null,
+      bannedScope: activeBan?.scope ?? user.bannedScope,
+      bannedAt: activeBan?.bannedAt ?? user.bannedAt,
+    };
   }
 
   // alias if anything still calls me()

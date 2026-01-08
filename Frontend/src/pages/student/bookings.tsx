@@ -3,7 +3,6 @@ import {
   FileDown,
   Calendar,
   Clock,
-  User,
   IndianRupee,
   AlertCircle,
   CalendarPlus2,
@@ -24,7 +23,6 @@ import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useToast } from "../../contexts/ToastContext";
 import api from "../../lib/apiClient";
-import Loader from "../../components/common/Loader";
 
 type Booking = BookingDto;
 

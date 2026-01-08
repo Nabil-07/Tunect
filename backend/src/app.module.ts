@@ -36,6 +36,7 @@ import { AssignmentsModule } from './assignments/assignments.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { WhiteboardModule } from './whiteboard/whiteboard.module';
 import { CommonModule } from './common/common.module';
+import { BansModule } from './bans/bans.module';
 
 import { AppController } from './app.controller';
 import { ReadyController } from './health/ready.controller';
@@ -87,6 +88,7 @@ import { ReconModule } from './finance/recon/recon.module';
     AssignmentsModule,
     ReferralsModule,
     WhiteboardModule,
+    BansModule,
 
     FinanceDashboardModule,
     TokenLedgerModule,

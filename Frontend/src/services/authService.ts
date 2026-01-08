@@ -1,6 +1,6 @@
 // src/services/authService.ts
 import { http as api } from '../api/http';
-import { setTokens, getAccessToken, clearTokens } from '../lib/auth';
+import { getAccessToken, clearTokens } from '../lib/auth';
 import { writeToken, writeRefreshToken } from '../lib/apiClient';
 
 export type RoleApi = "STUDENT" | "TUTOR" | "ADMIN";

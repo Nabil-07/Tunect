@@ -21,6 +21,7 @@ import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { GoogleMeetService } from '../google-meet/google-meet.service';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { ChatTriggersService } from '../messages/chat-triggers.service';
+import { BansService } from '../bans/bans.service';
 
 const TOKENS_PER_HOUR = Number(process.env.TOKENS_PER_HOUR ?? 1);
 const MIN_BLOCK_MINUTES = 15;
@@ -34,6 +35,7 @@ export class BookingsService {
     private googleMeet: GoogleMeetService,
     private waitlistService: WaitlistService,
     private chatTriggers: ChatTriggersService,
+    private bans: BansService,
   ) {}
 
   // ---------- utils ----------
@@ -144,6 +146,10 @@ export class BookingsService {
   // ---------- mutations ----------
   async create(dto: CreateBookingDto, tz?: string, actorUserId?: string) {
     const isDemo = !!dto.isDemo;
+
+    if (actorUserId) {
+      await this.bans.assertNotBanned(actorUserId, ['ALL', 'BOOKINGS']);
+    }
 
     if (actorUserId && !dto.studentId) {
       const st = await this.prisma.student.findUnique({ where: { userId: actorUserId } });
@@ -791,6 +797,8 @@ export class BookingsService {
       throw new NotFoundException('Tutor not found');
     }
 
+    await this.bans.assertNotBanned(tutor.userId, ['ALL', 'BOOKINGS']);
+
     // Create group booking (no initial student - they will join separately)
     // For group sessions, we create a "placeholder" student booking for the tutor to manage
     const booking = await this.prisma.booking.create({
@@ -862,12 +870,11 @@ export class BookingsService {
     }
 
     // Check if student already joined
-    const alreadyJoined = booking.groupParticipants.some(p => p.studentId === studentId);
+    const alreadyJoined = booking.groupParticipants.some((p) => p.studentId === studentId);
     if (alreadyJoined) {
       throw new BadRequestException('You have already joined this session');
     }
 
-    // Get student with tokens
     const student = await this.prisma.student.findUnique({
       where: { id: studentId },
       include: { user: true },
@@ -876,6 +883,8 @@ export class BookingsService {
     if (!student) {
       throw new NotFoundException('Student not found');
     }
+
+    await this.bans.assertNotBanned(student.userId, ['ALL', 'BOOKINGS']);
 
     // Calculate tokens needed - GROUP SESSIONS USE 0.5 TOKENS
     const GROUP_SESSION_TOKEN_COST = 0.5;
@@ -1169,6 +1178,17 @@ export class BookingsService {
     maxStudents: number,
     pricePerStudent: number,
   ) {
+    const tutorUser = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      select: { userId: true },
+    });
+
+    if (!tutorUser) {
+      throw new NotFoundException('Tutor not found');
+    }
+
+    await this.bans.assertNotBanned(tutorUser.userId, ['ALL', 'BOOKINGS']);
+
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
       include: { student: true },
@@ -1231,6 +1251,8 @@ export class BookingsService {
 
   // Create a PENDING_SLOT booking by deducting tokens upfront
   async createPendingSlotWithTokens(tutorId: string, userId: string) {
+    await this.bans.assertNotBanned(userId, ['ALL', 'BOOKINGS']);
+
     // Get student
     const student = await this.prisma.student.findUnique({
       where: { userId },
@@ -1323,6 +1345,8 @@ export class BookingsService {
 
   // Bulk reserve tokens for multiple sessions
   async bulkReserveTokens(tutorId: string, userId: string, count: number) {
+    await this.bans.assertNotBanned(userId, ['ALL', 'BOOKINGS']);
+
     if (count < 1 || count > 20) {
       throw new BadRequestException('Count must be between 1 and 20');
     }

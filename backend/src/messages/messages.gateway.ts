@@ -11,6 +11,7 @@ import { Server, Socket } from 'socket.io';
 import { UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { PiiGuardService } from '../common/pii-guard.service';
 
 @WebSocketGateway({
   cors: {
@@ -28,6 +29,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private jwtService: JwtService,
     private prisma: PrismaService,
+    private piiGuard: PiiGuardService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -106,34 +108,8 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   // Server-side method to emit new messages
   async emitNewMessage(conversationId: string, message: any) {
-    // Get conversation members to notify
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: conversationId },
-      include: {
-        members: {
-          where: { leftAt: null },
-          select: { userId: true },
-        },
-      },
-    });
-
-    if (!conversation) return;
-
     // Emit to conversation room
     this.server.to(`conversation:${conversationId}`).emit('newMessage', message);
-
-    // Also emit to individual users who might not be in the room (for notifications)
-    for (const member of conversation.members) {
-      const sockets = this.userSockets.get(member.userId);
-      if (sockets) {
-        sockets.forEach((socketId) => {
-          this.server.to(socketId).emit('messageNotification', {
-            conversationId,
-            message,
-          });
-        });
-      }
-    }
   }
 
   // Emit conversation list updates

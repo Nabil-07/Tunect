@@ -2,7 +2,7 @@
 // File: src/pages/index.tsx (UPDATED)
 // Description: Home page wired to new components
 // =============================================
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import HeroTrending from '../components/HeroTrending';
@@ -10,8 +10,6 @@ import SubjectsGrid from '../components/SubjectsGrid';
 import TrustSection from '../components/TrustSection';
 import Testimonials from '../components/Testimonials';
 
-// Local type so this file compiles independently
-type Testimonial = { quote: string; name: string; subtitle: string };
 
 // Optional animations: load framer-motion only if present
 let Motion: any = null;
@@ -33,27 +31,6 @@ const subjects = [
   'English',
   'Arabic',
   'French',
-];
-
-const testimonials: Testimonial[] = [
-  {
-    quote:
-      '“Sarah made calculus finally click for me! Her teaching style is incredibly clear and patient. Went from struggling to getting A’s in my college math courses.”',
-    name: 'Michael Johnson',
-    subtitle: 'Mathematics with Sarah Thompson',
-  },
-  {
-    quote:
-      '“Rajesh is an amazing teacher! His real-world experience really shows. I landed my first programming job thanks to his guidance.”',
-    name: 'Priya Sharma',
-    subtitle: 'Python Programming with Rajesh Kumar',
-  },
-  {
-    quote:
-      '“The demo class helped me choose the right tutor. The token system is simple and transparent—no confusing subscriptions.”',
-    name: 'Arjun Mehta',
-    subtitle: 'IELTS Prep with Ayesha Khan',
-  },
 ];
 
 export default function Home() {
@@ -161,7 +138,7 @@ export default function Home() {
       </section>
 
       {/* Testimonials */}
-      <Testimonials items={testimonials} />
+      <Testimonials />
       {/* ✅ CTA removed as requested */}
     </main>
   );

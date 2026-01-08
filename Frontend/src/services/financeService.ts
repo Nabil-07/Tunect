@@ -44,6 +44,27 @@ export type PayoutBatchDetail = {
   }>;
 };
 
+export type BalanceSheetLine = {
+  label: string;
+  amount: number;
+  note?: string;
+};
+
+export type BalanceSheetResponse = {
+  period: 'month' | 'quarter' | 'half' | 'year';
+  asOf: string;
+  periodStart: string;
+  fiscalYearLabel: string;
+  fiscalYearEnd: string;
+  totals: { assets: number; liabilities: number; equity: number };
+  assets: { current: BalanceSheetLine[]; nonCurrent: BalanceSheetLine[] };
+  liabilities: { current: BalanceSheetLine[]; nonCurrent: BalanceSheetLine[] };
+  equity: BalanceSheetLine[];
+  notes: string[];
+  noteDetails: Record<string, { formula: string; sources: string[]; rowCount: number }>;
+  validation: { isBalanced: boolean; difference: number };
+};
+
 /* ========== API Functions ========== */
 
 /** Get tutor wallet ledger entries with optional filters */
@@ -97,4 +118,23 @@ export async function confirmPayoutBatch(batchKey: string) {
 export async function executePayoutBatch(batchKey: string) {
   const { data } = await api.post(`/admin/finance/payouts/batches/execute`, { batchKey });
   return data;
+}
+
+export async function getBalanceSheet(params?: {
+  period?: 'month' | 'quarter' | 'half' | 'year';
+  asOf?: string;
+}) {
+  const { data } = await api.get<BalanceSheetResponse>('/admin/finance/dashboard', { params });
+  return data;
+}
+
+export async function exportBalanceSheetCsv(params?: {
+  period?: 'month' | 'quarter' | 'half' | 'year';
+  asOf?: string;
+}) {
+  const response = await api.get('/admin/finance/dashboard/export', {
+    params,
+    responseType: 'blob',
+  });
+  return response.data as Blob;
 }
