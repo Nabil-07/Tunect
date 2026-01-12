@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards, ParseUUIDPipe, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { KycService } from './kyc.service';
 import { CreateKycDto } from './dto/create-kyc.dto';
@@ -57,11 +57,19 @@ export class KycController {
     return this.svc.listAll(q);
   }
 
+  // Admin: fetch a tutor's latest application + documents in one bundle
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('admin/:tutorId')
+  getTutorBundle(@Param('tutorId') tutorId: string) {
+    return this.svc.getTutorBundle(tutorId);
+  }
+
   // Admin: approve/reject a KYC document
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @Patch(':id')
-  review(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: ReviewKycDto) {
-    return this.svc.review(id, dto);
+  @Patch('doc/:docId')
+  review(@Param('docId') docId: string, @Body() dto: ReviewKycDto) {
+    return this.svc.review(docId, dto);
   }
 }

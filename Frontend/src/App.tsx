@@ -85,8 +85,8 @@ function RoleRoute({
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // Get role from JWT token (most authoritative source)
-  const role = user?.role?.toUpperCase() as RoleApi | undefined;
+  // Get role from JWT token (most authoritative source) and fall back to stored role
+  const role = (user?.role?.toUpperCase() as RoleApi | undefined) ?? getStoredRoleUpper();
 
   // While auth is hydrating, avoid redirect loops
   if (loading) {
@@ -155,11 +155,14 @@ const TokenBalance = lazy(() => import('./pages/student/token-balance'));       
 /** Phase 4: Student Features */
 const GroupSessions = lazy(() => import('./pages/student/group-sessions'));
 const StudentManageAccount = lazy(() => import('./pages/student/manage-account'));
+const ClassPage = lazy(() => import('./pages/class'));
+const CallPage = lazy(() => import('./pages/call'));
+const WhiteboardPage = lazy(() => import('./pages/whiteboard'));
 
 /** Tutor */
 const TutorDashboard = lazy(() => import('./pages/tutor/dashboard'));
 const TutorProfile = lazy(() => import('./pages/tutor/profile'));
-const Kyc = lazy(() => import('./pages/tutor/kyc-upload'));
+const Kyc = lazy(() => import('./pages/tutor/kyc'));
 const Availability = lazy(() => import('./pages/tutor/availability'));
 const SkillTest = lazy(() => import('./pages/tutor/skill-test'));
 const TutorSessions = lazy(() => import('./pages/tutor/sessions'));
@@ -264,6 +267,19 @@ function App() {
 
         {/* Role Chooser */}
         <Route path="/choose-role" element={<ProtectedRoute><ChooseRole /></ProtectedRoute>} />
+
+        {/* Shared class join routes */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <MainLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/class/:bookingId" element={<ClassPage />} />
+          <Route path="/call/:bookingId" element={<CallPage />} />
+          <Route path="/whiteboard/:bookingId" element={<WhiteboardPage />} />
+        </Route>
 
         {/* Student Dashboard */}
         <Route

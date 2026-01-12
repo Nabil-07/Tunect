@@ -21,6 +21,10 @@ export default function TutorKYC() {
   const [status, setStatus] = useState<{ status: 'none'|'submitted'|'under_review'|'approved'|'rejected'; reason?: string }|null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [modal, setModal] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
 
   // Countries from countryData (single source of truth)
   const countries = useMemo<CountryOption[]>(() => getCountries(), []);
@@ -49,6 +53,9 @@ export default function TutorKYC() {
       setCountryCode(countries[0].code.toUpperCase());
     }
   }, [countries, countryCode]);
+
+  const isEditable = !status || status.status === 'none' || status.status === 'rejected';
+  const formLocked = !isEditable;
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -82,6 +89,15 @@ export default function TutorKYC() {
     getKycStatus().then(setStatus).catch(() => setStatus({ status: 'none' }));
   }, []);
 
+  useEffect(() => {
+    if (submitSuccess) setCollapsed(true);
+  }, [submitSuccess]);
+
+  // collapse form after successful submit
+  useEffect(() => {
+    if (submitSuccess) setCollapsed(true);
+  }, [submitSuccess]);
+
   const statusBadge = useMemo(() => {
     if (!status) return null;
     const map: Record<string, string> = {
@@ -106,6 +122,7 @@ export default function TutorKYC() {
 
     if (!fullName.trim()) e.fullName = 'Full name is required';
     if (!dob) e.dob = 'Date of birth is required';
+    else if (Number.isNaN(new Date(dob).getTime())) e.dob = 'Date of birth is invalid';
     if (!phone || onlyDigits(phone).length < 7) e.phone = 'Valid phone is required';
     if (!address1.trim()) e.address1 = 'Address is required';
     if (!city.trim()) e.city = 'City is required';
@@ -133,6 +150,8 @@ export default function TutorKYC() {
 
   async function onSubmit(ev: React.FormEvent) {
     ev.preventDefault();
+    setSubmitError(null);
+    setSubmitSuccess(null);
     if (!validate()) return;
 
     // Preserve backend contract: collapse to IN/AE/OTHER for payload
@@ -170,10 +189,14 @@ export default function TutorKYC() {
     try {
       await submitKyc(payload, files);
       setStatus({ status: 'submitted' });
-      alert('KYC submitted successfully!');
-    } catch (err) {
+      const msg = 'KYC submitted successfully. We will review and update your status soon.';
+      setSubmitSuccess(msg);
+      setModal({ kind: 'success', message: msg });
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to submit KYC. Please try again.');
+      const msg = err?.response?.data?.message || err?.message || 'Failed to submit KYC. Please try again.';
+      setSubmitError(msg);
+      setModal({ kind: 'error', message: msg });
     } finally {
       setSubmitting(false);
     }
@@ -190,11 +213,65 @@ export default function TutorKYC() {
   return (
     <main className="container mx-auto px-4 py-6 max-w-4xl">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold">Tutor KYC</h2>
+        <div>
+          <h2 className="text-2xl font-bold">Tutor KYC</h2>
+          <p className="text-sm text-slate-600">Average approval time: 12–24 hours after submission.</p>
+        </div>
         {statusBadge}
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-6">
+      <section className="mb-4 rounded-xl border bg-white p-4 shadow-sm flex items-center justify-between">
+        <div className="text-sm text-slate-700">
+          <div className="font-semibold">Current status: {status?.status || 'none'}</div>
+          {status?.reason && <div className="text-rose-700">Reason: {status.reason}</div>}
+        </div>
+        <button
+          type="button"
+          className="text-sm px-3 py-1 rounded-lg border bg-slate-50 hover:bg-slate-100"
+          onClick={() => setCollapsed((v) => !v)}
+        >
+          {collapsed ? 'Expand form' : 'Hide form'}
+        </button>
+      </section>
+
+      <section className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-4 text-sm font-medium text-slate-700">
+          {[
+            { key: 'submitted', label: 'Submitted' },
+            { key: 'under_review', label: 'Under Review' },
+            { key: 'approved', label: 'Approved' },
+          ].map((step, idx, arr) => {
+            const active = (status?.status || 'none') === step.key;
+            const done = ['approved', 'under_review', 'submitted'].includes(status?.status || '') && arr.findIndex(s => s.key === status?.status) >= idx;
+            return (
+              <div key={step.key} className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full border ${done ? 'bg-emerald-500 border-emerald-500' : active ? 'bg-amber-400 border-amber-400' : 'bg-slate-200 border-slate-300'}`} />
+                <span className={done || active ? 'text-slate-900' : 'text-slate-500'}>{step.label}</span>
+                {idx < arr.length - 1 && <div className="w-10 h-px bg-slate-200" />}
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-xs text-slate-500 mt-2">Next step: {status?.status === 'submitted' ? 'Under review (ETA 12–24h)' : status?.status === 'under_review' ? 'Approval (ETA soon)' : status?.status === 'approved' ? 'Completed' : 'Submit your details to begin review.'}</p>
+      </section>
+
+      {submitError && (
+        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {submitError}
+        </div>
+      )}
+      {submitSuccess && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {submitSuccess}
+        </div>
+      )}
+
+      <form
+        onSubmit={onSubmit}
+        className={`space-y-6 transition-all ${collapsed ? 'max-h-0 overflow-hidden opacity-0 pointer-events-none' : 'max-h-[9999px]'}`}
+        aria-hidden={collapsed}
+      >
+        <fieldset disabled={formLocked} className={formLocked ? 'opacity-75 cursor-not-allowed' : ''}>
         {/* Personal details */}
         <section className="rounded-2xl border p-4 bg-white shadow-sm">
           <h3 className="font-semibold mb-3">Personal details</h3>
@@ -404,7 +481,28 @@ export default function TutorKYC() {
             Submitting your KYC allows us to verify your identity and disburse earnings to your bank account securely.
           </p>
         </div>
+        </fieldset>
       </form>
+
+      {modal && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold">{modal.kind === 'success' ? 'Submitted' : 'Submission error'}</h3>
+              <button className="text-slate-500" onClick={() => setModal(null)}>✕</button>
+            </div>
+            <p className={`text-sm ${modal.kind === 'success' ? 'text-emerald-700' : 'text-rose-700'}`}>{modal.message}</p>
+            <div className="mt-4 flex justify-end">
+              <button
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                onClick={() => setModal(null)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

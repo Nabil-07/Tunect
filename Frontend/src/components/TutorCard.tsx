@@ -61,11 +61,13 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [tokenBalance, setTokenBalance] = useState<number | null>(propTokenBalance ?? null);
+  const [tokenBalanceLoading, setTokenBalanceLoading] = useState<boolean>(user?.role === 'STUDENT' && propTokenBalance === undefined);
 
   useEffect(() => {
     // If tokenBalance was passed as prop, use it
     if (propTokenBalance !== undefined) {
       setTokenBalance(propTokenBalance);
+      setTokenBalanceLoading(false);
     }
     
     // Check if tutor is favorited (only for students)
@@ -76,13 +78,15 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
       
       // Fetch token balance for this tutor only if not passed as prop
       if (propTokenBalance === undefined) {
+        setTokenBalanceLoading(true);
         api.get('/students/me/token-balances')
           .then(res => {
             const balances = res.data || [];
             const balance = balances.find((b: any) => b.tutorId === tutor.id);
             setTokenBalance(balance ? Number(balance.balance) : null);
           })
-          .catch(() => setTokenBalance(null));
+          .catch(() => setTokenBalance(null))
+          .finally(() => setTokenBalanceLoading(false));
       }
     }
   }, [tutor.id, user, propTokenBalance]);
@@ -143,7 +147,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
       return nav(`/student/demo-checkout?tutorId=${tutor.id}`);
     }
     // If student has tokens for this tutor → go to bookings to schedule
-    if (tokenBalance !== null && tokenBalance > 0) {
+    if (!tokenBalanceLoading && tokenBalance !== null && tokenBalance > 0) {
       return nav('/student/bookings');
     }
     // else → go paid booking flow to buy tokens
@@ -283,7 +287,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
         )}
 
         {/* Token Balance Display for Students with Demo Used */}
-        {user?.role === 'STUDENT' && tutor.demoUsed && tokenBalance !== null && tokenBalance > 0 && (
+        {user?.role === 'STUDENT' && tutor.demoUsed && !tokenBalanceLoading && tokenBalance !== null && tokenBalance > 0 && (
           <div className="mt-3 p-2 rounded-lg bg-emerald-50 border border-emerald-200">
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2 text-emerald-700">
@@ -315,10 +319,13 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
               goBook();
             }}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700"
+              disabled={tokenBalanceLoading}
           >
-            {tutor.demoUsed 
-              ? (tokenBalance !== null && tokenBalance > 0 ? "Use Tokens" : "Buy Tokens")
-              : "Book Demo"}
+              {tutor.demoUsed 
+                ? (tokenBalanceLoading
+                    ? "Checking tokens..."
+                    : (tokenBalance !== null && tokenBalance > 0 ? "Use Tokens" : "Buy Tokens"))
+                : "Book Demo"}
           </button>
         </div>
 

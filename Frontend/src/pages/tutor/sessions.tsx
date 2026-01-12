@@ -1,7 +1,7 @@
 // src/pages/tutor/sessions.tsx
 import { useEffect, useState } from 'react';
 import { getMySessions } from '../../services/sessionService';
-import { convertToGroupSession } from '../../services/bookingsService';
+import { convertToGroupSession, getBookingDetails } from '../../services/bookingsService';
 import { Users, Clock, Calendar, UserPlus, X, IndianRupee } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 import { differenceInHours } from 'date-fns';
@@ -35,10 +35,47 @@ export default function MySessions() {
   const [maxStudents, setMaxStudents] = useState(5);
   const [pricePerStudent, setPricePerStudent] = useState(0.5);
   const [converting, setConverting] = useState(false);
+  const [meetingLinks, setMeetingLinks] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     loadSessions();
   }, []);
+
+  useEffect(() => {
+    const withLinks = sessions.filter((s) => s.status && s.status !== 'PENDING_SLOT');
+    if (withLinks.length === 0) {
+      setMeetingLinks(new Map());
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const entries = await Promise.all(
+        withLinks.map(async (s) => {
+          try {
+            const detail = await getBookingDetails(s.id);
+            return [s.id, detail?.meetingUrl as string | undefined] as const;
+          } catch (err) {
+            console.error('[Sessions] Failed to load booking details', s.id, err);
+            return [s.id, undefined] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        const next = new Map<string, string>();
+        entries.forEach(([id, url]) => {
+          if (url) next.set(id, url);
+        });
+        setMeetingLinks(next);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessions]);
 
   async function loadSessions() {
     try {
@@ -126,6 +163,8 @@ export default function MySessions() {
           {sessions.map((session) => {
             const isGroup = session.isGroupSession;
             const canConvert = canConvertToGroup(session);
+            const meetingUrl = meetingLinks.get(session.id);
+            const joinUrl = meetingUrl?.startsWith('webrtc:') ? `/class/${session.id}` : meetingUrl;
 
             return (
               <div
@@ -200,15 +239,25 @@ export default function MySessions() {
                 </div>
 
                 {/* Actions */}
-                {canConvert && (
-                  <button
-                    onClick={() => openConvertModal(session)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    Convert to Group
-                  </button>
-                )}
+                <div className="flex flex-col gap-2">
+                  {joinUrl && session.status === 'UPCOMING' && (
+                    <a
+                      href={joinUrl}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    >
+                      Join Class
+                    </a>
+                  )}
+                  {canConvert && (
+                    <button
+                      onClick={() => openConvertModal(session)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Convert to Group
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

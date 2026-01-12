@@ -149,7 +149,7 @@ export default function Terms() {
             <h3 className="font-semibold text-lg mb-3 text-slate-800">4.3 Pricing & Payments</h3>
             <ul className="list-disc pl-6 space-y-2 text-slate-600 mb-4">
               <li>Set competitive and fair hourly rates</li>
-              <li>Tunect charges a platform fee of 20% on all earnings</li>
+              <li>Tunect charges a tiered platform fee on tutor earnings: 25% below ₹400/hr, 18% between ₹400–₹699/hr, and 15% at ₹700+/hr</li>
               <li>Payments processed within 7 business days after session completion</li>
               <li>Minimum payout threshold: ₹500 (accumulates until reached)</li>
               <li>You are responsible for applicable taxes on your earnings</li>

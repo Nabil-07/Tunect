@@ -9,15 +9,15 @@ export interface UseSocketOptions {
 }
 
 export function useSocket(options: UseSocketOptions = {}) {
-  const { namespace = '/chat', autoConnect = true } = options;
+  const { namespace = '/webrtc', autoConnect = true } = options;
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     if (!autoConnect) return;
 
-    // Get token from localStorage
-    const token = localStorage.getItem('token');
+    // Get token from the same key used by REST auth
+    const token = localStorage.getItem('access_token');
     if (!token) {
       console.warn('No auth token found, cannot connect to WebSocket');
       return;
@@ -36,17 +36,17 @@ export function useSocket(options: UseSocketOptions = {}) {
 
     // Connection event handlers
     socket.on('connect', () => {
-      console.log('Socket connected:', socket.id);
+      console.log(`[socket:${namespace}] connected`, socket.id);
       setIsConnected(true);
     });
 
     socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
+      console.log(`[socket:${namespace}] disconnected`, reason);
       setIsConnected(false);
     });
 
     socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+      console.error(`[socket:${namespace}] connect_error`, error);
       setIsConnected(false);
     });
 

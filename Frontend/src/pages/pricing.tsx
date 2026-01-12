@@ -6,7 +6,7 @@ export default function Pricing() {
       <ul className="space-y-4 text-gray-700">
         <li>🎁 First session is always <strong>free</strong> (Demo)</li>
         <li>🎯 Each tutor sets their own hourly rate (in tokens)</li>
-        <li>💎 Minimum 10 tokens required to book a tutor</li>
+        <li>💎 Minimum 5 tokens required to book a tutor</li>
         <li>💳 Purchase tokens securely using Stripe</li>
       </ul>
     </div>

@@ -16,6 +16,7 @@ import {
   getMyBookings,
   type BookingDto,
   cancelBooking,
+  getBookingDetails,
 } from "../../services/bookingsService";
 import { downloadReceipt } from "../../services/paymentsService";
 import SlotPicker from "../../components/SlotPicker";
@@ -36,6 +37,7 @@ export default function MyBookings() {
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [loadingBalances, setLoadingBalances] = useState(true);
   const [tokenBalances, setTokenBalances] = useState<Map<string, number>>(new Map());
+  const [meetingLinks, setMeetingLinks] = useState<Map<string, string>>(new Map());
 
   // slot picker state
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -213,6 +215,42 @@ export default function MyBookings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const confirmed = [...upcoming, ...completed].filter((b) => b.status === "CONFIRMED");
+    if (confirmed.length === 0) {
+      setMeetingLinks(new Map());
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const entries = await Promise.all(
+        confirmed.map(async (b) => {
+          try {
+            const detail = await getBookingDetails(b.id);
+            return [b.id, detail?.meetingUrl as string | undefined] as const;
+          } catch (err) {
+            console.error('Failed to load booking details', b.id, err);
+            return [b.id, (b as any)?.meetingUrl as string | undefined] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        const next = new Map<string, string>();
+        entries.forEach(([id, url]) => {
+          if (url) next.set(id, url);
+        });
+        setMeetingLinks(next);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [upcoming, completed]);
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-semibold text-gray-800 mb-6">
@@ -290,6 +328,7 @@ export default function MyBookings() {
           <BookingCard
             key={b.id}
             booking={b}
+            meetingLink={meetingLinks.get(b.id)}
             tokenBalance={tokenBalances.get(b.tutor?.id || '')}
             actions={
               <div className="flex gap-2">
@@ -319,6 +358,7 @@ export default function MyBookings() {
           <BookingCard 
             key={b.id} 
             booking={b}
+            meetingLink={meetingLinks.get(b.id)}
             actions={
               <button
                 onClick={() => handleCancel(b)}
@@ -335,7 +375,7 @@ export default function MyBookings() {
       {/* Completed */}
       <Section title="Completed Sessions" emptyNote="No completed sessions yet.">
         {completed.map((b) => (
-          <BookingCard key={b.id} booking={b} />
+          <BookingCard key={b.id} booking={b} meetingLink={meetingLinks.get(b.id)} />
         ))}
       </Section>
         </>
@@ -398,10 +438,12 @@ function BookingCard({
   booking,
   actions,
   tokenBalance,
+  meetingLink,
 }: {
   booking: Booking;
   actions?: React.ReactNode;
   tokenBalance?: number;
+  meetingLink?: string;
 }) {
   const {
     tutor,
@@ -416,7 +458,8 @@ function BookingCard({
   // Phase 4: Cast to check for group session and meeting link
   const groupBooking = booking as any;
   const isGroupSession = groupBooking.isGroupSession || false;
-  const meetingUrl = groupBooking.meetingUrl;
+  const meetingUrl = meetingLink || groupBooking.meetingUrl;
+  const joinUrl = meetingUrl?.startsWith("webrtc:") ? `/class/${booking.id}` : meetingUrl;
   const currentEnrollment = groupBooking.currentEnrollment || 1;
   const maxStudents = groupBooking.maxStudents || 1;
 
@@ -487,17 +530,15 @@ function BookingCard({
             </div>
           )}
           
-          {/* Google Meet Link */}
-          {meetingUrl && status === "CONFIRMED" && (
+          {/* Join link */}
+          {joinUrl && status === "CONFIRMED" && (
             <div className="mt-2">
               <a
-                href={meetingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={joinUrl}
                 className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
               >
                 <Video size={16} />
-                Join Google Meet
+                Join Class
                 <ExternalLink size={14} />
               </a>
             </div>
