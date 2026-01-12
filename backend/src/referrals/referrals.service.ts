@@ -1,9 +1,17 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateReferralDto, ProcessReferralRewardDto } from './dto/referral.dto';
-import { customAlphabet } from 'nanoid';
+import { randomBytes } from 'crypto';
 
-const nanoid = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 8);
+const REFERRAL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+function generateReferralCodeValue(length = 8): string {
+  const bytes = randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += REFERRAL_ALPHABET[bytes[i] % REFERRAL_ALPHABET.length];
+  }
+  return out;
+}
 
 @Injectable()
 export class ReferralsService {
@@ -30,7 +38,7 @@ export class ReferralsService {
 
     // Generate unique code
     while (!isUnique) {
-      referralCode = nanoid();
+      referralCode = generateReferralCodeValue(8);
       const existing = await this.prisma.referral.findUnique({
         where: { referralCode },
       });

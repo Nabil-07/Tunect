@@ -27,6 +27,7 @@ import React, {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { me as fetchMe, logout as doLogout } from '../services/authService';
 import { readToken, setAuthHeader, getTimeLeftSec, refreshAccessToken, writeToken, writeRefreshToken } from '../lib/apiClient';
+import { getKycStatus, getMyProfile } from '../services/tutorService';
 // TODO: Next Release - Multi-account imports
 // import { getAccessToken, setTokens, clearTokens } from '../lib/auth';
 // import { accountManager, type StoredAccount } from '../services/accountManager';
@@ -83,10 +84,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [idleOpen, setIdleOpen] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState(30);
   const [blocked, setBlocked] = useState<{ active: boolean; strikes: number; max: number }>({ active: false, strikes: 0, max: 3 });
+  const [kycPrompt, setKycPrompt] = useState<{ show: boolean; status?: string }>({ show: false });
 
   useEffect(() => {
     if (!user) {
       setBlocked((prev) => ({ ...prev, active: false }));
+      setKycPrompt({ show: false });
       return;
     }
     const strikes = user.piiStrikes ?? 0;
@@ -94,6 +97,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const active = !!user.messagingBlocked || strikes >= max;
     setBlocked({ active, strikes, max });
   }, [user]);
+
+  // Prompt tutors to finish KYC if they are not approved yet
+  useEffect(() => {
+    let alive = true;
+
+    const roleUpper = (user?.role || '').toString().toUpperCase();
+    const shouldCheck = roleUpper === 'TUTOR';
+    const path = loc?.pathname || '';
+    const onKycPage = path.startsWith('/tutor/kyc') || path.startsWith('/become-tutor');
+
+    if (!shouldCheck || onKycPage) {
+      setKycPrompt((prev) => (prev.show ? { show: false, status: prev.status } : prev));
+      return () => { alive = false; };
+    }
+
+    (async () => {
+      try {
+        // Short-circuit if tutor profile already approved
+        const profile = await getMyProfile();
+        const tutorStatus = (profile?.status || profile?.tutor?.status || '').toString().toUpperCase();
+        if (tutorStatus === 'APPROVED') {
+          setKycPrompt({ show: false, status: 'approved' });
+          return;
+        }
+
+        const res = await getKycStatus();
+        if (!alive) return;
+        const status = res?.status || 'none';
+        if (status === 'approved' || status === 'submitted' || status === 'under_review') {
+          setKycPrompt({ show: false, status });
+        } else {
+          setKycPrompt({ show: true, status });
+        }
+      } catch {
+        if (!alive) return;
+        // Conservative: show prompt if status lookup fails
+        setKycPrompt((prev) => ({ show: true, status: prev.status || 'unknown' }));
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [user, loc?.pathname]);
   const lastActivityRef = useRef<number>(Date.now());
   const idleTimerRef = useRef<number | null>(null);
   const warnTimerRef = useRef<number | null>(null);
@@ -832,6 +879,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 className="rounded-xl border px-3 py-1.5 text-sm"
               >
                 Logout now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {kycPrompt.show && (
+        <div className="fixed inset-0 z-[1050] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-8 border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-indigo-600 text-2xl">🪪</span>
+              <h3 className="text-xl font-bold text-slate-900">Complete your tutor KYC</h3>
+            </div>
+            <p className="text-sm text-slate-700 leading-relaxed mb-3">
+              Your tutor account is not approved yet. Please submit the required profile details and upload your latest qualification certificate to start teaching.
+            </p>
+            <ul className="text-sm text-slate-700 list-disc ml-5 space-y-1 mb-4">
+              <li>Personal info: full name, phone, address</li>
+              <li>Bank details for payouts</li>
+              <li>Upload a clear selfie and at least one degree/qualification</li>
+            </ul>
+            <div className="flex justify-end gap-3">
+              <button
+                className="px-4 py-2 rounded-lg border text-sm"
+                onClick={() => setKycPrompt({ show: false, status: kycPrompt.status })}
+              >
+                Later
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700"
+                onClick={() => {
+                  setKycPrompt({ show: false, status: kycPrompt.status });
+                  nav('/tutor/kyc');
+                }}
+              >
+                Go to KYC
               </button>
             </div>
           </div>

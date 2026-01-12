@@ -10,6 +10,29 @@ import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import compression from 'compression';
+import { IoAdapter } from '@nestjs/platform-socket.io';
+import type { ServerOptions } from 'socket.io';
+
+class CorsSocketIoAdapter extends IoAdapter {
+  constructor(private readonly appRef: any, private readonly origins: string[]) {
+    super(appRef);
+  }
+
+  override createIOServer(port: number, options?: ServerOptions) {
+    const cors = {
+      origin: this.origins,
+      credentials: true,
+    };
+    const { path, ...rest } = options || {};
+    const opts: Partial<ServerOptions> = {
+      ...rest,
+      ...(path ? { path } : {}),
+      cors,
+      allowEIO3: true,
+    };
+    return super.createIOServer(port, opts);
+  }
+}
 
 
 async function bootstrap() {
@@ -25,6 +48,10 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+
+  // Global Socket.IO adapter with explicit CORS to match frontend origins
+  const wsOrigins = ['http://localhost:5173', 'http://localhost:5174', 'https://tunectnow.com', 'https://test-tunectnow.com'];
+  app.useWebSocketAdapter(new CorsSocketIoAdapter(app, wsOrigins));
 
   // ⚡ GZIP Compression - reduces response size by 70-90%
   app.use(compression({

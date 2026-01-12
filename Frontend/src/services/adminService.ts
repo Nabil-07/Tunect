@@ -71,6 +71,40 @@ export interface KycItem {
 	tutor: { id: string; user: { email: string } };
 }
 
+export interface KycApplication {
+	id: string;
+	status: 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PENDING';
+	createdAt: string;
+	updatedAt: string;
+	rejectionCount?: number;
+	reapplyAfter?: string | null;
+	notes?: string | null;
+	fullName: string;
+	dob: string;
+	phone: string;
+	country: string;
+	address1: string;
+	address2?: string | null;
+	city: string;
+	state?: string | null;
+	postalCode?: string | null;
+	bankAccountHolder: string;
+	bankName: string;
+	bankBranch?: string | null;
+	accountNumber?: string | null;
+	ifsc?: string | null;
+	upiId?: string | null;
+	aadhaarNumber?: string | null;
+	iban?: string | null;
+	swift?: string | null;
+}
+
+export interface KycBundle {
+	tutor: { id: string; user: { email: string; name?: string | null } };
+	application: KycApplication | null;
+	documents: KycItem[];
+}
+
 export async function fetchDashboard(): Promise<AdminDashboard> {
 	const { data } = await api.get('/admin/dashboard');
 	return data;
@@ -109,6 +143,16 @@ export async function approveKyc(id: string, notes?: string) {
 export async function rejectKyc(id: string, notes?: string) {
 	const { data } = await api.patch(`/kyc/${id}`, { status: 'REJECTED', notes });
 	return data as KycItem;
+}
+
+export async function reviewKyc(id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED', notes?: string) {
+	const { data } = await api.patch(`/kyc/doc/${id}`, { status, notes });
+	return data as KycItem;
+}
+
+export async function fetchKycBundle(tutorId: string): Promise<KycBundle> {
+	const { data } = await api.get(`/kyc/admin/${tutorId}`);
+	return data as KycBundle;
 }
 
 export async function sendSubjectBroadcast(subject: string, message: string) {

@@ -220,6 +220,18 @@ export class BookingsController {
     return this.service.reschedule(id, dto, tz, actorUserId!);
   }
 
+  @ApiOperation({ summary: 'Get booking details with meeting link (participant only)' })
+  @Get(':id/details')
+  @Roles(Role.STUDENT, Role.TUTOR, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  getDetails(
+    @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('role') role: Role,
+  ) {
+    return this.service.getBookingForUser(id, userId, role);
+  }
+
   // ---------- Update ----------
   @ApiOperation({ summary: 'Update booking (status/notes)' })
   @Patch(':id')

@@ -4,6 +4,14 @@ export type AuthTokens = { accessToken: string; refreshToken?: string };
 const ACCESS_KEY = 'tunect_access_token';
 const REFRESH_KEY = 'tunect_refresh_token';
 
+function readFromBoth(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key) || localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export function setTokens(tokens: Partial<AuthTokens>) {
   if (tokens.accessToken) {
     // primary key used by http.ts
@@ -24,21 +32,25 @@ export function setTokens(tokens: Partial<AuthTokens>) {
 }
 
 export function getAccessToken(): string | null {
-  try {
-    return (
-      localStorage.getItem(ACCESS_KEY) ||
-      localStorage.getItem('accessToken') ||
-      localStorage.getItem('token')
-    );
-  } catch {
-    return null;
-  }
+  return (
+    readFromBoth(ACCESS_KEY) ||
+    readFromBoth('accessToken') ||
+    readFromBoth('token')
+  );
 }
 
 export function clearTokens() {
-  localStorage.removeItem(ACCESS_KEY);
-  localStorage.removeItem(REFRESH_KEY);
-  // clear compat keys too
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('token');
+  try {
+    localStorage.removeItem(ACCESS_KEY);
+    sessionStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+    sessionStorage.removeItem(REFRESH_KEY);
+    // clear compat keys too
+    localStorage.removeItem('accessToken');
+    sessionStorage.removeItem('accessToken');
+    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
+  } catch {
+    // ignore
+  }
 }

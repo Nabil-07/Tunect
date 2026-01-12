@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateKycDto } from './dto/create-kyc.dto';
 import { QueryKycDto } from './dto/query-kyc.dto';
 import { ReviewKycDto } from './dto/review-kyc.dto';
-import { KycStatus, KycAppStatus } from '@prisma/client';
+import { KycStatus, KycAppStatus, TutorStatus } from '@prisma/client';
 
 @Injectable()
 export class KycService {
@@ -65,11 +65,58 @@ export class KycService {
       select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
     });
 
-    // if approved, you may also update Tutor.status here if needed
-    // e.g., only after certain docTypes count or manual admin action
-    // await this.prisma.tutor.update({ where: { id: doc.tutorId }, data: { status: TutorStatus.APPROVED } });
+    // Update latest application + tutor status to reflect review outcome
+    const latestApp = await this.prisma.tutorKycApplication.findFirst({
+      where: { tutorId: doc.tutorId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    const appStatus: KycAppStatus = dto.status === KycStatus.APPROVED
+      ? KycAppStatus.APPROVED
+      : dto.status === KycStatus.REJECTED
+        ? KycAppStatus.REJECTED
+        : KycAppStatus.UNDER_REVIEW;
+
+    const tutorStatus: TutorStatus | null = dto.status === KycStatus.APPROVED
+      ? TutorStatus.APPROVED
+      : dto.status === KycStatus.REJECTED
+        ? TutorStatus.REJECTED
+        : null;
+
+    if (latestApp) {
+      await this.prisma.tutorKycApplication.update({
+        where: { id: latestApp.id },
+        data: { status: appStatus, notes: dto.notes },
+      });
+    }
+
+    if (tutorStatus) {
+      await this.prisma.tutor.update({ where: { id: doc.tutorId }, data: { status: tutorStatus } });
+    }
 
     return updated;
+  }
+
+  async getTutorBundle(tutorId: string) {
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      select: { id: true, user: { select: { email: true, name: true } } },
+    });
+    if (!tutor) throw new NotFoundException('Tutor not found');
+
+    const application = await this.prisma.tutorKycApplication.findFirst({
+      where: { tutorId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const documents = await this.prisma.kycDocument.findMany({
+      where: { tutorId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
+    });
+
+    return { tutor, application, documents };
   }
 
   // ===== Unified submit + status =====
@@ -79,6 +126,17 @@ export class KycService {
 
     let data: any = {};
     try { data = JSON.parse(json || '{}'); } catch {}
+
+    // Basic validation so we never create invalid rows
+    const dob = data?.dob ? new Date(data.dob) : null;
+    const required = ['fullName','dob','phone','country','addressLine1','city','bankAccountHolder','bankName'];
+    const missing = required.filter((k) => !data?.[k]);
+    if (missing.length) {
+      throw new ForbiddenException(`Missing required fields: ${missing.join(', ')}`);
+    }
+    if (!dob || Number.isNaN(dob.getTime())) {
+      throw new ForbiddenException('Invalid date of birth');
+    }
 
     // create new application, block if reapply window active
     const last = await this.prisma.tutorKycApplication.findFirst({
@@ -94,7 +152,7 @@ export class KycService {
         tutorId: tutor.id,
         status: KycAppStatus.SUBMITTED,
         fullName: data.fullName,
-        dob: new Date(data.dob),
+        dob,
         phone: data.phone,
         country: data.country,
         address1: data.addressLine1,
@@ -126,8 +184,13 @@ export class KycService {
   }
 
   async getMyStatus(userId: string) {
-    const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+    const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true, status: true } });
     if (!tutor) throw new ForbiddenException('Only tutors can query KYC');
+
+    // If tutor already approved, surface approved immediately
+    if (tutor.status === 'APPROVED') {
+      return { status: KycAppStatus.APPROVED };
+    }
 
     const last = await this.prisma.tutorKycApplication.findFirst({ where: { tutorId: tutor.id }, orderBy: { createdAt: 'desc' } });
     if (!last) return { status: 'none' };

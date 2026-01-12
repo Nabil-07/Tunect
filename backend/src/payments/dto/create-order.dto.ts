@@ -7,7 +7,7 @@ export class CreateOrderDto {
 
   @Type(() => Number)
   @IsInt()
-  @Min(10) // enforce minimum purchase of 10 tokens
+  @Min(5) // enforce minimum purchase of 5 tokens
   tokens!: number;
 
   @IsOptional()

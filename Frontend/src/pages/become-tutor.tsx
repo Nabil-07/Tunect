@@ -18,36 +18,20 @@ import { Link, useNavigate } from "react-router-dom";
 import { http } from "../api/http";
 import { getAccessToken, setTokens } from "../lib/auth";
 
-type TutorApplication = {
-  fullName: string;
-  subjects: string;
-  experience: string;
-  hourlyRate: string;
-  qualification: string;
-};
-
 export default function BecomeTutor() {
   const navigate = useNavigate();
 
   // Earnings calculator state
   const [rate, setRate] = useState(1200);
   const [hours, setHours] = useState(10);
-  const tutorShare = 0.85;
-
-  // Application “form” state (purely UI now; no prefill, no caching)
-  const [form, setForm] = useState<TutorApplication>({
-    fullName: "",
-    subjects: "",
-    experience: "",
-    hourlyRate: "",
-    qualification: "",
-  });
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const platformFeePercent = (r: number) => {
+    if (!Number.isFinite(r) || r <= 0) return 25;
+    if (r < 400) return 25;
+    if (r < 700) return 18;
+    return 15;
   };
+  const currentPlatformFee = platformFeePercent(rate);
+  const tutorShare = (100 - currentPlatformFee) / 100;
 
   /** unified start flow:
    *  - not logged in → signup and then /choose-role
@@ -84,12 +68,6 @@ export default function BecomeTutor() {
       localStorage.setItem("role", "TUTOR");
     } catch {}
     navigate("/tutor/kyc", { replace: true });
-  };
-
-  // form submit now just triggers startApplication (no API body sent here)
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await startApplication();
   };
 
   // helpers
@@ -131,7 +109,7 @@ export default function BecomeTutor() {
               </div>
               <div>
                 <p className="font-bold text-xl">85%</p>
-                <p className="text-sm">Earnings Share</p>
+                <p className="text-sm">Earnings Share (max)</p>
               </div>
               <div>
                 <p className="font-bold text-xl">50+</p>
@@ -140,73 +118,45 @@ export default function BecomeTutor() {
             </div>
           </div>
 
-          {/* Application Card (no prefill, no caching, no direct submit to /tutors/apply) */}
+          {/* KYC CTA Card */}
           <div className="bg-white shadow-lg rounded-2xl p-6 border">
             <h2 className="text-2xl font-bold text-slate-800 mb-1">
-              Tutor Application
+              Tutor KYC & Profile
             </h2>
             <p className="mb-5 text-sm text-slate-600">
-              Tell us a bit about yourself. You’ll complete the full profile & KYC in the next step.
+              Complete your tutor profile and upload your latest qualification to get approved.
             </p>
 
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <input
-                type="text"
-                name="fullName"
-                value={form.fullName}
-                onChange={handleChange}
-                placeholder="Full Name"
-                className="w-full p-3 border rounded-lg"
-              />
-              <input
-                type="text"
-                name="subjects"
-                value={form.subjects}
-                onChange={handleChange}
-                placeholder="Subjects You Teach"
-                className="w-full p-3 border rounded-lg"
-              />
-              <input
-                type="text"
-                name="experience"
-                value={form.experience}
-                onChange={handleChange}
-                placeholder="Teaching Experience (e.g., 3 years)"
-                className="w-full p-3 border rounded-lg"
-              />
-              <select
-                name="qualification"
-                value={form.qualification}
-                onChange={handleChange}
-                className="w-full p-3 border rounded-lg"
-              >
-                <option value="">Highest Qualification</option>
-                <option value="High School">High School</option>
-                <option value="Diploma">Diploma</option>
-                <option value="Bachelors">Bachelors</option>
-                <option value="Masters">Masters</option>
-                <option value="PhD">PhD</option>
-              </select>
-              <input
-                type="number"
-                name="hourlyRate"
-                value={form.hourlyRate}
-                onChange={handleChange}
-                placeholder="Hourly Rate (in INR)"
-                className="w-full p-3 border rounded-lg"
-              />
+            <div className="space-y-3 text-sm text-slate-700 mb-6">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                <span>Personal details: full name, phone, address</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                <span>Bank info for payouts</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                <span>Upload a clear selfie and your highest/latest degree certificate</span>
+              </div>
+            </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition"
-              >
-                Start Application
-              </button>
+            <div className="space-y-2 text-sm text-slate-600 mb-4">
+              <p className="font-semibold text-slate-800">What happens next?</p>
+              <p>1) We verify your documents and profile.</p>
+              <p>2) Once approved, students can purchase tokens and you can publish availability.</p>
+            </div>
 
-              <p className="text-xs text-slate-500">
-                We won’t auto-save details on this page. You’ll confirm everything in the KYC step.
-              </p>
-            </form>
+            <button
+              onClick={startApplication}
+              className="w-full py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition"
+            >
+              Start KYC
+            </button>
+            <p className="text-xs text-slate-500 mt-2">
+              You’ll be taken to the KYC form to submit the required details and uploads.
+            </p>
           </div>
         </div>
       </section>
@@ -221,7 +171,7 @@ export default function BecomeTutor() {
             {
               icon: <DollarSign className="h-8 w-8 text-green-600" />,
               title: "Earn Fair Income",
-              desc: "Set your own hourly rates and earn 85% of fees. No hidden deductions.",
+              desc: "Set your own hourly rates and keep 75–85% after platform fees. No hidden deductions.",
             },
             {
               icon: <Globe2 className="h-8 w-8 text-blue-600" />,
@@ -291,11 +241,17 @@ export default function BecomeTutor() {
         </h2>
         <p className="text-center text-slate-600 mb-10">
           Move the sliders or pick a preset to see your monthly & yearly
-          estimates (85% tutor share).
+          estimates. Platform fee: 25% below ₹400/hr, 18% between ₹400–₹699,
+          and 15% at ₹700+.
         </p>
 
         <div className="grid md:grid-cols-2 gap-8">
           <div className="rounded-2xl p-6 bg-gradient-to-r from-green-600 to-blue-600 text-white shadow-lg">
+            <div className="flex items-center justify-between text-sm mb-3">
+              <span className="opacity-80">Platform fee (auto-calculated)</span>
+              <span className="font-semibold">{currentPlatformFee}% • You keep {Math.round(tutorShare * 100)}%</span>
+            </div>
+
             <label className="block font-medium">Hourly Rate (₹)</label>
             <div className="flex items-center gap-3 mt-2">
               <div className="shrink-0 rounded-lg bg-white/10 px-2 py-1 flex items-center gap-1">
@@ -376,7 +332,7 @@ export default function BecomeTutor() {
           {/* Benefits & Quick examples */}
           <div className="space-y-4">
             {[
-              "Keep 85% of session fees",
+              "Keep 75–85% of session fees",
               "No subscription fees",
               "Weekly payouts to bank",
               "Set your own rates",
