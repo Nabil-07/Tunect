@@ -1,3 +1,9 @@
+import { webcrypto } from 'crypto';
+
+if (!(globalThis as any).crypto) {
+  (globalThis as any).crypto = webcrypto;
+}
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
