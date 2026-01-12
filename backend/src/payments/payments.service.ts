@@ -18,7 +18,7 @@ import { TokenLedgerService } from '../tokens/token-ledger.service';
 import { PaymentStatus, PaymentProvider, TokenReason, BookingStatus, Prisma } from '@prisma/client';
 import { Role } from '../auth/role.enum';
 
-const PURCHASE_MIN_TOKENS = Number(process.env.PURCHASE_MIN_TOKENS ?? 10);
+const PURCHASE_MIN_TOKENS = Number(process.env.PURCHASE_MIN_TOKENS ?? 5);
 const RECEIPT_MAX = 40;
 
 @Injectable()

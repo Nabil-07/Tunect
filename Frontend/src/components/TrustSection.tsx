@@ -27,7 +27,7 @@ const items = [
     body: (
       <span>
         Transparent &amp; simple pricing.
-        <span className="block font-medium text-ink mt-1">1 session = 1 hour = 1 token. Minimum purchase: 10 tokens.</span>
+        <span className="block font-medium text-ink mt-1">1 session = 1 hour = 1 token. Minimum purchase: 5 tokens.</span>
         <span className="block mt-1 text-slate-700">First session can be a free demo.</span>
       </span>
     ),

@@ -206,7 +206,7 @@ export default function Cart() {
               className="w-40 rounded-xl border px-3 py-2 text-sm focus:border-ocean-500 focus:outline-none focus:ring-1 focus:ring-ocean-500"
             />
             <p className="mt-2 text-xs text-slate-500">
-              You need at least 10 tokens to book a tutor. First session can be a free demo.
+              You need at least 5 tokens to book a tutor. First session can be a free demo.
             </p>
           </div>
         </div>

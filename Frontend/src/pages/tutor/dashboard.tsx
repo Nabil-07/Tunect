@@ -234,7 +234,7 @@ export default function TutorDashboard() {
         {/* Main Dashboard Grid */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Upcoming availability */}
-          <section className="rounded-2xl border bg-white shadow-sm">
+          <section className="rounded-2xl border bg-white shadow-sm order-2 lg:order-2">
             <div className="flex items-center justify-between border-b px-4 py-3 bg-gradient-to-r from-indigo-50 to-purple-50">
               <h3 className="font-semibold flex items-center gap-2">
                 <CalendarDays className="h-5 w-5 text-indigo-600"/> Upcoming Availability
@@ -284,7 +284,7 @@ export default function TutorDashboard() {
           </section>
 
           {/* Recent bookings */}
-          <section className="rounded-2xl border bg-white shadow-sm">
+          <section className="rounded-2xl border bg-white shadow-sm order-1 lg:order-1">
             <div className="flex items-center justify-between border-b px-4 py-3 bg-gradient-to-r from-emerald-50 to-green-50">
               <h3 className="font-semibold flex items-center gap-2">
                 <User className="h-5 w-5 text-emerald-600"/> Recent Bookings

@@ -491,7 +491,8 @@ export type KycFiles = {
 
 export async function submitKyc(payload: KycPayload, files: KycFiles) {
   const fd = new FormData();
-  fd.append('data', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+  // Send JSON as a plain string so Nest's Body('data') reads it correctly in multipart
+  fd.append('data', JSON.stringify(payload));
 
   if (files.selfie) fd.append('selfie', files.selfie);
   if (files.aadhaarFront) fd.append('aadhaarFront', files.aadhaarFront);
@@ -502,11 +503,14 @@ export async function submitKyc(payload: KycPayload, files: KycFiles) {
 
   try {
     await api.post('/kyc/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-  } catch {
-    // legacy fallback
-    await api.post('/tutors/me/kyc', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+  } catch (err: any) {
+    // Only fallback if the primary route truly does not exist
+    const status = err?.response?.status;
+    if (status === 404) {
+      await api.post('/tutors/me/kyc', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    } else {
+      throw err;
+    }
   }
 }
 
@@ -516,11 +520,25 @@ export async function getKycStatus(): Promise<{
 }> {
   try {
     const { data } = await api.get('/kyc/status');
-    return data;
+    const raw = String(data?.status || 'none').toLowerCase();
+    const normalized: Record<string, 'none' | 'submitted' | 'under_review' | 'approved' | 'rejected'> = {
+      none: 'none',
+      submitted: 'submitted',
+      'under review': 'under_review',
+      under_review: 'under_review',
+      'underreview': 'under_review',
+      approved: 'approved',
+      rejected: 'rejected',
+      pending: 'under_review',
+    };
+    const status = normalized[raw] || normalized[raw.replace(/\s+/g, '_')] || 'none';
+    return { status, reason: data?.reason };
   } catch {
     // legacy fallback shape
     const { data } = await api.get('/tutors/me/kyc/status');
-    return data;
+    const raw = String(data?.status || 'none').toLowerCase();
+    const status = raw === 'approved' ? 'approved' : raw === 'rejected' ? 'rejected' : raw === 'submitted' ? 'submitted' : raw.includes('under') ? 'under_review' : 'none';
+    return { status, reason: data?.reason };
   }
 }
 

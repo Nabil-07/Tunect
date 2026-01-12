@@ -43,6 +43,11 @@ export type BookingDto = {
   } | null;
 };
 
+export type BookingDetailsDto = GroupBookingDto & {
+  meetingUrl?: string;
+  meetingProvider?: string;
+};
+
 /* ========== Helpers ========== */
 function tzOpts(tz?: string) {
   return tz ? { headers: { "x-timezone": tz } } : {};
@@ -73,6 +78,11 @@ export async function listBookings(params: {
     ...tzOpts(tz),
   });
   return Array.isArray(data) ? data : [];
+}
+
+export async function getBookingDetails(bookingId: string, tz?: string) {
+  const { data } = await api.get<BookingDetailsDto>(`/bookings/${bookingId}/details`, tzOpts(tz));
+  return data;
 }
 
 /** Fetch tutor availability for the picker */

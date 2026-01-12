@@ -1,7 +1,7 @@
 // Enhanced Students Page with Filtering & Sorting
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
-import { fetchStudents, unbanUser, type StudentSummary } from '../../services/adminService';
+import { fetchStudents, unbanUser, type StudentSummary, type PaginationMeta } from '../../services/adminService';
 
 type SortField = 'email' | 'grade' | 'tokens' | 'accountStatus' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
@@ -11,13 +11,15 @@ export default function AdminStudents() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unbanError, setUnbanError] = useState<string | null>(null);
-  const page = 1;
+  const [page, setPage] = useState(1);
   const pageSize = 100;
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
 
   // Filters
   const [emailFilter, setEmailFilter] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BLOCKED'>('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>('createdAt');
@@ -28,24 +30,27 @@ export default function AdminStudents() {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchStudents({ page, pageSize }); // Load more for client-side filtering
+        const data = await fetchStudents({ page, pageSize, q: searchTerm.trim() || undefined });
         setStudents(data.items);
+        setMeta(data.meta);
       } catch (err: any) {
         setError(err?.response?.data?.message || 'Failed to load students');
         setStudents([]);
+        setMeta(null);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, []);
+  }, [page, pageSize, searchTerm]);
 
   const handleUnban = async (userId: string) => {
     try {
       await unbanUser(userId);
       // Reload students to get updated ban status
-      const data = await fetchStudents({ page, pageSize });
+      const data = await fetchStudents({ page, pageSize, q: searchTerm.trim() || undefined });
       setStudents(data.items);
+      setMeta(data.meta);
       setError(null);
       setUnbanError(null);
     } catch (err: any) {
@@ -182,10 +187,15 @@ export default function AdminStudents() {
                 <th className="px-4 py-2">
                   <input
                     type="text"
-                    placeholder="Filter email..."
+                    placeholder="Search email..."
                     className="w-full text-xs border rounded px-2 py-1"
                     value={emailFilter}
-                    onChange={(e) => setEmailFilter(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEmailFilter(val);
+                      setSearchTerm(val);
+                      setPage(1);
+                    }}
                   />
                 </th>
                 <th className="px-4 py-2">
@@ -260,6 +270,28 @@ export default function AdminStudents() {
           </table>
         </div>
       )}
+
+      <div className="flex items-center justify-between text-sm text-slate-600">
+        <div>
+          Page {meta?.page ?? page} of {meta?.totalPages ?? 1} · Total {meta?.total ?? students.length}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={(meta?.page ?? page) <= 1 || loading}
+          >
+            Previous
+          </button>
+          <button
+            className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
+            onClick={() => setPage((p) => (meta?.totalPages ? Math.min(meta.totalPages, p + 1) : p + 1))}
+            disabled={loading || (meta?.totalPages ? (meta.page ?? page) >= meta.totalPages : false)}
+          >
+            Next
+          </button>
+        </div>
+      </div>
 
       {unbanError && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setUnbanError(null)}>

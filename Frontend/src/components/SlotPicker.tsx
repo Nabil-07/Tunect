@@ -63,7 +63,12 @@ export default function SlotPicker({
         listBookings({ tutorId, status: 'CONFIRMED', tz }).catch(() => [])
       ]);
       
-      setSlots(Array.isArray(availabilityRes) ? availabilityRes : []);
+      const filtered = (Array.isArray(availabilityRes) ? availabilityRes : []).filter((s) => {
+        const start = new Date(s.startTime).getTime();
+        const end = new Date(s.endTime).getTime();
+        return Number.isFinite(start) && Number.isFinite(end) && end > start;
+      });
+      setSlots(filtered);
       
       // Create a set of booked time ranges for quick lookup
       const booked = new Set<string>();
