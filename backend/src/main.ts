@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import * as bodyParser from 'body-parser';
 import { PrismaService } from './prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import cookieParser from 'cookie-parser';
@@ -18,6 +19,7 @@ import { join } from 'path';
 import compression from 'compression';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import type { ServerOptions } from 'socket.io';
+import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 
 class CorsSocketIoAdapter extends IoAdapter {
   constructor(private readonly appRef: any, private readonly origins: string[]) {
@@ -54,6 +56,7 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+  const cfg = app.get(ConfigService);
 
   // Global Socket.IO adapter with explicit CORS to match frontend origins
   const wsOrigins = ['http://localhost:5173', 'http://localhost:5174', 'https://tunectnow.com', 'https://test-tunectnow.com'];
@@ -99,6 +102,10 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+
+  if ((cfg.get<string>('APP_ENV') || '').toLowerCase() === 'preprod') {
+    app.useGlobalGuards(app.get(PreprodInternalGuard));
+  }
 
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {

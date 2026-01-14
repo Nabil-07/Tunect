@@ -40,6 +40,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       console.debug('[jwt.validate] sub:', payload.sub, 'role:', payload.role);
     }
 
+    const env = (this.cfg.get<string>('APP_ENV') || '').toLowerCase();
+    if (env === 'preprod' && payload?.email && !payload.email.toLowerCase().endsWith('@tunectnow.com')) {
+      throw new UnauthorizedException('Preprod is restricted to @tunectnow.com accounts');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: { 
@@ -55,6 +60,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
 
     if (!user) throw new UnauthorizedException('User not found');
+
+    if (env === 'preprod' && user.email && !user.email.toLowerCase().endsWith('@tunectnow.com')) {
+      throw new UnauthorizedException('Preprod is restricted to @tunectnow.com accounts');
+    }
 
     return { 
       id: user.id, 

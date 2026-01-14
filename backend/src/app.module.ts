@@ -51,6 +51,7 @@ import { TaxModule } from './finance/tax/tax.module';
 import { ReconModule } from './finance/recon/recon.module';
 import { WebrtcModule } from './webrtc/webrtc.module';
 import { MediasoupModule } from './mediasoup/mediasoup.module';
+import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 
 @Module({
   imports: [
@@ -102,7 +103,10 @@ import { MediasoupModule } from './mediasoup/mediasoup.module';
     MediasoupModule,
   ],
   controllers: [AppController, ReadyController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    PreprodInternalGuard,
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
