@@ -13,6 +13,7 @@
     "@excalidraw/excalidraw": "^0.18.0",
     "@types/react-router-dom": "^5.3.3",
     "axios": "^1.11.0",
+    "country-list": "^2.4.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.23.12",
     "libphonenumber-js": "^1.12.34",
