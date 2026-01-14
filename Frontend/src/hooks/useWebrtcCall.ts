@@ -47,7 +47,6 @@ export function useWebrtcCall(bookingId: string | null, startTime?: string | Dat
   const [rtpCapabilities, setRtpCapabilities] = useState<any>(null);
   const [sendTransport, setSendTransport] = useState<any>(null);
   const [recvTransport, setRecvTransport] = useState<any>(null);
-  const [mediaReady, setMediaReady] = useState(false);
   const hasJoined = useRef(false);
 
   const boundHandlers = useMemo<WebrtcHandlers>(() => ({
@@ -82,7 +81,6 @@ export function useWebrtcCall(bookingId: string | null, startTime?: string | Dat
       try {
         await requestMedia();
         if (cancelled) return;
-        setMediaReady(true);
 
         socket = connectWebrtc(boundHandlers);
         socket.on("connect", () => console.log("[webrtc] socket connected", socket?.id));
@@ -103,7 +101,6 @@ export function useWebrtcCall(bookingId: string | null, startTime?: string | Dat
         }
       } catch (err) {
         console.error("[webrtc] media permission denied or failed", err);
-        setMediaReady(false);
       }
     })();
 
