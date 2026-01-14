@@ -7,6 +7,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import { setAuthHeader, readToken } from './lib/apiClient';
 import { ToastProvider } from './contexts/ToastContext';
 import { useAuth } from './contexts/AuthContext';
+import InternalOnly from './pages/InternalOnly';
 
 function Spinner() {
   return (
@@ -202,6 +203,32 @@ const NotFound = () => (
 function App() {
   const navigate = useNavigate();
   const hasNavigatedRef = useRef(false);
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  const env = (import.meta.env.VITE_ENV || '').toString().toLowerCase();
+  const internalOnlyFlag = (import.meta.env.VITE_INTERNAL_ONLY || 'false').toString().toLowerCase() === 'true';
+  const isPreprod = env === 'preprod' && internalOnlyFlag;
+
+  const authPaths = new Set(['/login', '/signup', '/forgot-password', '/reset-password', '/auth/callback']);
+
+  // Hard gate preprod to internal users only
+  if (isPreprod) {
+    if (loading) {
+      return <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">Loading…</div>;
+    }
+
+    const path = location?.pathname || '/';
+    const isAuthPath = authPaths.has(path);
+
+    if (!user && !isAuthPath) {
+      return <InternalOnly />;
+    }
+
+    if (user && !(user.email || '').toLowerCase().endsWith('@tunectnow.com')) {
+      return <InternalOnly />;
+    }
+  }
 
   useEffect(() => {
     setAuthHeader(readToken() || null);

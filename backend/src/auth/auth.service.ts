@@ -42,8 +42,17 @@ export class AuthService {
     private readonly notify: NotificationsService,
   ) {}
 
+  private ensureInternal(email?: string) {
+    const env = (this.cfg.get<string>('APP_ENV') || '').toLowerCase();
+    if (env !== 'preprod') return;
+    if (!email?.toLowerCase().endsWith('@tunectnow.com')) {
+      throw new UnauthorizedException('Preprod is restricted to @tunectnow.com accounts');
+    }
+  }
+
   // ======== Email/password ========
   async register(email: string, password: string, role: Role) {
+    this.ensureInternal(email);
     const hash = await bcrypt.hash(password, 10);
 
     try {
@@ -84,6 +93,7 @@ export class AuthService {
   }
 
   async login(email: string, password: string) {
+    this.ensureInternal(email);
     const user = await this.validateUser(email, password);
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
@@ -141,6 +151,8 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('User not found');
 
+    this.ensureInternal(user.email);
+
     const access_token = await this.jwt.signAsync(
       { sub: user.id, email: user.email, role: user.role },
       {
@@ -182,6 +194,8 @@ export class AuthService {
   // ======== Google OAuth (unified user, no persona auto-create) ========
   async findOrCreateGoogleUser(p: GoogleOAuthPayload) {
     if (!p.email) throw new BadRequestException('Google account has no email');
+
+    this.ensureInternal(p.email);
 
     // 1) Check by provider ID
     const existingOauth = await this.prisma.oAuthAccount.findUnique({
@@ -239,6 +253,7 @@ export class AuthService {
   }
 
   async issueTokensForOAuth(user: { id: string; email: string; role: Role }) {
+    this.ensureInternal(user.email);
     const accessToken = await this.jwt.signAsync(
       { sub: user.id, email: user.email, role: user.role },
       {
