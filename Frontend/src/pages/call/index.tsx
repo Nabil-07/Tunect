@@ -97,7 +97,7 @@ function deriveUiPhase(params: {
   if (!socketConnected) return "connecting";
   if (conn.connectionState === "failed") return "reconnecting";
   if (conn.iceConnectionState === "disconnected" || conn.connectionState === "connecting") return "weak";
-  if (conn.connectionState === "connected" || conn.connectionState === "completed") return "live";
+  if (conn.connectionState === "connected" || conn.iceConnectionState === "completed") return "live";
   return "connecting";
 }
 
@@ -591,7 +591,6 @@ export default function CallPage() {
 
   const title = data?.tutor?.name ? `Call with ${data.tutor.name}` : "Call";
   const waiting = joinState.status === "waiting";
-  const sessionLive = joinState.status === "open";
   const sessionEnded = joinState.status === "after";
   const controlsDisabled = waiting || sessionEnded;
   const countdownLabel = formatCountdown(countdownMs);
@@ -847,8 +846,8 @@ function LearningStage({ mode, connectionState, statusLabel, statusCopy, startLa
 interface VideoStripProps {
   participants: Array<{ id: string; name: string; hasVideo: boolean; hasAudio: boolean }>;
   show: boolean;
-  localVideoRef: RefObject<HTMLVideoElement>;
-  remoteVideoRef: RefObject<HTMLVideoElement>;
+  localVideoRef: RefObject<HTMLVideoElement | null>;
+  remoteVideoRef: RefObject<HTMLVideoElement | null>;
 }
 
 function VideoStrip({ participants, show, localVideoRef, remoteVideoRef }: VideoStripProps) {
@@ -870,7 +869,7 @@ function VideoStrip({ participants, show, localVideoRef, remoteVideoRef }: Video
 }
 
 interface TileProps {
-  refProp: RefObject<HTMLVideoElement>;
+  refProp: RefObject<HTMLVideoElement | null>;
   label: string;
   hasVideo: boolean;
 }
