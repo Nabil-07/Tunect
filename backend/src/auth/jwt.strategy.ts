@@ -42,7 +42,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     const env = (this.cfg.get<string>('APP_ENV') || '').toLowerCase();
     if (env === 'preprod' && payload?.email && !payload.email.toLowerCase().endsWith('@tunectnow.com')) {
-      throw new UnauthorizedException('Preprod is restricted to @tunectnow.com accounts');
+      throw new UnauthorizedException('Preprod access restricted');
     }
 
     const user = await this.prisma.user.findUnique({
@@ -62,7 +62,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) throw new UnauthorizedException('User not found');
 
     if (env === 'preprod' && user.email && !user.email.toLowerCase().endsWith('@tunectnow.com')) {
-      throw new UnauthorizedException('Preprod is restricted to @tunectnow.com accounts');
+      throw new UnauthorizedException('Preprod access restricted');
     }
 
     return { 
