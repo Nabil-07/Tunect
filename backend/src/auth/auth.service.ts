@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Role, Prisma, OtpPurpose, OtpChannel } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isPreprodAllowedEmail } from './preprod-allowlist';
 
 export type GoogleOAuthPayload = {
   provider: 'google';
@@ -45,7 +46,7 @@ export class AuthService {
   private ensureInternal(email?: string) {
     const env = (this.cfg.get<string>('APP_ENV') || '').toLowerCase();
     if (env !== 'preprod') return;
-    if (!email?.toLowerCase().endsWith('@tunectnow.com')) {
+    if (!isPreprodAllowedEmail(this.cfg, email)) {
       throw new UnauthorizedException('Preprod access restricted');
     }
   }
