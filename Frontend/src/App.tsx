@@ -210,25 +210,7 @@ function App() {
   const internalOnlyFlag = (import.meta.env.VITE_INTERNAL_ONLY || 'false').toString().toLowerCase() === 'true';
   const isPreprod = env === 'preprod' && internalOnlyFlag;
 
-  const authPaths = new Set(['/login', '/signup', '/forgot-password', '/reset-password', '/auth/callback']);
-
-  // Hard gate preprod to internal users only
-  if (isPreprod) {
-    if (loading) {
-      return <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">Loading…</div>;
-    }
-
-    const path = location?.pathname || '/';
-    const isAuthPath = authPaths.has(path);
-
-    if (!user && !isAuthPath) {
-      return <InternalOnly />;
-    }
-
-    if (user && !(user.email || '').toLowerCase().endsWith('@tunectnow.com')) {
-      return <InternalOnly />;
-    }
-  }
+  const authPaths = new Set(['/login', '/forgot-password', '/reset-password', '/auth/callback']);
 
   useEffect(() => {
     setAuthHeader(readToken() || null);
@@ -267,6 +249,24 @@ function App() {
       window.removeEventListener('auth:login', onLogin);
     };
   }, [navigate]);
+
+  // Hard gate preprod to internal users only
+  if (isPreprod) {
+    if (loading) {
+      return <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">Loading…</div>;
+    }
+
+    const path = location?.pathname || '/';
+    const isAuthPath = authPaths.has(path);
+
+    if (!user && !isAuthPath) {
+      return <InternalOnly />;
+    }
+
+    if (user && !(user.email || '').toLowerCase().endsWith('@tunectnow.com')) {
+      return <InternalOnly />;
+    }
+  }
 
   return (
     <Suspense fallback={<Spinner />}>

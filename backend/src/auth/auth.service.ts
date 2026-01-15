@@ -46,7 +46,7 @@ export class AuthService {
     const env = (this.cfg.get<string>('APP_ENV') || '').toLowerCase();
     if (env !== 'preprod') return;
     if (!email?.toLowerCase().endsWith('@tunectnow.com')) {
-      throw new UnauthorizedException('Preprod is restricted to @tunectnow.com accounts');
+      throw new UnauthorizedException('Preprod access restricted');
     }
   }
 

@@ -20,7 +20,7 @@ export default function InternalOnly() {
 
           <p className="text-slate-200/90 text-sm sm:text-base leading-relaxed">
             This preproduction environment is restricted to Tunect team members. Please sign in with
-            your <span className="font-semibold text-emerald-300">@tunectnow.com</span> email to continue.
+            your company email to continue.
           </p>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -49,7 +49,7 @@ export default function InternalOnly() {
               Go to login
             </button>
             <div className="text-xs text-slate-300/80">
-              Access is limited to company emails. Production remains public.
+              Access is limited to internal team accounts. Production remains public.
             </div>
           </div>
         </div>
