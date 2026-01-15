@@ -4,6 +4,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { isPreprodAllowedEmail } from './preprod-allowlist';
 
 type JwtPayload = {
   sub: string;
@@ -41,7 +42,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     const env = (this.cfg.get<string>('APP_ENV') || '').toLowerCase();
-    if (env === 'preprod' && payload?.email && !payload.email.toLowerCase().endsWith('@tunectnow.com')) {
+    if (env === 'preprod' && payload?.email && !isPreprodAllowedEmail(this.cfg, payload.email)) {
       throw new UnauthorizedException('Preprod access restricted');
     }
 
@@ -61,7 +62,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!user) throw new UnauthorizedException('User not found');
 
-    if (env === 'preprod' && user.email && !user.email.toLowerCase().endsWith('@tunectnow.com')) {
+    if (env === 'preprod' && user.email && !isPreprodAllowedEmail(this.cfg, user.email)) {
       throw new UnauthorizedException('Preprod access restricted');
     }
 

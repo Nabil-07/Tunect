@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { isPreprodAllowedEmail } from './preprod-allowlist';
 
 @Injectable()
 export class PreprodInternalGuard implements CanActivate {
@@ -16,8 +17,8 @@ export class PreprodInternalGuard implements CanActivate {
     const email = (user?.email || '').toLowerCase();
     if (!email) return true;
 
-    if (!email.endsWith('@tunectnow.com')) {
-      throw new UnauthorizedException('Preprod is restricted to @tunectnow.com accounts');
+    if (!isPreprodAllowedEmail(this.cfg, email)) {
+      throw new UnauthorizedException('Preprod access restricted');
     }
 
     return true;
