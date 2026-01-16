@@ -59,7 +59,7 @@ async function bootstrap() {
   const cfg = app.get(ConfigService);
 
   // Global Socket.IO adapter with explicit CORS to match frontend origins
-  const wsOrigins = ['http://localhost:5173', 'http://localhost:5174', 'https://tunectnow.com', 'https://test-tunectnow.com'];
+  const wsOrigins = ['https://tn-internal-7f3a.preprod.tunectnow.com', 'https://tunectnow.com'];
   app.useWebSocketAdapter(new CorsSocketIoAdapter(app, wsOrigins));
 
   // ⚡ GZIP Compression - reduces response size by 70-90%
@@ -74,11 +74,11 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'https://tunectnow.com', 'https://test-tunectnow.com'],
+    origin: ['https://tn-internal-7f3a.preprod.tunectnow.com', 'https://tunectnow.com'],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-timezone', 'X-Timezone'],
-    credentials: false,
-    maxAge: 86400,
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    optionsSuccessStatus: 204,
   });
 
   app.use(helmet({ 
@@ -123,7 +123,7 @@ async function bootstrap() {
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 
-  const port = Number(process.env.PORT) || 3000;
+  const port = Number(process.env.PORT) || 80;
   await app.listen(port, '0.0.0.0');
 
   const base = `http://localhost:${port}`;
