@@ -1,5 +1,5 @@
 import { Prisma, PrismaPromise, BookingStatus, PaymentStatus, TutorStatus, TokenReason, KycStatus } from '@prisma/client';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto } from './dto/pagination.dto';
 import { SetTutorStatusDto } from './dto/set-tutor-status.dto';
@@ -8,13 +8,36 @@ import { TokenLedgerService } from '../tokens/token-ledger.service';
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+  private readonly cache = new Map<string, { value: unknown; expiresAt: number }>();
+  private readonly cacheTtlMs = 30_000;
+
   constructor(
     private prisma: PrismaService,
     private ledger: TokenLedgerService,
   ) {}
 
+  private getFromCache<T>(key: string): T | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+    if (entry.expiresAt < Date.now()) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    this.logger.debug(`cache hit: ${key}`);
+    return entry.value as T;
+  }
+
+  private setCache(key: string, value: unknown) {
+    this.cache.set(key, { value, expiresAt: Date.now() + this.cacheTtlMs });
+  }
+
   // ---------- Dashboard ----------
   async dashboard() {
+    const cacheKey = 'GET /admin/dashboard';
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
     const [users, tutors, students, bookings, payments, revenueMinor] = await this.prisma.$transaction([
       this.prisma.user.count(),
       this.prisma.tutor.count(),
@@ -45,6 +68,9 @@ export class AdminService {
       latestSignups,
       pendingKyc,
     };
+
+    this.setCache(cacheKey, result);
+    return result;
   }
 
   // ---------- Lists with pagination ----------
@@ -74,6 +100,10 @@ export class AdminService {
   }
 
   async listTutors(q: PaginationDto & { status?: TutorStatus }) {
+    const cacheKey = `GET /admin/tutors ${JSON.stringify(q || {})}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
     const { page, pageSize, skip } = this.paginate(q);
 
     const where: Prisma.TutorWhereInput | undefined = (() => {
@@ -118,7 +148,9 @@ export class AdminService {
       },
     }));
 
-    return { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    const result = { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    this.setCache(cacheKey, result);
+    return result;
   }
 
   async setTutorStatus(tutorId: string, dto: SetTutorStatusDto) {
@@ -132,6 +164,10 @@ export class AdminService {
   }
 
   async listStudents(q: PaginationDto) {
+    const cacheKey = `GET /admin/students ${JSON.stringify(q || {})}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
     const { page, pageSize, skip } = this.paginate(q);
 
     const where: Prisma.StudentWhereInput | undefined = q.q
@@ -173,7 +209,9 @@ export class AdminService {
       },
     }));
 
-    return { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    const result = { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    this.setCache(cacheKey, result);
+    return result;
   }
 
   async listBookings(q: PaginationDto & { status?: BookingStatus }) {
