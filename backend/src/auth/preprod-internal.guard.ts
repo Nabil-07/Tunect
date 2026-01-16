@@ -11,6 +11,7 @@ export class PreprodInternalGuard implements CanActivate {
     if (env !== 'preprod') return true;
 
     const request = context.switchToHttp().getRequest();
+    if (request?.method === 'OPTIONS') return true;
     const user = request?.user;
 
     // If the request is unauthenticated, let existing guards handle it; this guard only enforces domain.
