@@ -59,7 +59,11 @@ async function bootstrap() {
   const cfg = app.get(ConfigService);
 
   // Global Socket.IO adapter with explicit CORS to match frontend origins
-  const wsOrigins = ['https://tn-internal-7f3a.preprod.tunectnow.com', 'https://tunectnow.com'];
+  const wsOrigins = [
+    'https://tn-internal-7f3a.preprod.tunectnow.com',
+    'http://tn-internal-7f3a.preprod.tunectnow.com',
+    'https://tunectnow.com',
+  ];
   app.useWebSocketAdapter(new CorsSocketIoAdapter(app, wsOrigins));
 
   // ⚡ GZIP Compression - reduces response size by 70-90%
@@ -74,7 +78,11 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: ['https://tn-internal-7f3a.preprod.tunectnow.com', 'https://tunectnow.com'],
+    origin: [
+      'https://tn-internal-7f3a.preprod.tunectnow.com',
+      'http://tn-internal-7f3a.preprod.tunectnow.com',
+      'https://tunectnow.com',
+    ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
