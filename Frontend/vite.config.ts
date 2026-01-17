@@ -1,13 +1,9 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, resolve(__dirname), '');
+  // loadEnv uses process.cwd() internally if root is '.', which works in Node.js runtime
+  const env = loadEnv(mode, '.', '');
   const proxyTarget = env.VITE_API_PROXY_TARGET || env.VITE_API_URL || 'http://localhost:3000';
 
   return {
