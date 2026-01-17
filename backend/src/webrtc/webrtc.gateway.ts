@@ -68,7 +68,7 @@ type ParticipantInfo = {
       
       callback(new Error('Not allowed by CORS'));
     },
-    credentials: true,
+    credentials: false, // JWT auth only, no cookies needed
   },
 })
 export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
