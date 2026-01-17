@@ -12,7 +12,6 @@ import {
   BarChart,
   Star,
   MessageSquare,
-  Users,
   Award
 } from 'lucide-react';
 import { getAvailability, type AvailabilitySlot, getMySessions, type TutorSession } from '../../services/tutorService';
@@ -210,7 +209,7 @@ export default function TutorDashboard() {
               <StatCard
                 title="Active Students"
                 value={stats.activeStudents}
-                icon={<Users className="h-6 w-6 text-indigo-600" />}
+                icon={<User className="h-6 w-6 text-indigo-600" />}
                 bgColor="bg-indigo-50"
               />
               <StatCard
@@ -378,13 +377,6 @@ export default function TutorDashboard() {
               emoji="💬"
               title="Messages"
               description="Chat with students"
-            />
-            <ToolCard
-              to="/tutor/create-group-session"
-              icon={<Users className="h-7 w-7 text-cyan-600" />}
-              emoji="👥"
-              title="Groups"
-              description="Create group sessions"
             />
           </div>
         </section>

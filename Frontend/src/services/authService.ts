@@ -174,6 +174,16 @@ export async function updateMe(data: { name?: string; preferredCurrency?: string
   return updated;
 }
 
+export async function changePassword(payload: { currentPassword?: string; newPassword: string }): Promise<{ ok: boolean; hasPassword?: boolean }> {
+  try {
+    const { data } = await api.patch('/users/me/password', payload);
+    return data;
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || 'Unable to update password';
+    throw new Error(Array.isArray(msg) ? msg.join(', ') : String(msg));
+  }
+}
+
 /* ---------------- Forgot Password (email or phone + OTP) ---------------- */
 
 type StartPayload = { method: "email" | "phone"; value: string };
@@ -268,6 +278,7 @@ export default {
   logout,
   getRole,
   setRole,
+  changePassword,
   requestPasswordResetStart,
   requestPasswordResetVerify,
   requestPasswordResetResend,

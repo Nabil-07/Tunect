@@ -63,6 +63,8 @@ async function bootstrap() {
     'https://tn-internal-7f3a.preprod.tunectnow.com',
     'http://tn-internal-7f3a.preprod.tunectnow.com',
     'https://tunectnow.com',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
   ];
   app.useWebSocketAdapter(new CorsSocketIoAdapter(app, wsOrigins));
 
@@ -82,6 +84,8 @@ async function bootstrap() {
       'https://tn-internal-7f3a.preprod.tunectnow.com',
       'http://tn-internal-7f3a.preprod.tunectnow.com',
       'https://tunectnow.com',
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

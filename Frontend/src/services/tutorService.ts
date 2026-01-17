@@ -341,7 +341,7 @@ export async function getAvailability(range?: {
 }
 
 export async function updateAvailability(slots: AvailabilitySlot[]): Promise<void> {
-  const body = toBackendSlots(slots);
+  const body = { ...toBackendSlots(slots), tzOffsetMinutes: new Date().getTimezoneOffset() };
   if (await tryPatch('/availability/me/slots', body)) return;
   if (await tryPut('/availability/me/slots', body)) return;
   if (await tryPatch('/availability/me', body)) return;
@@ -393,8 +393,9 @@ export async function saveAvailabilityForMonth(
   visibleMonth: Date,
 ): Promise<void> {
   const { from, to } = monthRange(visibleMonth);
-  if (await tryPatch('/availability/me', { from, to, slots })) return;
-  if (await tryPut('/availability/me', { from, to, slots })) return;
+  const tzOffsetMinutes = new Date().getTimezoneOffset();
+  if (await tryPatch('/availability/me', { from, to, slots, tzOffsetMinutes })) return;
+  if (await tryPut('/availability/me', { from, to, slots, tzOffsetMinutes })) return;
 
   const toYmd = (iso: string) => {
     const d = new Date(iso);

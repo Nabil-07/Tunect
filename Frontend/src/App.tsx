@@ -134,6 +134,7 @@ const ForgotPassword = lazy(() => import('./pages/forgot-password'));
 const ResetPassword = ForgotPassword;
 
 const AuthCallback = lazy(() => import('./pages/auth-callback'));
+const AccountSecurity = lazy(() => import('./pages/account/security'));
 
 /** Student */
 const StudentDashboard = lazy(() => import('./pages/student/dashboard'));
@@ -154,11 +155,11 @@ const PaymentSuccess = lazy(() => import('./pages/student/payment-success'));   
 const PaymentFailure = lazy(() => import('./pages/student/payment-failure'));    // NEW
 const TokenBalance = lazy(() => import('./pages/student/token-balance'));        // NEW
 /** Phase 4: Student Features */
-const GroupSessions = lazy(() => import('./pages/student/group-sessions'));
 const StudentManageAccount = lazy(() => import('./pages/student/manage-account'));
 const ClassPage = lazy(() => import('./pages/class'));
 const CallPage = lazy(() => import('./pages/call'));
 const WhiteboardPage = lazy(() => import('./pages/whiteboard'));
+const SupportPage = lazy(() => import('./pages/support'));
 
 /** Tutor */
 const TutorDashboard = lazy(() => import('./pages/tutor/dashboard'));
@@ -174,7 +175,6 @@ const RecurringTemplates = lazy(() => import('./pages/tutor/recurring-templates'
 const PerformanceTracking = lazy(() => import('./pages/tutor/performance-tracking'));
 const TutorNotifications = lazy(() => import('./pages/tutor/notifications'));
 /** Phase 4: Tutor Features */
-const CreateGroupSession = lazy(() => import('./pages/tutor/create-group-session'));
 const TutorManageAccount = lazy(() => import('./pages/tutor/manage-account'));
 
 /** Admin */
@@ -285,6 +285,7 @@ function App() {
           <Route path="/find-tutors" element={<FindTutors />} />
           <Route path="/become-tutor" element={<BecomeTutor />} />
           <Route path="/tutor/:id" element={<TutorPublicProfile />} />
+          <Route path="/support" element={<SupportPage />} />
           <Route path="/about" element={<About />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
@@ -306,6 +307,7 @@ function App() {
           <Route path="/class/:bookingId" element={<ClassPage />} />
           <Route path="/call/:bookingId" element={<CallPage />} />
           <Route path="/whiteboard/:bookingId" element={<WhiteboardPage />} />
+          <Route path="/account/security" element={<AccountSecurity />} />
         </Route>
 
         {/* Student Dashboard */}
@@ -338,7 +340,6 @@ function App() {
           <Route path="/student/demo-checkout" element={<DemoCheckout />} />
           
           {/* Phase 4: Student Routes */}
-          <Route path="/student/group-sessions" element={<GroupSessions />} />
           <Route path="/student/manage-account" element={<StudentManageAccount />} />
 
           {/* NEW paid checkout flow + result pages */}
@@ -373,7 +374,6 @@ function App() {
           <Route path="/tutor/performance-tracking" element={<PerformanceTracking />} />
           
           {/* Phase 4: Tutor Routes */}
-          <Route path="/tutor/create-group-session" element={<CreateGroupSession />} />
           <Route path="/tutor/manage-account" element={<TutorManageAccount />} />
         </Route>
 

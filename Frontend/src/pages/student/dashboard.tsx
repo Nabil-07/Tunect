@@ -440,18 +440,6 @@ export default function StudentDashboard() {
             </Link>
 
             <Link
-              to="/student/group-sessions"
-              className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-6 shadow-sm hover:shadow-md transition group active:scale-95"
-            >
-              <div className="flex items-center justify-between mb-2 sm:mb-3">
-                <BookOpen className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 group-hover:scale-110 transition" />
-                <span className="text-xl sm:text-2xl">👥</span>
-              </div>
-              <h3 className="text-sm sm:text-lg font-bold text-slate-800 mb-1">Groups</h3>
-              <p className="text-xs sm:text-sm text-slate-600 hidden sm:block">Join group learning sessions</p>
-            </Link>
-
-            <Link
               to="/student/waitlist"
               className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-6 shadow-sm hover:shadow-md transition group active:scale-95"
             >

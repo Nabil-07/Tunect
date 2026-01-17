@@ -60,7 +60,7 @@ export class AdminService {
       where: { status: KycStatus.PENDING },
     });
 
-    return {
+    const result = {
       totals: {
         users, tutors, students, bookings, payments,
         revenueInMinor: revenueMinor._sum.amountInMinor ?? 0,

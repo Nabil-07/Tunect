@@ -13,7 +13,6 @@ const routeNames: Record<string, string> = {
   'availability': 'Availability',
   'profile': 'Profile',
   'token-balance': 'Token Balance',
-  'group-sessions': 'Group Sessions',
   'waitlist': 'My Waitlist',
   'find-tutors': 'Find Tutor',
   'cart': 'Cart',
@@ -22,7 +21,6 @@ const routeNames: Record<string, string> = {
   'success': 'Success',
   'failure': 'Failure',
   'support': 'Support',
-  'create-group-session': 'Create Group Session',
   'recurring-templates': 'Recurring Templates',
   'earnings': 'Earnings',
   'tutors': 'Tutors',
@@ -31,6 +29,7 @@ const routeNames: Record<string, string> = {
   'finance': 'Finance',
   'payouts': 'Payouts',
   'payout-dashboard': 'Payout Dashboard',
+  'security': 'Security',
 };
 
 export default function Breadcrumbs() {
@@ -53,6 +52,7 @@ export default function Breadcrumbs() {
       </Link>
       
       {pathnames.map((name, index) => {
+        if (!routeNames[name]) return null;
         const routeTo = `/${pathnames.slice(0, index + 1).join('/')}`;
         const isLast = index === pathnames.length - 1;
         const displayName = routeNames[name] || name.charAt(0).toUpperCase() + name.slice(1);

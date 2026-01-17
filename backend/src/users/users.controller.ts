@@ -5,6 +5,18 @@ import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { IsOptional, IsString, Length } from 'class-validator';
+
+class ChangePasswordDto {
+  @IsOptional()
+  @IsString()
+  @Length(6, 200)
+  currentPassword?: string;
+
+  @IsString()
+  @Length(6, 200)
+  newPassword!: string;
+}
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -27,6 +39,15 @@ export class UsersController {
   ) {
     const userId: string = req.user?.sub ?? req.user?.id;
     return this.users.updateMe(userId, body);
+  }
+
+  @Patch('me/password')
+  async changePassword(
+    @Req() req: any,
+    @Body() body: ChangePasswordDto,
+  ) {
+    const userId: string = req.user?.sub ?? req.user?.id;
+    return this.users.changePassword(userId, body.currentPassword, body.newPassword);
   }
 
   // Admin-only routes

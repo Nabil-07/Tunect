@@ -888,6 +888,9 @@ model User {
   banEvents                        BanLedger[]
   banActions                       BanLedger[]       @relation("BanActor")
   forfeitureLedger                 BanForfeitureLedger[]
+  supportTickets                   SupportTicket[]   @relation("SupportTicketUser")
+  supportTicketsAssigned           SupportTicket[]   @relation("SupportTicketAssignee")
+  supportMessages                  SupportMessage[]
 
   @@index([email])
   @@index([role, hasChosenRole])
@@ -955,6 +958,40 @@ model Waitlist {
   @@index([status])
   @@index([studentId])
   @@index([tutorId])
+}
+
+model SupportTicket {
+  id            String               @id @default(cuid())
+  ticketNumber  Int                  @unique @default(autoincrement())
+  userId        String
+  assignedToId  String?
+  status        SupportTicketStatus  @default(OPEN)
+  subject       String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @default(now()) @updatedAt
+  lastMessageAt DateTime             @default(now())
+
+  user          User                 @relation("SupportTicketUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo    User?                @relation("SupportTicketAssignee", fields: [assignedToId], references: [id])
+  messages      SupportMessage[]
+
+  @@index([userId, createdAt])
+  @@index([assignedToId, status, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model SupportMessage {
+  id        String       @id @default(cuid())
+  ticketId  String
+  senderId  String
+  message   String       @db.Text
+  createdAt DateTime     @default(now())
+
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender    User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([senderId])
 }
 
 model WhiteboardSession {
@@ -1135,5 +1172,12 @@ enum WalletReason {
   ADJUSTMENT
   PAYOUT
   FORFEITED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  ASSIGNED
+  RESOLVED
+  CLOSED
 }
 
