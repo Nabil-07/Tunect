@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getAvailability, saveAvailabilityForMonth } from '../../services/tutorService';
+import type { AvailabilitySlot } from '../../services/tutorService';
 import api from '../../lib/apiClient';
 
 type DayKey = string; // "YYYY-MM-DD"
