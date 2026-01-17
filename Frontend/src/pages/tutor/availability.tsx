@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { getAvailability, updateAvailability } from '../../services/tutorService';
+import { getAvailability, saveAvailabilityForMonth } from '../../services/tutorService';
 import api from '../../lib/apiClient';
-import type { AvailabilitySlot } from '../../services/tutorService';
 
 type DayKey = string; // "YYYY-MM-DD"
 type SlotVM = { id?: string; start: string; end: string; title?: string; booked?: boolean };
@@ -63,11 +62,23 @@ function toSlotsByDay(api: AvailabilitySlot[]): SlotsByDay {
   for (const k of Object.keys(out)) out[k].sort((a, b) => compareHHMM(a.start, b.start));
   return out;
 }
-function toApiPayload(slots: SlotsByDay): AvailabilitySlot[] {
-  const out: AvailabilitySlot[] = [];
+function toRawSlots(slots: SlotsByDay) {
+  const out: { id?: string; startTime: string; endTime: string; title?: string; booked?: boolean }[] = [];
   for (const day of Object.keys(slots)) {
     for (const s of slots[day]) {
-      out.push({ id: s.id, date: day, day, startTime: s.start, endTime: s.end, title: s.title });
+      const [sh, sm] = s.start.split(':').map(Number);
+      const [eh, em] = s.end.split(':').map(Number);
+      const start = new Date(`${day}T00:00:00`);
+      start.setHours(sh || 0, sm || 0, 0, 0);
+      const end = new Date(`${day}T00:00:00`);
+      end.setHours(eh || 0, em || 0, 0, 0);
+      out.push({
+        id: s.id,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        title: s.title,
+        booked: s.booked,
+      });
     }
   }
   return out;
@@ -291,7 +302,7 @@ export default function TutorAvailability() {
   async function persist() {
     try {
       setLoading(true);
-      await updateAvailability(toApiPayload(slots));
+      await saveAvailabilityForMonth(toRawSlots(slots), month);
       setDirty(false);
       setToast({ message: 'Availability saved successfully!', type: 'success' });
     } catch {
