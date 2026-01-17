@@ -10,7 +10,6 @@ import {
   Post,
   UseGuards,
   Query,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AvailabilityService } from './availability.service';
@@ -110,7 +109,7 @@ export class AvailabilityController {
   @Patch('me/:id')
   updateMine(
     @CurrentUser('id') userId: string,
-    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('id') id: string,
     @Body() dto: UpdateSlotDto,
   ) {
     return this.service.updateMine(userId, id, dto);
@@ -122,7 +121,7 @@ export class AvailabilityController {
   @Delete('me/:id')
   deleteMine(
     @CurrentUser('id') userId: string,
-    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('id') id: string,
   ) {
     return this.service.deleteMine(userId, id);
   }

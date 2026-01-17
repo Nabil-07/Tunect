@@ -152,10 +152,19 @@ export default function TutorAvailability() {
         getAvailability({ from, to }),
         api.get('/recurring-templates/active'),
       ]);
+      // Debug log to verify data is being fetched
+      if (data.length > 0) {
+        console.log(`Loaded ${data.length} slots for ${d.toLocaleDateString()}:`, data.slice(0, 3));
+      } else {
+        console.log(`No slots found for ${d.toLocaleDateString()}, checking date range:`, {
+          from: from.toISOString(),
+          to: to.toISOString(),
+        });
+      }
       setSlots(toSlotsByDay(data));
       setTemplates(Array.isArray(templateRes?.data) ? templateRes.data : []);
     } catch (e) {
-      console.error(e);
+      console.error('Error loading availability:', e);
       setError('Failed to load availability');
       setSlots({});
       setTemplates([]);
