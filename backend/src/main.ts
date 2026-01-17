@@ -74,23 +74,41 @@ async function bootstrap() {
     level: 6, // Balanced compression (1=fast, 9=best compression)
   }));
 
+  // Enable CORS FIRST before other middleware to ensure preflight requests are handled
+  const allowedOrigins = [
+    'https://tn-internal-7f3a.preprod.tunectnow.com',
+    'http://tn-internal-7f3a.preprod.tunectnow.com',
+    'https://tunectnow.com',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ];
+  
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+      // Check if origin is in allowed list
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      // For preprod, allow any *.preprod.tunectnow.com subdomain
+      if (origin.includes('.preprod.tunectnow.com')) {
+        return callback(null, true);
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Timezone'],
+    credentials: true,
+    optionsSuccessStatus: 204,
+    preflightContinue: false,
+  });
+
   // Serve static files for uploads
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads',
-  });
-
-  app.enableCors({
-    origin: [
-      'https://tn-internal-7f3a.preprod.tunectnow.com',
-      'http://tn-internal-7f3a.preprod.tunectnow.com',
-      'https://tunectnow.com',
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-    ],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-    optionsSuccessStatus: 204,
   });
 
   app.use(helmet({ 
