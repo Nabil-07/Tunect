@@ -1,12 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getAvailability, updateAvailability } from '../../services/tutorService';
+import api from '../../lib/apiClient';
 import type { AvailabilitySlot } from '../../services/tutorService';
 
 type DayKey = string; // "YYYY-MM-DD"
 type SlotVM = { id?: string; start: string; end: string; title?: string; booked?: boolean };
 type SlotsByDay = Record<DayKey, SlotVM[]>;
 type ToastType = 'error' | 'success' | 'warning';
+
+type RecurringTemplate = {
+  id: string;
+  dayOfWeek: number; // 0-6 (Sunday to Saturday)
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  title?: string;
+  isActive: boolean;
+};
 
 function ymKey(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
 function ymd(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
@@ -63,9 +73,32 @@ function toApiPayload(slots: SlotsByDay): AvailabilitySlot[] {
   return out;
 }
 
+function buildTemplateSlots(month: Date, templates: RecurringTemplate[]): SlotsByDay {
+  const out: SlotsByDay = {};
+  const first = firstOfMonth(month);
+  const last = lastOfMonth(month);
+  const active = templates.filter((t) => t.isActive);
+
+  for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    const dayKey = ymd(d);
+    const matches = active.filter((t) => t.dayOfWeek === dayOfWeek);
+    if (!matches.length) continue;
+    out[dayKey] = matches.map((t) => ({
+      id: `template:${t.id}`,
+      start: clampHHMM(t.startTime),
+      end: clampHHMM(t.endTime),
+      title: t.title,
+      booked: false,
+    })).sort((a, b) => compareHHMM(a.start, b.start));
+  }
+  return out;
+}
+
 export default function TutorAvailability() {
   const [month, setMonth] = useState<Date>(() => firstOfMonth(new Date()));
   const [slots, setSlots] = useState<SlotsByDay>({});
+  const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,12 +132,17 @@ export default function TutorAvailability() {
     try {
       const from = firstOfMonth(d);
       const to = lastOfMonth(d);
-      const data = await getAvailability({ from, to });
+      const [data, templateRes] = await Promise.all([
+        getAvailability({ from, to }),
+        api.get('/recurring-templates/active'),
+      ]);
       setSlots(toSlotsByDay(data));
+      setTemplates(Array.isArray(templateRes?.data) ? templateRes.data : []);
     } catch (e) {
       console.error(e);
       setError('Failed to load availability');
       setSlots({});
+      setTemplates([]);
     } finally {
       setLoading(false);
       setDirty(false);
@@ -114,6 +152,8 @@ export default function TutorAvailability() {
     }
   }
   useEffect(() => { loadMonth(month); }, [ymKey(month)]);
+
+  const templateSlotsByDay = useMemo(() => buildTemplateSlots(month, templates), [month, templates]);
 
   // cell generation (Mon-first grid)
   const cells = useMemo(() => {
@@ -262,7 +302,7 @@ export default function TutorAvailability() {
   }
 
   return (
-    <main className="container mx-auto px-4 py-6">
+    <main className="bg-slate-50/60 py-6">
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-5 duration-300">
@@ -289,120 +329,141 @@ export default function TutorAvailability() {
         </div>
       )}
 
-      {/* className="container mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
-        <h2 className="text-2xl font-bold">Availability</h2>
-        <div className="flex items-center gap-2">
-          <button
-            className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 hover:bg-slate-50"
-            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-          >
-            <ChevronLeft size={18} /> <span className="hidden sm:inline">Prev</span>
-          </button>
-          <div className="px-3 py-1.5 rounded-lg bg-slate-50 text-sm font-medium min-w-[160px] text-center">
-            {monthLabel}
-          </div>
-          <button
-            className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 hover:bg-slate-50"
-            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-          >
-            <span className="hidden sm:inline">Next</span> <ChevronRight size={18} />
-          </button>
-        </div>
-      </div>
-
-      {error && <div className="mb-3 text-sm text-red-600">{error}</div>}
-
-      {/* Week header */}
-      <div className="grid grid-cols-7 gap-3 mb-2 max-sm:hidden">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-          <div key={d} className="text-xs font-semibold text-slate-500 px-2">{d}</div>
-        ))}
-      </div>
-
-      {/* Responsive grid: auto-fit cards */}
-      {loading ? (
-        <div className="p-6 text-slate-600">Loading calendar…</div>
-      ) : (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-          {cells.map((dateOrNull, i) => {
-            if (!dateOrNull) return <div key={`pad-${i}`} className="hidden sm:block" />;
-
-            const d = dateOrNull;
-            const key = ymd(d);
-            const daySlots = slots[key] || [];
-            const past = isPastDay(key, now);
-            const today = isToday(key, now);
-
-            return (
-              <div
-                key={key}
-                className={`relative rounded-xl border bg-white p-2 hover:shadow-sm transition min-h-[112px] ${today ? 'ring-2 ring-blue-400' : ''}`}
+      <div className="container mx-auto px-4">
+        <div className="mx-auto w-full max-w-6xl rounded-2xl border bg-white p-4 sm:p-6 shadow-sm">
+          {/* Header */}
+          <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Availability</h2>
+              <p className="text-sm text-slate-500">Manage your slots and recurring templates</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 hover:bg-slate-50"
+                onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <div className="text-sm font-semibold flex items-center gap-2">
-                    {d.getDate()}
-                    {today && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">Today</span>}
-                  </div>
-                  <button
-                    disabled={past}
-                    className={`text-xs inline-flex items-center gap-1 rounded-lg px-2 py-1 ${
-                      past ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
-                    onClick={() => openAddEditor(d)}
-                    title={past ? 'Cannot add slots in the past' : 'Add a slot'}
-                  >
-                    <Plus size={14} /> Slot
-                  </button>
-                </div>
-
-                {daySlots.length === 0 ? (
-                  <div className="text-[11px] text-slate-500">No slots</div>
-                ) : (
-                  <div className="space-y-1">
-                    {daySlots.map((s, idx) => (
-                      <button
-                        key={`${s.start}-${idx}`}
-                        className="w-full text-left flex items-center justify-between text-xs bg-slate-50 hover:bg-slate-100 rounded-lg px-2 py-1 group"
-                        onClick={() => openEditEditor(key, idx)}
-                        title={s.booked ? 'This slot has a booking' : 'Edit slot'}
-                      >
-                        <span className="truncate">
-                          <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
-                          {s.title ? <span className="ml-1 text-slate-600">• {s.title}</span> : null}
-                        </span>
-                        {s.booked ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700">
-                            <Lock size={12} />
-                          </span>
-                        ) : (
-                          <span
-                            className="opacity-0 group-hover:opacity-100 transition text-red-600 hover:text-red-700"
-                            onClick={(e) => { e.stopPropagation(); removeSlot(key, idx); }}
-                            title="Delete slot"
-                          >
-                            <Trash2 size={14} />
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <ChevronLeft size={18} /> <span className="hidden sm:inline">Prev</span>
+              </button>
+              <div className="px-3 py-1.5 rounded-lg bg-slate-50 text-sm font-semibold min-w-[180px] text-center text-slate-700">
+                {monthLabel}
               </div>
-            );
-          })}
-        </div>
-      )}
+              <button
+                className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 hover:bg-slate-50"
+                onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+              >
+                <span className="hidden sm:inline">Next</span> <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
 
-      <div className="mt-6">
-        <button
-          disabled={loading || !dirty}
-          onClick={persist}
-          className={`rounded-lg px-4 py-2 text-white ${dirty ? 'bg-green-600 hover:bg-green-700' : 'bg-slate-400 cursor-not-allowed'}`}
-        >
-          Save Availability
-        </button>
+          {error && <div className="mb-3 text-sm text-red-600">{error}</div>}
+
+          {/* Week header */}
+          <div className="grid grid-cols-7 gap-3 mb-2 max-sm:hidden">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+              <div key={d} className="text-xs font-semibold text-slate-500 px-2">{d}</div>
+            ))}
+          </div>
+
+          {/* Calendar grid */}
+          {loading ? (
+            <div className="p-6 text-slate-600">Loading calendar…</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+              {cells.map((dateOrNull, i) => {
+                if (!dateOrNull) return <div key={`pad-${i}`} className="hidden sm:block" />;
+
+                const d = dateOrNull;
+                const key = ymd(d);
+                const daySlots = slots[key] || [];
+                const templateSlots = templateSlotsByDay[key] || [];
+                const past = isPastDay(key, now);
+                const today = isToday(key, now);
+
+                return (
+                  <div
+                    key={key}
+                    className={`relative rounded-xl border bg-white p-2 hover:shadow-sm transition min-h-[128px] ${today ? 'ring-2 ring-blue-400' : ''}`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-sm font-semibold flex items-center gap-2">
+                        {d.getDate()}
+                        {today && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">Today</span>}
+                      </div>
+                      <button
+                        disabled={past}
+                        className={`text-xs inline-flex items-center gap-1 rounded-lg px-2 py-1 ${
+                          past ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                        onClick={() => openAddEditor(d)}
+                        title={past ? 'Cannot add slots in the past' : 'Add a slot'}
+                      >
+                        <Plus size={14} /> Slot
+                      </button>
+                    </div>
+
+                    {daySlots.length === 0 && templateSlots.length === 0 ? (
+                      <div className="text-[11px] text-slate-500">No slots</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {templateSlots.map((s, idx) => (
+                          <div
+                            key={`template-${s.start}-${idx}`}
+                            className="w-full text-left flex items-center justify-between text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1"
+                            title="Recurring template"
+                          >
+                            <span className="truncate text-emerald-700">
+                              <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
+                              {s.title ? <span className="ml-1 text-emerald-700">• {s.title}</span> : null}
+                            </span>
+                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Template</span>
+                          </div>
+                        ))}
+                        {daySlots.map((s, idx) => (
+                          <button
+                            key={`${s.start}-${idx}`}
+                            className="w-full text-left flex items-center justify-between text-xs bg-slate-50 hover:bg-slate-100 rounded-lg px-2 py-1 group"
+                            onClick={() => openEditEditor(key, idx)}
+                            title={s.booked ? 'This slot has a booking' : 'Edit slot'}
+                          >
+                            <span className="truncate">
+                              <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
+                              {s.title ? <span className="ml-1 text-slate-600">• {s.title}</span> : null}
+                            </span>
+                            {s.booked ? (
+                              <span className="inline-flex items-center gap-1 text-amber-700">
+                                <Lock size={12} />
+                              </span>
+                            ) : (
+                              <span
+                                className="opacity-0 group-hover:opacity-100 transition text-red-600 hover:text-red-700"
+                                onClick={(e) => { e.stopPropagation(); removeSlot(key, idx); }}
+                                title="Delete slot"
+                              >
+                                <Trash2 size={14} />
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-6 flex items-center justify-between">
+            <p className="text-xs text-slate-500">Templates are shown in green and can be edited from Recurring Templates.</p>
+            <button
+              disabled={loading || !dirty}
+              onClick={persist}
+              className={`rounded-lg px-4 py-2 text-white ${dirty ? 'bg-green-600 hover:bg-green-700' : 'bg-slate-400 cursor-not-allowed'}`}
+            >
+              Save Availability
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Modal editor */}

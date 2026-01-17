@@ -227,10 +227,15 @@ export class AvailabilityService {
   async updateMineBulk(userId: string, body: any) {
     const tutor = await this.getTutorByUser(userId);
 
-    const parseIso = (dateStr: string, hhmm: string) => {
+    const parseIso = (dateStr: string, hhmm: string, tzOffsetMinutes?: number) => {
       const [h, m] = String(hhmm || '').split(':').map((x) => Number(x) || 0);
+      if (typeof tzOffsetMinutes === 'number' && Number.isFinite(tzOffsetMinutes)) {
+        const [yy, mm, dd] = dateStr.split('-').map((v) => Number(v));
+        const utcMs = Date.UTC(yy || 0, (mm || 1) - 1, dd || 1, h, m, 0, 0);
+        return new Date(utcMs + tzOffsetMinutes * 60_000).toISOString();
+      }
       const d = new Date(`${dateStr}T00:00:00`);
-      d.setHours(h, m, 0, 0); // local time to ISO
+      d.setHours(h, m, 0, 0); // server-local fallback
       return d.toISOString();
     };
 
@@ -248,11 +253,17 @@ export class AvailabilityService {
 
     // Upsert each slot: if id points to own slot, update; else create
     let updated = 0;
+    const defaultTzOffset = typeof body?.tzOffsetMinutes === 'number' ? body.tzOffsetMinutes : undefined;
+
     for (const s of slotsInput) {
+      const tzOffset = typeof s?.tzOffsetMinutes === 'number' ? s.tzOffsetMinutes : defaultTzOffset;
+      const hasIso = typeof s?.startTime === 'string' && s.startTime.includes('T') && typeof s?.endTime === 'string' && s.endTime.includes('T');
       const date = s.date || s.day;
-      if (!date || !s.startTime || !s.endTime) continue;
-      const startIso = parseIso(date, s.startTime);
-      const endIso = parseIso(date, s.endTime);
+      if (!s.startTime || !s.endTime) continue;
+
+      const startIso = hasIso ? new Date(s.startTime).toISOString() : (date ? parseIso(date, s.startTime, tzOffset) : undefined);
+      const endIso = hasIso ? new Date(s.endTime).toISOString() : (date ? parseIso(date, s.endTime, tzOffset) : undefined);
+      if (!startIso || !endIso) continue;
 
       if (s.id) {
         const existing = await this.prisma.availabilitySlot.findUnique({

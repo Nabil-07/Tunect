@@ -1,6 +1,7 @@
 // src/users/users.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import * as bcrypt from 'bcrypt';
 
 type UpdateMeInput = {
   email?: string;
@@ -30,6 +31,7 @@ export class UsersService {
         bannedAt: true,
         createdAt: true,
         updatedAt: true,
+        password: true,
         // personas → let frontend decide routing correctly
         student: { select: { id: true, createdAt: true } },
         tutor:   { select: { id: true, createdAt: true, status: true } },
@@ -53,8 +55,11 @@ export class UsersService {
       activeBan?.scope === 'ALL';
     const messagingBlocked = piiStrikes >= piiMaxStrikes || isBannedForMessaging;
 
+    const { password, ...safeUser } = user;
+
     return {
-      ...user,
+      ...safeUser,
+      hasPassword: Boolean(password && password.length > 0),
       piiStrikes,
       piiMaxStrikes,
       messagingBlocked,
@@ -93,6 +98,32 @@ export class UsersService {
       },
     });
     return user;
+  }
+
+  async changePassword(userId: string, currentPassword: string | undefined, newPassword: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, password: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const hasPassword = Boolean(user.password && user.password.length > 0);
+
+    if (hasPassword) {
+      if (!currentPassword || !currentPassword.trim()) {
+        throw new BadRequestException('Current password is required');
+      }
+      const ok = await bcrypt.compare(currentPassword, user.password);
+      if (!ok) throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hash },
+    });
+
+    return { ok: true, hasPassword: true };
   }
 
   async listAll() {

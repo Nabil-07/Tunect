@@ -13,6 +13,32 @@ export default function TutorEarnings() {
   const [loadingLedger, setLoadingLedger] = useState(true);
   const [loadingPayouts, setLoadingPayouts] = useState(true);
 
+  const formatCurrency = (value: number) => `₹ ${value.toFixed(2)}`;
+  const formatDate = (value?: string) => (value ? new Date(value).toLocaleString() : '—');
+
+  const nextPayoutDate = (() => {
+    const today = new Date();
+    const day = today.getDate();
+    const candidates = [1, 7, 14, 21].filter((d) => d >= day);
+    const nextDay = candidates[0];
+    const target = new Date(today);
+    if (nextDay) {
+      target.setDate(nextDay);
+    } else {
+      target.setMonth(target.getMonth() + 1);
+      target.setDate(1);
+    }
+    target.setHours(9, 0, 0, 0);
+    return target;
+  })();
+
+  const totalPayout = payouts.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const unpaidAmount = Number(wallet?.balance || 0);
+  const totalEarnings = totalPayout + unpaidAmount;
+  const recentTransfer = payouts
+    .slice()
+    .sort((a, b) => new Date(b.paidAt || b.createdAt).getTime() - new Date(a.paidAt || a.createdAt).getTime())[0];
+
   useEffect(() => {
     // ✅ Load wallet independently
     api.get('/tutors/me/wallet')
@@ -40,13 +66,49 @@ export default function TutorEarnings() {
         <p className="text-slate-600 text-sm sm:text-base">Your wallet balance, recent earnings and payouts.</p>
       </div>
 
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="rounded-2xl border bg-white shadow-sm p-4">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Total earnings</div>
+          <div className="text-xl font-bold mt-2">
+            {loadingWallet || loadingPayouts ? '—' : formatCurrency(totalEarnings)}
+          </div>
+        </div>
+        <div className="rounded-2xl border bg-white shadow-sm p-4">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Unpaid amount</div>
+          <div className="text-xl font-bold mt-2">
+            {loadingWallet ? '—' : formatCurrency(unpaidAmount)}
+          </div>
+        </div>
+        <div className="rounded-2xl border bg-white shadow-sm p-4">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Next payout date</div>
+          <div className="text-base font-semibold mt-2">
+            {nextPayoutDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+          </div>
+        </div>
+        <div className="rounded-2xl border bg-white shadow-sm p-4">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Total payout</div>
+          <div className="text-xl font-bold mt-2">
+            {loadingPayouts ? '—' : formatCurrency(totalPayout)}
+          </div>
+        </div>
+        <div className="rounded-2xl border bg-white shadow-sm p-4">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Recent transfer</div>
+          <div className="text-sm font-semibold mt-2">
+            {loadingPayouts || !recentTransfer ? '—' : formatCurrency(Number(recentTransfer.amount))}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            {loadingPayouts || !recentTransfer ? '' : formatDate(recentTransfer.paidAt || recentTransfer.createdAt)}
+          </div>
+        </div>
+      </section>
+
       <section className="rounded-2xl border bg-white shadow-sm p-4">
         <div className="text-sm text-slate-600">Wallet balance</div>
         {loadingWallet ? (
           <div className="h-12 mt-1 rounded animate-pulse bg-slate-100" />
         ) : (
           <>
-            <div className="text-3xl font-bold mt-1">{wallet ? `₹ ${Number(wallet.balance).toFixed(2)}` : '—'}</div>
+            <div className="text-3xl font-bold mt-1">{wallet ? formatCurrency(Number(wallet.balance)) : '—'}</div>
             <div className="text-xs text-slate-500 mt-1">Updated {wallet ? new Date(wallet.updatedAt).toLocaleString() : ''}</div>
           </>
         )}
@@ -91,7 +153,7 @@ export default function TutorEarnings() {
                       <div className="font-medium">{p.status}</div>
                       <div className="text-slate-600 text-xs">{new Date(p.createdAt).toLocaleString()}</div>
                     </div>
-                    <div className="text-sm font-semibold">₹ {Number(p.amount).toFixed(2)}</div>
+                    <div className="text-sm font-semibold">{formatCurrency(Number(p.amount))}</div>
                   </li>
                 ))}
               </ul>
