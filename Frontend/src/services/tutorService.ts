@@ -353,11 +353,41 @@ export async function getAvailability(range?: {
 
 export async function updateAvailability(slots: AvailabilitySlot[]): Promise<void> {
   const body = { ...toBackendSlots(slots), tzOffsetMinutes: new Date().getTimezoneOffset() };
-  if (await tryPatch('/availability/me/slots', body)) return;
-  if (await tryPut('/availability/me/slots', body)) return;
-  if (await tryPatch('/availability/me', body)) return;
-  if (await tryPut('/availability/me', body)) return;
-  await tryPost('/availability/slots', body);
+
+  try {
+    await api.patch('/availability/me/slots', body);
+    return;
+  } catch (error: any) {
+    console.error('Failed to update availability via PATCH /availability/me/slots:', error);
+  }
+
+  try {
+    await api.put('/availability/me/slots', body);
+    return;
+  } catch (error: any) {
+    console.error('Failed to update availability via PUT /availability/me/slots:', error);
+  }
+
+  try {
+    await api.patch('/availability/me', body);
+    return;
+  } catch (error: any) {
+    console.error('Failed to update availability via PATCH /availability/me:', error);
+  }
+
+  try {
+    await api.put('/availability/me', body);
+    return;
+  } catch (error: any) {
+    console.error('Failed to update availability via PUT /availability/me:', error);
+  }
+
+  try {
+    await api.post('/availability/slots', body);
+  } catch (error: any) {
+    console.error('Failed to update availability via POST /availability/slots:', error);
+    throw new Error(`Failed to save availability: ${error.message || 'Unknown error'}`);
+  }
 }
 
 export async function getAvailabilityForMonth(
@@ -405,9 +435,23 @@ export async function saveAvailabilityForMonth(
 ): Promise<void> {
   const { from, to } = monthRange(visibleMonth);
   const tzOffsetMinutes = new Date().getTimezoneOffset();
-  if (await tryPatch('/availability/me', { from, to, slots, tzOffsetMinutes })) return;
-  if (await tryPut('/availability/me', { from, to, slots, tzOffsetMinutes })) return;
+  const body = { from, to, slots, tzOffsetMinutes };
 
+  try {
+    await api.patch('/availability/me', body);
+    return;
+  } catch (error: any) {
+    console.error('Failed to save availability via PATCH /availability/me:', error);
+  }
+
+  try {
+    await api.put('/availability/me', body);
+    return;
+  } catch (error: any) {
+    console.error('Failed to save availability via PUT /availability/me:', error);
+  }
+
+  // Fallback to old method
   const toYmd = (iso: string) => {
     const d = new Date(iso);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
