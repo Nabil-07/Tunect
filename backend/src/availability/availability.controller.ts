@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   Patch,
   Put,
@@ -39,6 +40,8 @@ export class AvailabilityController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TUTOR')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  @Header('Pragma', 'no-cache')
   @Get('me')
   listMine(@CurrentUser('id') userId: string) {
     return this.service.listMine(userId);
@@ -48,6 +51,8 @@ export class AvailabilityController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TUTOR')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  @Header('Pragma', 'no-cache')
   @Get('me/slots')
   listMineWindow(
     @CurrentUser('id') userId: string,

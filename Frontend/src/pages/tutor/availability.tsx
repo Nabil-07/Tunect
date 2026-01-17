@@ -21,7 +21,11 @@ type RecurringTemplate = {
 function ymKey(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
 function ymd(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function firstOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
-function lastOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
+function lastOfMonth(d: Date) { 
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  lastDay.setHours(23, 59, 59, 999);
+  return lastDay;
+}
 
 function clampHHMM(v: string) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(v);
@@ -306,6 +310,8 @@ export default function TutorAvailability() {
       await saveAvailabilityForMonth(toRawSlots(slots), month);
       setDirty(false);
       setToast({ message: 'Availability saved successfully!', type: 'success' });
+      // Reload slots after saving to ensure we have the latest data from the server
+      await loadMonth(month);
     } catch {
       setToast({ message: 'Failed to save availability. Please try again.', type: 'error' });
     } finally {
