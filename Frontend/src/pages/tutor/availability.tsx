@@ -77,6 +77,10 @@ function toRawSlots(slots: SlotsByDay) {
       start.setHours(sh || 0, sm || 0, 0, 0);
       const end = new Date(`${day}T00:00:00`);
       end.setHours(eh || 0, em || 0, 0, 0);
+      // If end time is earlier, treat it as crossing midnight
+      if (end.getTime() <= start.getTime()) {
+        end.setDate(end.getDate() + 1);
+      }
       out.push({
         id: s.id,
         startTime: start.toISOString(),
@@ -266,6 +270,10 @@ export default function TutorAvailability() {
       startDate.setHours(sh || 0, sm || 0, 0, 0);
       const endDate = new Date(`${activeDay}T00:00:00`);
       endDate.setHours(eh || 0, em || 0, 0, 0);
+      // If end time is earlier, treat it as crossing midnight
+      if (endDate.getTime() <= startDate.getTime()) {
+        endDate.setDate(endDate.getDate() + 1);
+      }
       
       const startIso = startDate.toISOString();
       const endIso = endDate.toISOString();

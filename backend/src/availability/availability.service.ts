@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
   import { CreateSlotDto } from './dto/create-slot.dto';
 import { UpdateSlotDto } from './dto/update-slot.dto';
 import { BookingStatus, TutorStatus } from '@prisma/client';
-import { addMinutes, isBefore } from 'date-fns';
+import { addDays, addMinutes, isBefore } from 'date-fns';
 import { BookableQueryDto } from './dto/bookable-query.dto';
 import { WaitlistService } from '../waitlist/waitlist.service';
 
@@ -99,6 +99,14 @@ export class AvailabilityService {
     }
   }
 
+  private normalizeOvernightEnd(start: Date, end: Date) {
+    // If end is earlier than start, treat it as crossing midnight (next day)
+    if (!isBefore(start, end)) {
+      return addDays(end, 1);
+    }
+    return end;
+  }
+
   private clampInterval(aStart: Date, aEnd: Date, wStart: Date, wEnd: Date): [Date, Date] | null {
     const start = new Date(Math.max(aStart.getTime(), wStart.getTime()));
     const end = new Date(Math.min(aEnd.getTime(), wEnd.getTime()));
@@ -150,7 +158,7 @@ export class AvailabilityService {
     const tutor = await this.getTutorByUser(userId);
 
     const start = new Date(dto.startTime);
-    const end = new Date(dto.endTime);
+    const end = this.normalizeOvernightEnd(start, new Date(dto.endTime));
     this.validateWindow(start, end);
 
     await this.ensureNoSlotOverlap(tutor.id, start, end);
@@ -202,7 +210,7 @@ export class AvailabilityService {
     if (slot.tutorId !== tutor.id) throw new ForbiddenException('Not your slot');
 
     const start = dto.startTime ? new Date(dto.startTime) : slot.startTime;
-    const end = dto.endTime ? new Date(dto.endTime) : slot.endTime;
+    const end = this.normalizeOvernightEnd(start, dto.endTime ? new Date(dto.endTime) : slot.endTime);
     this.validateWindow(start, end);
 
     await this.ensureNoSlotOverlap(tutor.id, start, end, slotId);
@@ -288,7 +296,16 @@ export class AvailabilityService {
       }
 
       if (!startIso || !endIso) continue;
-      if (new Date(endIso).getTime() <= new Date(startIso).getTime()) continue;
+
+      // If end is earlier than start, treat it as crossing midnight (next day)
+      const startDate = new Date(startIso);
+      let endDate = new Date(endIso);
+      if (endDate.getTime() <= startDate.getTime()) {
+        endDate = addDays(endDate, 1);
+      }
+      startIso = startDate.toISOString();
+      endIso = endDate.toISOString();
+      if (endDate.getTime() <= startDate.getTime()) continue;
 
       if (s.id) {
         const existing = await this.prisma.availabilitySlot.findUnique({
