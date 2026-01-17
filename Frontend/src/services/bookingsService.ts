@@ -34,6 +34,8 @@ export type BookingDto = {
   tokensCharged: number | string;
   notes?: string | null;
   tutor: { id: string; name?: string; email?: string; hourlyRate?: number };
+  /** Present in /bookings/:id/details response; optional for list endpoints. */
+  student?: { id: string; name?: string; email?: string } | null;
   payment?: {
     id: string;
     amountInMinor: number;

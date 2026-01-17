@@ -7,6 +7,7 @@ import { getTokenPayload } from "../../lib/apiClient";
 import { useWebrtcCall } from "../../hooks/useWebrtcCall";
 import { disconnectWebrtc, getWebrtcSocketState, onWebrtcSocketStateChange } from "../../services/webrtcClient";
 import Whiteboard from "../../components/Whiteboard/Whiteboard";
+import { getBookingPerspective } from "../../utils/bookingPerspective";
 
 type MediaMode = "video" | "audio" | "whiteboard";
 type SidePanelTab = "whiteboard" | "participants" | "chat";
@@ -122,10 +123,12 @@ type CallSessionProps = {
   bookingId: string;
   data: BookingDetailsDto;
   meUserId?: string;
+  meEmail?: string;
+  meName?: string;
   onJoinBlocked?: (reason: string) => void;
 };
 
-function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionProps) {
+function CallSession({ bookingId, data, meUserId, meEmail, meName, onJoinBlocked }: CallSessionProps) {
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
 
@@ -157,7 +160,11 @@ function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionPr
   const offerSentRef = useRef(false);
   const localMediaReadyRef = useRef(false);
 
-  const me = useMemo(() => ({ userId: meUserId }), [meUserId]);
+  const me = useMemo(() => ({ userId: meUserId, email: meEmail, name: meName }), [meUserId, meEmail, meName]);
+  const perspective = useMemo(
+    () => getBookingPerspective({ id: meUserId, email: meEmail, name: meName }, data),
+    [meUserId, meEmail, meName, data],
+  );
 
   const handleJoinBlocked = (reason: string) => {
     if (blockedMessage) return;
@@ -503,8 +510,7 @@ function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionPr
 
   async function startScreenShare() {
     // Only tutors can share screen
-    const userIsTutor = data?.tutor?.id === me.userId;
-    if (!userIsTutor) {
+    if (!perspective?.isTutor) {
       showError("Only tutors can share their screen");
       return;
     }
@@ -699,10 +705,13 @@ function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionPr
     return <div className="p-6">Invalid booking</div>;
   }
 
-  // Determine if current user is tutor or student to show other participant's name
-  const isTutor = data?.tutor?.id === me.userId;
-  const otherPersonName = isTutor ? (data as any)?.student?.name : data?.tutor?.name;
-  const title = otherPersonName ? `Call with ${otherPersonName}` : "Call";
+  // Safety: parent should have blocked non-participants, but keep it defensive.
+  if (!perspective) {
+    handleJoinBlocked("NOT_PART_OF_BOOKING");
+    return <div className="p-6">Access denied</div>;
+  }
+
+  const title = `Call with ${perspective.other.name}`;
   const waiting = joinState.status === "waiting";
   const sessionEnded = joinState.status === "after" || !!blockedMessage;
   const controlsDisabled = waiting || sessionEnded || !!blockedMessage;
@@ -800,7 +809,7 @@ function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionPr
           onChatDraft={setChatDraft}
           onSendChat={onSendChat}
           sessionEnded={sessionEnded}
-          isTutor={!!isTutor}
+          isTutor={perspective.isTutor}
         />
 
         <RightPanel
@@ -815,7 +824,7 @@ function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionPr
           onChatDraft={setChatDraft}
           onSendChat={onSendChat}
           sessionEnded={sessionEnded}
-          isTutor={!!isTutor}
+          isTutor={perspective.isTutor}
         />
 
         {isMobilePanelOpen && (
@@ -837,7 +846,7 @@ function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionPr
                 onChatDraft={setChatDraft}
                 onSendChat={onSendChat}
                 sessionEnded={sessionEnded}
-                isTutor={!!isTutor}
+                isTutor={perspective.isTutor}
               />
             </div>
           </div>
@@ -851,7 +860,7 @@ function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionPr
         muted={muted}
         sharingScreen={sharingScreen}
         controlsDisabled={controlsDisabled}
-        canShareScreen={isTutor}
+        canShareScreen={perspective.isTutor}
         onToggleMic={toggleMute}
         onToggleCam={toggleCam}
         onShareScreen={() => {
@@ -1211,9 +1220,12 @@ export default function CallPage() {
   const [joinBlocked, setJoinBlocked] = useState(false);
   const [joinBlockedMessage, setJoinBlockedMessage] = useState<string | null>(null);
 
-  const meUserId = useMemo(() => {
+  const me = useMemo(() => {
     const p = getTokenPayload();
-    return (p?.sub as string | undefined) ?? (p?.userId as string | undefined);
+    const id = (p?.sub as string | undefined) ?? (p?.userId as string | undefined);
+    const email = (p?.email as string | undefined) ?? (p?.user?.email as string | undefined);
+    const name = (p?.name as string | undefined) ?? (p?.user?.name as string | undefined);
+    return { id, email, name };
   }, []);
 
   useEffect(() => {
@@ -1232,14 +1244,15 @@ export default function CallPage() {
   }, [bookingId, showError]);
 
   useEffect(() => {
-    if (!bookingId || !data || !meUserId || joinBlocked) return;
-    if (!(data.tutor?.id === meUserId || data.studentId === meUserId)) {
+    if (!bookingId || !data || !me.id || joinBlocked) return;
+    const perspective = getBookingPerspective({ id: me.id, email: me.email, name: me.name }, data);
+    if (!perspective) {
       const message = joinReasonMessage("NOT_PART_OF_BOOKING");
       setJoinBlocked(true);
       setJoinBlockedMessage(message);
       disconnectWebrtc();
     }
-  }, [bookingId, data, meUserId, joinBlocked]);
+  }, [bookingId, data, me, joinBlocked]);
 
   if (!bookingId) {
     return <div className="p-6">Invalid booking</div>;
@@ -1249,9 +1262,9 @@ export default function CallPage() {
     return <div className="p-6">Loading call…</div>;
   }
 
-  const isParticipant = Boolean(data && meUserId && (data.tutor?.id === meUserId || data.studentId === meUserId));
+  const isParticipant = Boolean(data && me.id && getBookingPerspective({ id: me.id, email: me.email, name: me.name }, data));
 
-  if (joinBlocked || (data && meUserId && !isParticipant)) {
+  if (joinBlocked || (data && me.id && !isParticipant)) {
     return (
       <div className="p-6">
         <div className="text-lg font-semibold text-slate-900">Access denied</div>
@@ -1264,7 +1277,7 @@ export default function CallPage() {
     return <div className="p-6">Failed to load class details.</div>;
   }
 
-  const canStartCall = !!meUserId && isParticipant;
+  const canStartCall = !!me.id && isParticipant;
   if (!canStartCall) {
     return <div className="p-6">Unable to start call.</div>;
   }
@@ -1273,7 +1286,9 @@ export default function CallPage() {
     <CallSession
       bookingId={bookingId}
       data={data}
-      meUserId={meUserId}
+      meUserId={me.id}
+      meEmail={me.email}
+      meName={me.name}
       onJoinBlocked={(reason) => {
         const message = joinReasonMessage(reason);
         setJoinBlocked(true);
