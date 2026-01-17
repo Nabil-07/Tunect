@@ -24,7 +24,7 @@ export type WebrtcHandlers = {
   onMediasoupNewProducer?: (payload: { producerId: string; userId: string; kind: string }) => void;
   onMediasoupError?: (message: string) => void;
   onGatewayError?: (payload: { code: string; reason?: string }) => void;
-  onJoinDenied?: (reason?: string) => void;
+  onJoinFailed?: (reason?: string) => void;
 };
 
 export type MediasoupTransportOptions = {
@@ -49,6 +49,8 @@ export type JoinState =
   | { status: "after"; message: string; endedAt: number };
 
 let socket: Socket | null = null;
+let joinAttempted = false;
+let currentHandlers: WebrtcHandlers | null = null;
 export type WebrtcSocketState =
   | "idle"
   | "connecting"
@@ -58,7 +60,6 @@ export type WebrtcSocketState =
   | "disconnected";
 let socketState: WebrtcSocketState = "idle";
 const socketStateListeners = new Set<(state: WebrtcSocketState) => void>();
-let currentHandlers: WebrtcHandlers | null = null;
 
 function setSocketState(next: WebrtcSocketState) {
   if (socketState === next) return;
@@ -121,6 +122,7 @@ function bindHandlers(handlers?: WebrtcHandlers) {
   if (onChatMessage) socket.on("chat-message", onChatMessage);
   socket.on("gateway-error", (payload: { code: string; reason?: string }) => {
     setSocketState("failed");
+    emitJoinFailed(payload?.reason || "JOIN_DENIED");
     handlers.onGatewayError?.(payload);
     if (handlers.onError) {
       handlers.onError(payload?.reason || "JOIN_DENIED");
@@ -128,6 +130,15 @@ function bindHandlers(handlers?: WebrtcHandlers) {
   });
   if (handlers.onMediasoupNewProducer) socket.on("mediasoup/new-producer", handlers.onMediasoupNewProducer);
   if (handlers.onMediasoupError) socket.on("mediasoup/error", handlers.onMediasoupError);
+}
+
+function emitJoinFailed(reason?: string) {
+  if (!currentHandlers) return;
+  currentHandlers.onJoinFailed?.(reason);
+}
+
+function resetJoinAttempt() {
+  joinAttempted = false;
 }
 
 export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
@@ -188,6 +199,7 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
   });
 
   bindHandlers(handlers);
+  resetJoinAttempt();
   return socket;
 }
 
@@ -226,9 +238,17 @@ export function disconnectWebrtc() {
     socket = null;
   }
   setSocketState("disconnected");
+  resetJoinAttempt();
+  currentHandlers = null;
 }
 
 export async function joinBooking(bookingId: string) {
+  if (joinAttempted) {
+    setSocketState("failed");
+    emitJoinFailed("JOIN_ALREADY_ATTEMPTED");
+    return { ok: false, reason: "JOIN_ALREADY_ATTEMPTED" };
+  }
+  joinAttempted = true;
   if (!socket) return { ok: false, reason: "SOCKET_NOT_CONNECTED" };
   const ok = await ensureSocketConnected();
   if (!ok || !socket.connected) {
@@ -240,8 +260,8 @@ export async function joinBooking(bookingId: string) {
     socket?.emit("join-booking", { bookingId }, (ack: { ok: boolean; reason?: string }) => {
       if (!ack?.ok) {
         setSocketState("failed");
-        socket?.disconnect();
-        currentHandlers?.onJoinDenied?.(ack?.reason);
+        emitJoinFailed(ack?.reason);
+        disconnectWebrtc();
         currentHandlers?.onError?.(ack?.reason || "Join denied");
         resolve({ ok: false, reason: ack?.reason });
         return;

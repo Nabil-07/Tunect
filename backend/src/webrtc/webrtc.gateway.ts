@@ -171,6 +171,12 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    if (client.data.joinAttempted) {
+      client.emit('gateway-error', { code: 'JOIN_DENIED', reason: 'JOIN_ALREADY_ATTEMPTED' });
+      return { ok: false, reason: 'JOIN_ALREADY_ATTEMPTED' };
+    }
+    client.data.joinAttempted = true;
+
     try {
       this.logger.log(`join attempt booking=${bookingId} user=${user.id} role=${user.role}`);
       await this.webrtc.validateParticipant(bookingId, user.id, user.role);

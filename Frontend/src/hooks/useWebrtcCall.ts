@@ -35,7 +35,18 @@ const requestMedia = async () => {
 
 export type PeerCallbacks = Pick<
   WebrtcHandlers,
-  "onOffer" | "onAnswer" | "onIceCandidate" | "onCallReady" | "onParticipants" | "onPeerJoined" | "onPeerLeft" | "onSessionFailed" | "onChatMessage" | "onError"
+  "onOffer"
+  | "onAnswer"
+  | "onIceCandidate"
+  | "onCallReady"
+  | "onParticipants"
+  | "onPeerJoined"
+  | "onPeerLeft"
+  | "onSessionFailed"
+  | "onChatMessage"
+  | "onError"
+  | "onGatewayError"
+  | "onJoinFailed"
 >;
 
 export function useWebrtcCall(bookingId: string | null, startTime?: string | Date, endTime?: string | Date, handlers?: PeerCallbacks) {

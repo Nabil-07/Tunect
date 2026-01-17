@@ -102,13 +102,33 @@ function deriveUiPhase(params: {
   return "connecting";
 }
 
-export default function CallPage() {
-  const { bookingId } = useParams<{ bookingId: string }>();
+function joinReasonMessage(reason?: string) {
+  const reasonMap: Record<string, string> = {
+    NOT_PART_OF_BOOKING: "You are not part of this booking.",
+    BOOKING_NOT_FOUND: "Booking not found.",
+    BOOKING_NOT_ACTIVE: "This booking is not active yet.",
+    CALL_WINDOW_NOT_ACTIVE: "The call window is not active yet.",
+    GROUP_SESSION_NOT_SUPPORTED: "Group sessions are not supported for this call.",
+    JOIN_DENIED: "You are not allowed to join this class.",
+    JOIN_TIMEOUT: "Unable to join the call. Please try again.",
+    SOCKET_DISCONNECTED: "Connection lost before joining the call.",
+    JOIN_ALREADY_ATTEMPTED: "Unable to join the call at the moment.",
+    SOCKET_NOT_CONNECTED: "Unable to connect to the signaling server.",
+  };
+  return reasonMap[reason || ""] || reason || "Unable to join the call.";
+}
+
+type CallSessionProps = {
+  bookingId: string;
+  data: BookingDetailsDto;
+  meUserId?: string;
+  onJoinBlocked?: (reason: string) => void;
+};
+
+function CallSession({ bookingId, data, meUserId, onJoinBlocked }: CallSessionProps) {
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
 
-  const [data, setData] = useState<BookingDetailsDto | null>(null);
-  const [loading, setLoading] = useState(true);
   const [mediaMode, setMediaMode] = useState<MediaMode>("video");
   const [activeTab, setActiveTab] = useState<SidePanelTab>("whiteboard");
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
@@ -137,24 +157,11 @@ export default function CallPage() {
   const offerSentRef = useRef(false);
   const localMediaReadyRef = useRef(false);
 
-  const me = useMemo(() => {
-    const p = getTokenPayload();
-    const userId = (p?.sub as string | undefined) ?? (p?.userId as string | undefined);
-    return { userId };
-  }, []);
+  const me = useMemo(() => ({ userId: meUserId }), [meUserId]);
 
-  function handleJoinBlocked(reason: string) {
-    const reasonMap: Record<string, string> = {
-      NOT_PART_OF_BOOKING: "You are not part of this booking.",
-      BOOKING_NOT_FOUND: "Booking not found.",
-      BOOKING_NOT_ACTIVE: "This booking is not active yet.",
-      CALL_WINDOW_NOT_ACTIVE: "The call window is not active yet.",
-      GROUP_SESSION_NOT_SUPPORTED: "Group sessions are not supported for this call.",
-      JOIN_DENIED: "You are not allowed to join this class.",
-      JOIN_TIMEOUT: "Unable to join the call. Please try again.",
-      SOCKET_DISCONNECTED: "Connection lost before joining the call.",
-    };
-    const friendly = reasonMap[reason] || reason || "Unable to join the call.";
+  const handleJoinBlocked = (reason: string) => {
+    if (blockedMessage) return;
+    const friendly = joinReasonMessage(reason);
     setBlockedMessage(friendly);
     showError(friendly);
     teardown();
@@ -162,14 +169,15 @@ export default function CallPage() {
     setMediaMode("whiteboard");
     setActiveTab("whiteboard");
     setConn({ connectionState: "failed" });
-  }
+    onJoinBlocked?.(reason);
+  };
 
   const handlers = useMemo(
     () => ({
       onGatewayError: (payload: { code: string; reason?: string }) => {
         handleJoinBlocked(payload?.reason || "JOIN_DENIED");
       },
-      onJoinDenied: (reason?: string) => {
+      onJoinFailed: (reason?: string) => {
         handleJoinBlocked(reason || "JOIN_DENIED");
       },
       onCallReady: (payload: { bookingId: string; initiatorId: string }) => {
@@ -257,7 +265,7 @@ export default function CallPage() {
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bookingId, me.userId],
+    [bookingId, me.userId, handleJoinBlocked],
   );
 
   const {
@@ -272,25 +280,12 @@ export default function CallPage() {
     markFailed,
     logClient,
     sendChat,
-  } = useWebrtcCall(bookingId || null, data?.startTime || undefined, data?.endTime || undefined, handlers);
+  } = useWebrtcCall(bookingId, data?.startTime ?? undefined, data?.endTime ?? undefined, handlers);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  useEffect(() => {
-    if (!bookingId) return;
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await getBookingDetails(bookingId);
-        setData(res);
-      } catch (err: any) {
-        showError(err?.response?.data?.message || "Failed to load class details");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [bookingId]);
+  // Booking is validated in the parent before this component mounts.
 
   useEffect(() => {
     const unsubscribe = onWebrtcSocketStateChange(setSocketState);
@@ -486,6 +481,7 @@ export default function CallPage() {
   }
 
   async function maybeStartNegotiation() {
+    if (blockedMessage) return;
     if (!bookingId) return;
     if (!isInitiatorRef.current) return;
     if (!peerJoinedRef.current) return;
@@ -703,17 +699,13 @@ export default function CallPage() {
     return <div className="p-6">Invalid booking</div>;
   }
 
-  if (loading) {
-    return <div className="p-6">Loading call…</div>;
-  }
-
   // Determine if current user is tutor or student to show other participant's name
   const isTutor = data?.tutor?.id === me.userId;
   const otherPersonName = isTutor ? (data as any)?.student?.name : data?.tutor?.name;
   const title = otherPersonName ? `Call with ${otherPersonName}` : "Call";
   const waiting = joinState.status === "waiting";
   const sessionEnded = joinState.status === "after" || !!blockedMessage;
-  const controlsDisabled = waiting || sessionEnded;
+  const controlsDisabled = waiting || sessionEnded || !!blockedMessage;
   const countdownLabel = formatCountdown(countdownMs);
   const startLabel = data?.startTime ? new Date(data.startTime).toLocaleString() : "—";
   const endLabel = joinState.status === "after"
@@ -1208,5 +1200,85 @@ function ControlBar({ canUseVideo, canUseAudio, camOff, muted, sharingScreen, co
         </button>
       </div>
     </div>
+  );
+}
+
+export default function CallPage() {
+  const { bookingId } = useParams<{ bookingId: string }>();
+  const { showError } = useToast();
+  const [data, setData] = useState<BookingDetailsDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [joinBlocked, setJoinBlocked] = useState(false);
+  const [joinBlockedMessage, setJoinBlockedMessage] = useState<string | null>(null);
+
+  const meUserId = useMemo(() => {
+    const p = getTokenPayload();
+    return (p?.sub as string | undefined) ?? (p?.userId as string | undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!bookingId) return;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await getBookingDetails(bookingId);
+        setData(res);
+      } catch (err: any) {
+        showError(err?.response?.data?.message || "Failed to load class details");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [bookingId, showError]);
+
+  useEffect(() => {
+    if (!bookingId || !data || !meUserId || joinBlocked) return;
+    if (!(data.tutor?.id === meUserId || data.studentId === meUserId)) {
+      const message = joinReasonMessage("NOT_PART_OF_BOOKING");
+      setJoinBlocked(true);
+      setJoinBlockedMessage(message);
+      disconnectWebrtc();
+    }
+  }, [bookingId, data, meUserId, joinBlocked]);
+
+  if (!bookingId) {
+    return <div className="p-6">Invalid booking</div>;
+  }
+
+  if (loading) {
+    return <div className="p-6">Loading call…</div>;
+  }
+
+  const isParticipant = Boolean(data && meUserId && (data.tutor?.id === meUserId || data.studentId === meUserId));
+
+  if (joinBlocked || (data && meUserId && !isParticipant)) {
+    return (
+      <div className="p-6">
+        <div className="text-lg font-semibold text-slate-900">Access denied</div>
+        <div className="mt-2 text-sm text-slate-700">{joinBlockedMessage || "You are not part of this booking."}</div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return <div className="p-6">Failed to load class details.</div>;
+  }
+
+  const canStartCall = !!meUserId && isParticipant;
+  if (!canStartCall) {
+    return <div className="p-6">Unable to start call.</div>;
+  }
+
+  return (
+    <CallSession
+      bookingId={bookingId}
+      data={data}
+      meUserId={meUserId}
+      onJoinBlocked={(reason) => {
+        const message = joinReasonMessage(reason);
+        setJoinBlocked(true);
+        setJoinBlockedMessage(message);
+      }}
+    />
   );
 }
