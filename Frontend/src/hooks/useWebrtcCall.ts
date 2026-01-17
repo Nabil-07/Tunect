@@ -24,7 +24,8 @@ import type { WebrtcHandlers } from "../services/webrtcClient";
 
 const requestMedia = async () => {
   console.log("[webrtc] requesting media permissions...");
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  // Request audio-only by default (camera video disabled)
+  const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
   console.log("[webrtc] media permission granted", {
     audio: stream.getAudioTracks().length,
     video: stream.getVideoTracks().length,
@@ -127,10 +128,11 @@ export function useWebrtcCall(bookingId: string | null, startTime?: string | Dat
     }
   }, [joinState.status]);
 
-  const join = () => {
+  const join = async () => {
     const s = currentSocket();
     if (!bookingId || hasJoined.current || !s || !s.connected) return;
-    joinBooking(bookingId);
+    const ack = await joinBooking(bookingId);
+    if (!ack?.ok) return;
     hasJoined.current = true;
   };
 

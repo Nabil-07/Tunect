@@ -5,6 +5,7 @@ import { getBookingDetails, type BookingDetailsDto } from "../../services/bookin
 import { useToast } from "../../contexts/ToastContext";
 import { getTokenPayload } from "../../lib/apiClient";
 import { useWebrtcCall } from "../../hooks/useWebrtcCall";
+import { disconnectWebrtc, getWebrtcSocketState, onWebrtcSocketStateChange } from "../../services/webrtcClient";
 import Whiteboard from "../../components/Whiteboard/Whiteboard";
 
 type MediaMode = "video" | "audio" | "whiteboard";
@@ -112,6 +113,8 @@ export default function CallPage() {
   const [activeTab, setActiveTab] = useState<SidePanelTab>("whiteboard");
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const [conn, setConn] = useState<ConnSnapshot>({});
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
+  const [socketState, setSocketState] = useState(getWebrtcSocketState());
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
   const [sharingScreen, setSharingScreen] = useState(false);
@@ -129,6 +132,10 @@ export default function CallPage() {
   const reconnectAttempts = useRef(0);
   const lastTurnLogged = useRef<boolean | null>(null);
   const sessionClosedRef = useRef(false);
+  const isInitiatorRef = useRef(false);
+  const peerJoinedRef = useRef(false);
+  const offerSentRef = useRef(false);
+  const localMediaReadyRef = useRef(false);
 
   const me = useMemo(() => {
     const p = getTokenPayload();
@@ -136,22 +143,50 @@ export default function CallPage() {
     return { userId };
   }, []);
 
+  function handleJoinBlocked(reason: string) {
+    const reasonMap: Record<string, string> = {
+      NOT_PART_OF_BOOKING: "You are not part of this booking.",
+      BOOKING_NOT_FOUND: "Booking not found.",
+      BOOKING_NOT_ACTIVE: "This booking is not active yet.",
+      CALL_WINDOW_NOT_ACTIVE: "The call window is not active yet.",
+      GROUP_SESSION_NOT_SUPPORTED: "Group sessions are not supported for this call.",
+      JOIN_DENIED: "You are not allowed to join this class.",
+      JOIN_TIMEOUT: "Unable to join the call. Please try again.",
+      SOCKET_DISCONNECTED: "Connection lost before joining the call.",
+    };
+    const friendly = reasonMap[reason] || reason || "Unable to join the call.";
+    setBlockedMessage(friendly);
+    showError(friendly);
+    teardown();
+    disconnectWebrtc();
+    setMediaMode("whiteboard");
+    setActiveTab("whiteboard");
+    setConn({ connectionState: "failed" });
+  }
+
   const handlers = useMemo(
     () => ({
+      onGatewayError: (payload: { code: string; reason?: string }) => {
+        handleJoinBlocked(payload?.reason || "JOIN_DENIED");
+      },
+      onJoinDenied: (reason?: string) => {
+        handleJoinBlocked(reason || "JOIN_DENIED");
+      },
       onCallReady: (payload: { bookingId: string; initiatorId: string }) => {
         if (!bookingId || payload.bookingId !== bookingId) return;
         const isInitiator = !!me.userId && payload.initiatorId === me.userId;
+        isInitiatorRef.current = isInitiator;
         if (isDebugEnabled()) {
           console.debug("[webrtc] call-ready", { isInitiator, payload });
           logClient("call-ready", { isInitiator, initiatorId: payload.initiatorId });
         }
-        ensurePeerConnection(isInitiator).catch((e) => {
+        ensurePeerConnection().catch((e) => {
           showError(e?.message || "Failed to start call");
         });
       },
       onOffer: async (payload: any) => {
         if (!bookingId || payload?.bookingId !== bookingId) return;
-        const pc = await ensurePeerConnection(false);
+        const pc = await ensurePeerConnection();
         if (isDebugEnabled()) logClient("received-offer");
         await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
         const answer = await pc.createAnswer();
@@ -195,11 +230,14 @@ export default function CallPage() {
       },
       onPeerJoined: (payload: { userId: string; role: string }) => {
         if (!payload?.userId) return;
+        peerJoinedRef.current = true;
         setParticipants((prev) => {
           const merged = new Map(prev.map((p) => [p.userId, p] as const));
           merged.set(payload.userId, { userId: payload.userId, role: payload.role });
           return Array.from(merged.values());
         });
+        // If we're the initiator and local media is ready, start negotiation only after peer joins
+        maybeStartNegotiation().catch(() => {});
       },
       onSessionFailed: (p: { reason: string }) => {
         showError(`Session failed: ${p.reason}`);
@@ -207,8 +245,7 @@ export default function CallPage() {
         setActiveTab("whiteboard");
       },
       onError: (message: string) => {
-        showError(message || "Call is not started yet");
-        logClient("gateway-error", { message });
+        handleJoinBlocked(message || "JOIN_DENIED");
       },
       onChatMessage: (msg: ChatMessage) => {
         if (!bookingId || msg?.bookingId !== bookingId) return;
@@ -254,6 +291,32 @@ export default function CallPage() {
       }
     })();
   }, [bookingId]);
+
+  useEffect(() => {
+    const unsubscribe = onWebrtcSocketStateChange(setSocketState);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (blockedMessage) return;
+    if (socketState === "connecting" || socketState === "connected") {
+      const timer = window.setTimeout(() => {
+        if (getWebrtcSocketState() !== "joined" && !blockedMessage) {
+          handleJoinBlocked("JOIN_TIMEOUT");
+        }
+      }, 15_000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [socketState, blockedMessage]);
+
+  useEffect(() => {
+    if (blockedMessage) return;
+    if (socketState === "disconnected" && getWebrtcSocketState() !== "joined") {
+      handleJoinBlocked("SOCKET_DISCONNECTED");
+    }
+  }, [socketState, blockedMessage]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -316,10 +379,28 @@ export default function CallPage() {
     }
   }
 
-  async function ensurePeerConnection(isInitiator: boolean): Promise<RTCPeerConnection> {
+  async function ensurePeerConnection(): Promise<RTCPeerConnection> {
     if (!bookingId) throw new Error("Missing bookingId");
 
     if (pcRef.current) return pcRef.current;
+
+    // Acquire local media first (must be ready before creating PeerConnection)
+    const local = await getLocalMedia(false);
+    localMediaReadyRef.current = true;
+    setMediaMode(local.mode);
+    if (local.mode === "whiteboard") {
+      setActiveTab("whiteboard");
+    }
+    localStreamRef.current = local.stream;
+    cameraVideoTrackRef.current = local.stream.getVideoTracks()[0] ?? null;
+
+    if (isDebugEnabled()) {
+      logClient("local-media", {
+        mode: local.mode,
+        audioTracks: local.stream.getAudioTracks().length,
+        videoTracks: local.stream.getVideoTracks().length,
+      });
+    }
 
     const iceServers = iceConfig?.iceServers || [{ urls: "stun:stun.l.google.com:19302" }];
     const cfg: RTCConfiguration = { iceServers, iceCandidatePoolSize: 2 };
@@ -373,23 +454,6 @@ export default function CallPage() {
     pc.onsignalingstatechange = () => setConn((c) => ({ ...c, signalingState: pc.signalingState }));
     pc.onicegatheringstatechange = () => setConn((c) => ({ ...c, iceGatheringState: pc.iceGatheringState }));
 
-    // Acquire local media (Video -> Audio -> Whiteboard)
-    const local = await getLocalMedia(true);
-    setMediaMode(local.mode);
-    if (local.mode === "whiteboard") {
-      setActiveTab("whiteboard");
-    }
-    localStreamRef.current = local.stream;
-    cameraVideoTrackRef.current = local.stream.getVideoTracks()[0] ?? null;
-
-    if (isDebugEnabled()) {
-      logClient("local-media", {
-        mode: local.mode,
-        audioTracks: local.stream.getAudioTracks().length,
-        videoTracks: local.stream.getVideoTracks().length,
-      });
-    }
-
     // Attach local preview
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = local.stream;
@@ -416,23 +480,52 @@ export default function CallPage() {
       }, 4000);
     }
 
-    if (isInitiator) {
-      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-      await pc.setLocalDescription(offer);
-      signalOffer(offer);
-      showSuccess("Calling...");
-      if (isDebugEnabled()) logClient("sent-offer");
-    }
-
+    // Attempt negotiation if we already know the peer is present
+    maybeStartNegotiation().catch(() => {});
     return pc;
   }
 
+  async function maybeStartNegotiation() {
+    if (!bookingId) return;
+    if (!isInitiatorRef.current) return;
+    if (!peerJoinedRef.current) return;
+    if (offerSentRef.current) return;
+    if (!localMediaReadyRef.current) return;
+
+    // Ensure we have joined the booking before negotiating
+    join();
+
+    const pc = await ensurePeerConnection();
+    // Audio-only by default (camera video disabled)
+    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+    await pc.setLocalDescription(offer);
+    signalOffer(offer);
+    offerSentRef.current = true;
+    showSuccess("Calling...");
+    if (isDebugEnabled()) logClient("sent-offer");
+  }
+
   async function startScreenShare() {
+    // Only tutors can share screen
+    const userIsTutor = data?.tutor?.id === me.userId;
+    if (!userIsTutor) {
+      showError("Only tutors can share their screen");
+      return;
+    }
+
     try {
       const pc = pcRef.current;
       if (!pc) throw new Error("Call is not started yet");
 
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      // Add bitrate and FPS limits for screen sharing
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { max: 30 },
+        },
+        audio: false,
+      });
       const displayTrack = displayStream.getVideoTracks()[0];
       if (!displayTrack) throw new Error("No screen track available");
 
@@ -447,8 +540,30 @@ export default function CallPage() {
       const sender = pc.getSenders().find((s) => s.track?.kind === "video");
       if (sender) {
         await sender.replaceTrack(displayTrack);
+        // Apply bitrate constraints for screen share (max 2Mbps)
+        try {
+          const params = sender.getParameters();
+          if (params.encodings && params.encodings[0]) {
+            params.encodings[0].maxBitrate = 2000000; // 2 Mbps
+          }
+          await sender.setParameters(params);
+        } catch (err) {
+          // Bitrate constraints not supported in all browsers, continue anyway
+          if (isDebugEnabled()) console.debug("[webrtc] failed to set bitrate constraints", err);
+        }
       } else {
-        pc.addTrack(displayTrack, displayStream);
+        const addedSender = pc.addTrack(displayTrack, displayStream);
+        // Apply bitrate constraints for screen share (max 2Mbps)
+        try {
+          const params = addedSender.getParameters();
+          if (params.encodings && params.encodings[0]) {
+            params.encodings[0].maxBitrate = 2000000; // 2 Mbps
+          }
+          await addedSender.setParameters(params);
+        } catch (err) {
+          // Bitrate constraints not supported in all browsers, continue anyway
+          if (isDebugEnabled()) console.debug("[webrtc] failed to set bitrate constraints", err);
+        }
       }
 
       if (localVideoRef.current) {
@@ -568,9 +683,12 @@ export default function CallPage() {
   }
 
   function toggleMute() {
+    const pc = pcRef.current;
+    const senderTrack = pc?.getSenders().find((s) => s.track?.kind === "audio")?.track;
     const stream = localStreamRef.current;
-    if (!stream) return;
-    stream.getAudioTracks().forEach((t) => (t.enabled = muted));
+    const tracks = senderTrack ? [senderTrack] : stream?.getAudioTracks() || [];
+    if (!tracks.length) return;
+    tracks.forEach((t) => (t.enabled = muted));
     setMuted((m) => !m);
   }
 
@@ -589,9 +707,12 @@ export default function CallPage() {
     return <div className="p-6">Loading call…</div>;
   }
 
-  const title = data?.tutor?.name ? `Call with ${data.tutor.name}` : "Call";
+  // Determine if current user is tutor or student to show other participant's name
+  const isTutor = data?.tutor?.id === me.userId;
+  const otherPersonName = isTutor ? (data as any)?.student?.name : data?.tutor?.name;
+  const title = otherPersonName ? `Call with ${otherPersonName}` : "Call";
   const waiting = joinState.status === "waiting";
-  const sessionEnded = joinState.status === "after";
+  const sessionEnded = joinState.status === "after" || !!blockedMessage;
   const controlsDisabled = waiting || sessionEnded;
   const countdownLabel = formatCountdown(countdownMs);
   const startLabel = data?.startTime ? new Date(data.startTime).toLocaleString() : "—";
@@ -621,8 +742,16 @@ export default function CallPage() {
     "weak-network": "Network is unstable. We’re keeping audio/board active.",
     reconnecting: "Restoring the call. Stay on this page.",
   };
-  const statusLabelDisplay = sessionEnded ? "Class ended" : statusLabel[connectionState];
-  const statusCopyDisplay = sessionEnded ? "This class has ended. Whiteboard stays available." : statusCopy[connectionState];
+  const statusLabelDisplay = blockedMessage
+    ? "Call blocked"
+    : sessionEnded
+      ? "Class ended"
+      : statusLabel[connectionState];
+  const statusCopyDisplay = blockedMessage
+    ? blockedMessage
+    : sessionEnded
+      ? "This class has ended. Whiteboard stays available."
+      : statusCopy[connectionState];
 
   const hasLocalAudio = !!localStreamRef.current?.getAudioTracks().length;
   const hasLocalVideo = !!localStreamRef.current?.getVideoTracks().length && !camOff;
@@ -631,7 +760,6 @@ export default function CallPage() {
   const showVideoStrip = hasLocalVideo || hasRemoteVideo || mediaMode !== "whiteboard";
   const remoteParticipant = participants.find((p) => p.userId !== me.userId);
   const remoteName = remoteParticipant ? remoteParticipant.role || "Participant" : "Participant";
-  const isTutor = data?.tutor?.id === me.userId;
   const mobileDrawerLabel = activeTab === "chat" ? "Chat" : activeTab === "participants" ? "Participants" : "Board tools";
 
   const exitClass = () => {
@@ -731,6 +859,7 @@ export default function CallPage() {
         muted={muted}
         sharingScreen={sharingScreen}
         controlsDisabled={controlsDisabled}
+        canShareScreen={isTutor}
         onToggleMic={toggleMute}
         onToggleCam={toggleCam}
         onShareScreen={() => {
@@ -1022,6 +1151,7 @@ interface ControlBarProps {
   muted: boolean;
   sharingScreen: boolean;
   controlsDisabled: boolean;
+  canShareScreen: boolean; // Only tutors can share screen
   onToggleMic: () => void;
   onToggleCam: () => void;
   onShareScreen: () => void;
@@ -1029,7 +1159,7 @@ interface ControlBarProps {
   onOpenPanel: () => void;
 }
 
-function ControlBar({ canUseVideo, canUseAudio, camOff, muted, sharingScreen, controlsDisabled, onToggleMic, onToggleCam, onShareScreen, onReconnect, onOpenPanel }: ControlBarProps) {
+function ControlBar({ canUseVideo, canUseAudio, camOff, muted, sharingScreen, controlsDisabled, canShareScreen, onToggleMic, onToggleCam, onShareScreen, onReconnect, onOpenPanel }: ControlBarProps) {
   const disabledReason = controlsDisabled ? "Controls available when class is live." : undefined;
 
   return (
@@ -1056,15 +1186,17 @@ function ControlBar({ canUseVideo, canUseAudio, camOff, muted, sharingScreen, co
         >
           {camOff ? <VideoOff size={18} /> : <Video size={18} />}
         </button>
-        <button
-          className={`h-11 w-11 rounded-full border shadow-sm flex items-center justify-center transition ${sharingScreen ? "bg-slate-900 text-white" : "bg-white text-slate-700"} ${controlsDisabled ? "opacity-60 cursor-not-allowed" : "hover:bg-slate-100"}`}
-          onClick={onShareScreen}
-          disabled={controlsDisabled}
-          title={disabledReason || "Share your screen"}
-          aria-label={sharingScreen ? "Stop sharing screen" : "Share screen"}
-        >
-          <MonitorUp size={18} />
-        </button>
+        {canShareScreen && (
+          <button
+            className={`h-11 w-11 rounded-full border shadow-sm flex items-center justify-center transition ${sharingScreen ? "bg-slate-900 text-white" : "bg-white text-slate-700"} ${controlsDisabled ? "opacity-60 cursor-not-allowed" : "hover:bg-slate-100"}`}
+            onClick={onShareScreen}
+            disabled={controlsDisabled}
+            title={disabledReason || "Share your screen"}
+            aria-label={sharingScreen ? "Stop sharing screen" : "Share screen"}
+          >
+            <MonitorUp size={18} />
+          </button>
+        )}
         <button
           className={`h-11 w-11 rounded-full border shadow-sm flex items-center justify-center transition bg-white text-slate-700 ${controlsDisabled ? "opacity-60 cursor-not-allowed" : "hover:bg-slate-100"}`}
           onClick={onReconnect}
