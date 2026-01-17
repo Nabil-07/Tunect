@@ -40,6 +40,7 @@ export class WebrtcService {
         endTime: true,
         status: true,
         isGroupSession: true,
+        isDemo: true,
       },
     });
 
@@ -51,8 +52,11 @@ export class WebrtcService {
       throw new ForbiddenException('Group sessions are not supported for 1-on-1 WebRTC');
     }
 
-    if (booking.status !== BookingStatus.CONFIRMED) {
-      throw new ForbiddenException('Booking is not confirmed');
+    const isAllowedStatus =
+      booking.status === BookingStatus.CONFIRMED ||
+      booking.isDemo;
+    if (!isAllowedStatus) {
+      throw new ForbiddenException('Booking is not active');
     }
 
     if (!booking.startTime || !booking.endTime) {
@@ -66,8 +70,9 @@ export class WebrtcService {
       throw new ForbiddenException('Call window not active');
     }
 
-    const isTutor = role === 'TUTOR' && booking.tutorId === userId;
-    const isStudent = role === 'STUDENT' && booking.studentId === userId;
+    // Allow either tutor OR student by userId regardless of role claim
+    const isTutor = booking.tutorId === userId;
+    const isStudent = booking.studentId === userId;
     if (!isTutor && !isStudent) {
       throw new ForbiddenException('You are not part of this booking');
     }

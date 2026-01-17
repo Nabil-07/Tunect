@@ -47,7 +47,27 @@ type ParticipantInfo = {
 @WebSocketGateway({
   namespace: '/webrtc',
   cors: {
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'https://tunectnow.com', 'https://test-tunectnow.com'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps)
+      if (!origin) return callback(null, true);
+      
+      // Allow localhost
+      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        return callback(null, true);
+      }
+      
+      // Allow production domains
+      if (origin === 'https://tunectnow.com' || origin === 'https://test-tunectnow.com') {
+        return callback(null, true);
+      }
+      
+      // Allow any preprod subdomain
+      if (origin.includes('.preprod.tunectnow.com')) {
+        return callback(null, true);
+      }
+      
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   },
 })
@@ -152,12 +172,21 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
+      this.logger.log(`join attempt booking=${bookingId} user=${user.id} role=${user.role}`);
       await this.webrtc.validateParticipant(bookingId, user.id, user.role);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Not allowed';
       this.logger.warn(`join denied booking=${bookingId} user=${user.id} reason=${message}`);
-      client.emit('error', message);
-      return;
+      const reason =
+        message.includes('not part') ? 'NOT_PART_OF_BOOKING'
+        : message.includes('not found') ? 'BOOKING_NOT_FOUND'
+        : message.includes('not active') ? 'BOOKING_NOT_ACTIVE'
+        : message.includes('not confirmed') ? 'BOOKING_NOT_ACTIVE'
+        : message.includes('Call window') ? 'CALL_WINDOW_NOT_ACTIVE'
+        : message.includes('Group sessions') ? 'GROUP_SESSION_NOT_SUPPORTED'
+        : 'JOIN_DENIED';
+      client.emit('gateway-error', { code: 'JOIN_DENIED', reason });
+      return { ok: false, reason };
     }
 
     // ensure single socket per user per booking
@@ -186,6 +215,8 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.to(bookingId).emit('call-ready', { bookingId, initiatorId });
       this.startTimeout(bookingId);
     }
+
+    return { ok: true };
   }
 
   @SubscribeMessage('mediasoup/get-rtp-capabilities')

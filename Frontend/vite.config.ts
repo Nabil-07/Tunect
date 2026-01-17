@@ -26,6 +26,13 @@ export default defineConfig(({ mode }) => {
           ws: true,
           secure: false,
         },
+        // Socket.IO uses /socket.io by default even for namespaces like /webrtc
+        '/socket.io': {
+          target: proxyTarget,
+          changeOrigin: true,
+          ws: true,
+          secure: false,
+        },
       },
     },
   };
