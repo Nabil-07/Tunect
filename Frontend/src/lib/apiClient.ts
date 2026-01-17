@@ -178,7 +178,9 @@ export function isTokenExpiringSoon(token?: string | null, thresholdSec = EXPIRY
    Axios instance
 -------------------------------------------------------------------*/
 const rawBase = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
-export const baseURL = rawBase.replace(/\/+$/, "");
+const normalizedBase = rawBase.replace(/\/+$/, "");
+const useDevProxy = import.meta.env.DEV;
+export const baseURL = useDevProxy ? "/api" : normalizedBase;
 
 const api: AxiosInstance = axios.create({
   baseURL,
