@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { getAvailability, saveAvailabilityForMonth } from '../../services/tutorService';
+import { getAvailability, saveAvailabilityForMonth, createSlot, updateSlot, deleteSlot } from '../../services/tutorService';
 import type { AvailabilitySlot } from '../../services/tutorService';
 import api from '../../lib/apiClient';
 
@@ -235,7 +235,7 @@ export default function TutorAvailability() {
     setEditorOpen(true);
   }
 
-  function saveDraft() {
+  async function saveDraft() {
     if (!activeDay) return;
 
     // prevent creating times in the past for today
@@ -247,61 +247,121 @@ export default function TutorAvailability() {
       }
     }
 
-    setSlots((prev) => {
-      const list = [...(prev[activeDay] || [])];
+    try {
+      setLoading(true);
       
-      // Check for duplicate when adding a new slot
+      // Convert HH:MM to ISO timestamp
+      const [sh, sm] = draftStart.split(':').map(Number);
+      const [eh, em] = draftEnd.split(':').map(Number);
+      const startDate = new Date(`${activeDay}T00:00:00`);
+      startDate.setHours(sh || 0, sm || 0, 0, 0);
+      const endDate = new Date(`${activeDay}T00:00:00`);
+      endDate.setHours(eh || 0, em || 0, 0, 0);
+      
+      const startIso = startDate.toISOString();
+      const endIso = endDate.toISOString();
+
       if (editingIndex === null) {
-        const duplicate = list.some(
-          (existing) => existing.start === draftStart && existing.end === draftEnd
-        );
-        if (duplicate) {
-          setToast({ message: `This time slot (${draftStart}-${draftEnd}) already exists for this day.`, type: 'warning' });
-          return prev;
-        }
-        list.push({ start: draftStart, end: draftEnd, title: draftTitle?.trim() || undefined, booked: false });
+        // Create new slot
+        const newSlot = await createSlot(startIso, endIso);
+        setSlots((prev) => {
+          const list = [...(prev[activeDay] || [])];
+          list.push({
+            id: newSlot.id,
+            start: newSlot.startTime,
+            end: newSlot.endTime,
+            title: draftTitle?.trim() || undefined,
+            booked: false,
+          });
+          list.sort((a, b) => compareHHMM(a.start, b.start));
+          return { ...prev, [activeDay]: list };
+        });
+        setToast({ message: 'Slot created successfully!', type: 'success' });
       } else {
-        if (list[editingIndex]?.booked) return prev; // do not edit a booked one
-        
-        // Check for duplicate when editing (exclude current slot)
-        const duplicate = list.some(
-          (existing, idx) => 
-            idx !== editingIndex && 
-            existing.start === draftStart && 
-            existing.end === draftEnd
-        );
-        if (duplicate) {
-          setToast({ message: `This time slot (${draftStart}-${draftEnd}) already exists for this day.`, type: 'warning' });
-          return prev;
+        // Update existing slot
+        const existingSlot = slots[activeDay]?.[editingIndex];
+        if (existingSlot?.booked) {
+          setToast({ message: 'Cannot edit a booked slot.', type: 'error' });
+          return;
+        }
+        if (!existingSlot?.id) {
+          setToast({ message: 'Cannot update slot: missing ID.', type: 'error' });
+          return;
         }
         
-        list[editingIndex] = {
-          ...list[editingIndex],
-          start: draftStart,
-          end: draftEnd,
-          title: draftTitle?.trim() || undefined,
-        };
+        const updatedSlot = await updateSlot(existingSlot.id, startIso, endIso);
+        setSlots((prev) => {
+          const list = [...(prev[activeDay] || [])];
+          list[editingIndex] = {
+            ...list[editingIndex],
+            id: updatedSlot.id,
+            start: updatedSlot.startTime,
+            end: updatedSlot.endTime,
+            title: draftTitle?.trim() || undefined,
+          };
+          list.sort((a, b) => compareHHMM(a.start, b.start));
+          return { ...prev, [activeDay]: list };
+        });
+        setToast({ message: 'Slot updated successfully!', type: 'success' });
       }
-      list.sort((a, b) => compareHHMM(a.start, b.start));
-      return { ...prev, [activeDay]: list };
-    });
-    setDirty(true);
-    setEditorOpen(false);
-    setActiveDay(null);
-    setEditingIndex(null);
+    } catch (error: any) {
+      console.error('Failed to save slot:', error);
+      setToast({ 
+        message: error?.response?.data?.message || error?.message || 'Failed to save slot. Please try again.', 
+        type: 'error' 
+      });
+    } finally {
+      setLoading(false);
+      setEditorOpen(false);
+      setActiveDay(null);
+      setEditingIndex(null);
+    }
   }
 
-  function removeSlot(day: DayKey, idx: number) {
-    setSlots((prev) => {
-      const list = [...(prev[day] || [])];
-      if (list[idx]?.booked) return prev; // cannot delete booked
-      list.splice(idx, 1);
-      const next = { ...prev };
-      if (list.length) next[day] = list;
-      else delete next[day];
-      return next;
-    });
-    setDirty(true);
+  async function removeSlot(day: DayKey, idx: number) {
+    const slot = slots[day]?.[idx];
+    if (!slot) return;
+    
+    if (slot.booked) {
+      setToast({ message: 'Cannot delete a booked slot.', type: 'error' });
+      return;
+    }
+
+    // If slot has an ID, delete it via API
+    if (slot.id) {
+      try {
+        setLoading(true);
+        await deleteSlot(slot.id);
+        setSlots((prev) => {
+          const list = [...(prev[day] || [])];
+          list.splice(idx, 1);
+          const next = { ...prev };
+          if (list.length) next[day] = list;
+          else delete next[day];
+          return next;
+        });
+        setToast({ message: 'Slot deleted successfully!', type: 'success' });
+      } catch (error: any) {
+        console.error('Failed to delete slot:', error);
+        setToast({ 
+          message: error?.response?.data?.message || error?.message || 'Failed to delete slot. Please try again.', 
+          type: 'error' 
+        });
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // If no ID (shouldn't happen, but handle gracefully), remove from local state
+      setSlots((prev) => {
+        const list = [...(prev[day] || [])];
+        list.splice(idx, 1);
+        const next = { ...prev };
+        if (list.length) next[day] = list;
+        else delete next[day];
+        return next;
+      });
+      setDirty(true);
+    }
   }
 
   async function persist() {
