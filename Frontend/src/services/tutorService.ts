@@ -329,6 +329,65 @@ export async function getAvailability(range?: {
   return normalizeAnyToAvailability(data);
 }
 
+/**
+ * Create a single availability slot
+ */
+export async function createSlot(startTime: string, endTime: string): Promise<AvailabilitySlot> {
+  const { data } = await api.post<{ id: string; tutorId: string; startTime: string; endTime: string; createdAt: string }>(
+    '/availability/me',
+    { startTime, endTime }
+  );
+  
+  // Convert ISO timestamps to date/startTime/endTime format
+  const start = new Date(data.startTime);
+  const end = new Date(data.endTime);
+  const date = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+  const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  
+  return {
+    id: data.id,
+    date,
+    day: date,
+    startTime: hhmm(start),
+    endTime: hhmm(end),
+  };
+}
+
+/**
+ * Update a single availability slot by ID
+ */
+export async function updateSlot(slotId: string, startTime?: string, endTime?: string): Promise<AvailabilitySlot> {
+  const body: any = {};
+  if (startTime) body.startTime = startTime;
+  if (endTime) body.endTime = endTime;
+  
+  const { data } = await api.patch<{ id: string; tutorId: string; startTime: string; endTime: string; createdAt: string }>(
+    `/availability/me/${slotId}`,
+    body
+  );
+  
+  // Convert ISO timestamps to date/startTime/endTime format
+  const start = new Date(data.startTime);
+  const end = new Date(data.endTime);
+  const date = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+  const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  
+  return {
+    id: data.id,
+    date,
+    day: date,
+    startTime: hhmm(start),
+    endTime: hhmm(end),
+  };
+}
+
+/**
+ * Delete a single availability slot by ID
+ */
+export async function deleteSlot(slotId: string): Promise<void> {
+  await api.delete(`/availability/me/${slotId}`);
+}
+
 export async function updateAvailability(slots: AvailabilitySlot[]): Promise<void> {
   const body = { ...toBackendSlots(slots), tzOffsetMinutes: new Date().getTimezoneOffset() };
 
