@@ -10,6 +10,7 @@ export type TutorPublic = {
   email?: string | null;
   subject?: string | null;
   subjects?: string[] | null;
+  classesTeach?: string[] | null;
   languages?: string[] | null;
   rating?: number | null;
   reviews?: number | null;
@@ -25,6 +26,7 @@ function toNum(v: any, d = 0) {
 
 function normalizeTutor(row: any): TutorPublic {
   const subjectsArr: string[] = Array.isArray(row?.subjects) ? row.subjects : [];
+  const classesTeachArr: string[] = Array.isArray(row?.classesTeach) ? row.classesTeach : [];
   const languagesArr: string[] = Array.isArray(row?.languages) ? row.languages : [];
   const subject = row?.subject ?? (subjectsArr.length ? subjectsArr.join(', ') : null);
 
@@ -48,6 +50,7 @@ function normalizeTutor(row: any): TutorPublic {
     email: row?.email ?? row?.user?.email ?? null,
     subject,
     subjects: subjectsArr.length ? subjectsArr : null,
+    classesTeach: classesTeachArr.length ? classesTeachArr : null,
     languages: languagesArr.length ? languagesArr : null,
     hourlyRate: Number.isFinite(hourlyRate) ? hourlyRate : null,
     rating: Number.isFinite(rating) ? rating : null,
@@ -69,6 +72,7 @@ export class TutorsService {
       where: { status: TutorStatus.APPROVED },
       select: {
         subjects: true,
+        classesTeach: true,
         languages: true,
         reviews: {
           select: { rating: true },
@@ -90,11 +94,19 @@ export class TutorsService {
 
     // Extract unique languages
     const languagesSet = new Set<string>();
+    const classesSet = new Set<string>();
     tutors.forEach((tutor) => {
       if (Array.isArray(tutor.languages)) {
         tutor.languages.forEach((language) => {
           if (language && language.trim()) {
             languagesSet.add(language.trim());
+          }
+        });
+      }
+      if (Array.isArray(tutor.classesTeach)) {
+        tutor.classesTeach.forEach((cls) => {
+          if (cls && cls.trim()) {
+            classesSet.add(cls.trim());
           }
         });
       }
@@ -120,6 +132,7 @@ export class TutorsService {
 
     return {
       subjects: Array.from(subjectsSet).sort(),
+      classesTeach: Array.from(classesSet).sort(),
       languages: Array.from(languagesSet).sort(),
       ratingOptions: ratingOptions.map((opt) => ({
         value: opt.value,
@@ -134,6 +147,7 @@ export class TutorsService {
     pageSize?: number;
     subject?: string;
     language?: string;
+    classTeach?: string;
     sortBy?: 'updatedAt' | 'rating' | 'hourlyRate';
     sortOrder?: 'asc' | 'desc';
   }) {
@@ -164,6 +178,17 @@ export class TutorsService {
           { languages: { has: lang } },
           { languages: { has: lang.toUpperCase() } },
           { languages: { has: lang.toLowerCase() } },
+        ],
+      });
+    }
+
+    if (params?.classTeach && params.classTeach.trim()) {
+      const cls = params.classTeach.trim();
+      andConditions.push({
+        OR: [
+          { classesTeach: { has: cls } },
+          { classesTeach: { has: cls.toUpperCase() } },
+          { classesTeach: { has: cls.toLowerCase() } },
         ],
       });
     }
@@ -200,6 +225,7 @@ export class TutorsService {
     q?: string;
     subject?: string;
     language?: string;
+    classTeach?: string;
     minRating?: number;
     priceMin?: number;
     priceMax?: number;
@@ -239,6 +265,15 @@ export class TutorsService {
         { languages: { has: lang } },
         { languages: { has: lang.toUpperCase() } },
         { languages: { has: lang.toLowerCase() } },
+      );
+    }
+
+    if (params?.classTeach && params.classTeach.trim()) {
+      const cls = params.classTeach.trim();
+      OR.push(
+        { classesTeach: { has: cls } },
+        { classesTeach: { has: cls.toUpperCase() } },
+        { classesTeach: { has: cls.toLowerCase() } },
       );
     }
 

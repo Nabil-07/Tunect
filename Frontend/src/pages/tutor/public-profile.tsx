@@ -295,7 +295,7 @@ export default function TutorPublicProfile() {
               </p>
               <BuyTokensButton
                 tutorId={id!}
-                defaultTokens={10}
+                defaultTokens={5}
                 onSuccess={() => setToast('Payment successful! Tokens credited.')}
               />
             </div>

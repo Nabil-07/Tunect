@@ -9,6 +9,7 @@ export type Tutor = {
   subject?: string;
   subjectPrimary?: string;
   subjects?: string[];
+  classesTeach?: string[];
   languages?: string[];
   rating?: number | null;
   reviews?: number;
@@ -61,6 +62,7 @@ const toNum = (v: any, d = 0) => {
 
 function normalizeTutor(raw: any): Tutor {
   const subjectsArr: string[] = Array.isArray(raw?.subjects) ? raw.subjects : [];
+  const classesTeachArr: string[] = Array.isArray(raw?.classesTeach) ? raw.classesTeach : [];
   const languagesArr: string[] = Array.isArray(raw?.languages) ? raw.languages : [];
   const subject = raw?.subject ?? (subjectsArr.length ? subjectsArr.join(', ') : undefined);
 
@@ -86,6 +88,7 @@ function normalizeTutor(raw: any): Tutor {
     subject,
     subjectPrimary: raw?.subjectPrimary ?? subject,
     subjects: subjectsArr,
+    classesTeach: classesTeachArr,
     languages: languagesArr,
     hourlyRate,
     pricePerHour,
@@ -121,6 +124,7 @@ export async function listTutors(params?: {
   page?: number;
   pageSize?: number;
   subject?: string;
+  classTeach?: string;
   language?: string;
 }) {
   const clean: any = {};
@@ -129,6 +133,8 @@ export async function listTutors(params?: {
     clean.pageSize = Number(params.pageSize);
   if (params?.subject && params.subject.trim())
     clean.subject = params.subject.trim();
+  if (params?.classTeach && params.classTeach.trim())
+    clean.class = params.classTeach.trim();
   if (params?.language && params.language.trim())
     clean.language = params.language.trim();
 
@@ -141,6 +147,7 @@ export async function listTutors(params?: {
 export async function searchTutors(params: {
   q?: string;
   subject?: string;
+  classTeach?: string;
   language?: string;
   minRating?: number;
   priceMin?: number;
@@ -153,6 +160,7 @@ export async function searchTutors(params: {
   const qp: Record<string, any> = {};
   if (params.q && params.q.trim()) qp.q = params.q.trim();
   if (params.subject && params.subject.trim()) qp.subject = params.subject.trim();
+  if (params.classTeach && params.classTeach.trim()) qp.class = params.classTeach.trim();
   if (params.language && params.language.trim()) qp.language = params.language.trim();
   if (Number.isFinite(params.priceMin as any)) qp.minRate = Number(params.priceMin);
   if (Number.isFinite(params.priceMax as any)) qp.maxRate = Number(params.priceMax);
@@ -189,6 +197,7 @@ export async function getRecommendedTutors(limit = 6) {
 
 export async function getFilterOptions(): Promise<{
   subjects: string[];
+  classesTeach: string[];
   languages: string[];
   ratingOptions: Array<{ value: number; label: string }>;
 }> {
@@ -196,6 +205,7 @@ export async function getFilterOptions(): Promise<{
     const { data } = await api.get('/tutors/filters/options');
     return {
       subjects: data.subjects || [],
+      classesTeach: data.classesTeach || [],
       languages: data.languages || [],
       ratingOptions: data.ratingOptions || [
         { value: 0, label: 'Any rating' },
@@ -209,6 +219,7 @@ export async function getFilterOptions(): Promise<{
     // Return defaults on error
     return {
       subjects: [],
+      classesTeach: [],
       languages: [],
       ratingOptions: [
         { value: 0, label: 'Any rating' },

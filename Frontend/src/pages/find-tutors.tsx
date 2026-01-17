@@ -28,6 +28,7 @@ export default function FindTutors() {
   const pageSize = Number(sp.get('pageSize') || 12);
   const qRaw = sp.get('q') || '';
   const subject = sp.get('subject') || '';
+  const classTeach = sp.get('class') || '';
   const language = sp.get('language') || '';
   const sort = (sp.get('sort') || 'rating_desc') as 'rating_desc' | 'price_asc' | 'price_desc';
   const minRating = Number(sp.get('minRating') || 0);
@@ -57,6 +58,7 @@ export default function FindTutors() {
   
   // Dynamic filter options
   const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
+  const [availableClassesTeach, setAvailableClassesTeach] = useState<string[]>([]);
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const [availableRatingOptions, setAvailableRatingOptions] = useState<Array<{ value: number; label: string }>>([
     { value: 0, label: 'Any rating' },
@@ -69,6 +71,7 @@ export default function FindTutors() {
   useEffect(() => {
     getFilterOptions().then((options) => {
       setAvailableSubjects(options.subjects);
+      setAvailableClassesTeach(options.classesTeach);
       setAvailableLanguages(options.languages);
       setAvailableRatingOptions(options.ratingOptions);
     });
@@ -77,6 +80,7 @@ export default function FindTutors() {
   const hasFilters =
     q.length > 0 ||
     !!subject ||
+    !!classTeach ||
     !!language ||
     !!minRating ||
     priceMin !== undefined ||
@@ -93,8 +97,8 @@ export default function FindTutors() {
 
         // 1) fetch tutors
         const res = hasFilters
-          ? await searchTutors({ q, subject, language, minRating, priceMin, priceMax, page, pageSize })
-          : await listTutors({ page, pageSize, subject: subject || undefined, language: language || undefined });
+          ? await searchTutors({ q, subject, classTeach, language, minRating, priceMin, priceMax, page, pageSize })
+          : await listTutors({ page, pageSize, subject: subject || undefined, classTeach: classTeach || undefined, language: language || undefined });
 
         if (!mounted) return;
 
@@ -130,7 +134,7 @@ export default function FindTutors() {
       mounted = false;
     };
     // include qRaw so the debounce updates
-  }, [q, qRaw, subject, language, minRating, priceMin, priceMax, sort, page, pageSize, hasFilters]);
+  }, [q, qRaw, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize, hasFilters]);
 
   const setParam = (k: string, v?: string) => {
     const nxt = new URLSearchParams(sp);
@@ -147,7 +151,7 @@ export default function FindTutors() {
       <h1 className="text-2xl font-bold">Find Tutors</h1>
 
       {/* Filters */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_200px_200px_160px_160px]">
+      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_200px_200px_200px_160px_160px]">
         <input
           value={qRaw}
           onChange={(e) => setParam('q', e.target.value)}
@@ -164,6 +168,19 @@ export default function FindTutors() {
           {availableSubjects.map((s) => (
             <option key={s} value={s}>
               {s}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={classTeach}
+          onChange={(e) => setParam('class', e.target.value)}
+          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">All classes</option>
+          {availableClassesTeach.map((cls) => (
+            <option key={cls} value={cls}>
+              {cls}
             </option>
           ))}
         </select>

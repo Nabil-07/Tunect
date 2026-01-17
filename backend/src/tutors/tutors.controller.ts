@@ -28,6 +28,7 @@ export class TutorsController {
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'pageSize', required: false, example: 8 })
   @ApiQuery({ name: 'subject', required: false, example: 'Math' })
+  @ApiQuery({ name: 'class', required: false, example: 'Grade 10' })
   @ApiQuery({ name: 'language', required: false, example: 'English' })
   @ApiQuery({ name: 'sortBy', required: false, example: 'hourlyRate' })
   @ApiQuery({ name: 'sortOrder', required: false, example: 'desc' })
@@ -36,6 +37,7 @@ export class TutorsController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('subject') subject?: string,
+    @Query('class') classTeach?: string,
     @Query('language') language?: string,
     @Query('sortBy') sortBy?: 'updatedAt' | 'rating' | 'hourlyRate',
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
@@ -44,6 +46,7 @@ export class TutorsController {
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
       subject: subject || undefined,
+      classTeach: classTeach || undefined,
       language: language || undefined,
       sortBy,
       sortOrder,
@@ -55,6 +58,7 @@ export class TutorsController {
   search(
     @Query('q') q?: string,
     @Query('subject') subject?: string,
+    @Query('class') classTeach?: string,
     @Query('language') language?: string,
     @Query('minRating') minRating?: string,
     @Query('priceMin') priceMin?: string,
@@ -66,6 +70,7 @@ export class TutorsController {
     return this.svc.search({
       q: q || undefined,
       subject: subject || undefined,
+      classTeach: classTeach || undefined,
       language: language || undefined,
       minRating: minRating ? Number(minRating) : undefined,
       priceMin: priceMin ? Number(priceMin) : undefined,
