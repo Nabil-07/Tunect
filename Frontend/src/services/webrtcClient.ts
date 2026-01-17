@@ -77,20 +77,13 @@ export function onWebrtcSocketStateChange(cb: (state: WebrtcSocketState) => void
 }
 
 function wsBase(): string {
-  // In dev mode, use the dedicated /webrtc proxy (not /api/webrtc)
-  // The Vite proxy handles WebSocket upgrades for /webrtc
-  const useDevProxy = import.meta.env.DEV;
-  if (useDevProxy) {
-    return '/webrtc';
-  }
-  
-  // In production, MUST use explicit backend URL from env var
-  // baseURL might be '/api' or wrong, so get the actual backend URL
-  const rawBackendUrl = import.meta.env.VITE_API_URL ?? 'https://api-preprod.tunectnow.com';
+  // Always use explicit backend URL from env var
+  // Socket.IO will append /socket.io and add namespace as query param
+  const rawBackendUrl = import.meta.env.VITE_API_URL ?? 
+    (import.meta.env.DEV ? 'http://localhost:3000' : 'https://api-preprod.tunectnow.com');
   const backendUrl = rawBackendUrl.replace(/\/+$/, ''); // Remove trailing slashes
   
-  // Convert https:// to wss:// for secure WebSocket
-  // Socket.IO will handle the protocol automatically, but ensure we have the full URL
+  // Socket.IO will construct: {backendUrl}/socket.io/?EIO=4&transport=websocket&ns=/webrtc
   return backendUrl;
 }
 
@@ -153,25 +146,29 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
   const authToken = token ?? readToken();
   if (!authToken) throw new Error("Missing auth token for WebRTC signaling");
 
-  const wsUrl = wsBase();
+  const backendUrl = wsBase();
   
   // Socket.IO namespace handling:
-  // - In dev: wsUrl = '/webrtc' (relative path, Vite proxy handles it)
-  // - In prod: wsUrl = 'https://api-preprod.tunectnow.com' (full backend URL)
-  // Socket.IO requires namespace to be appended to the URL
-  // The namespace '/webrtc' is defined in the backend gateway
-  const fullUrl = import.meta.env.DEV ? wsUrl : `${wsUrl}/webrtc`;
+  // Connect to base server, then use .of('/webrtc') to join namespace
+  // Socket.IO constructs: {backendUrl}/socket.io/?EIO=4&transport=websocket
+  // Then joins namespace /webrtc via .of('/webrtc')
+  // In dev mode, backendUrl is http://localhost:3000 (direct connection)
+  // In prod, backendUrl is https://api-preprod.tunectnow.com
   
   // Log connection attempt for debugging
   const tokenPreview = authToken ? `${authToken.substring(0, 20)}...` : 'MISSING';
   if (import.meta.env.DEV) {
-    console.log(`[webrtc] Connecting to WebSocket: ${fullUrl} (dev mode via Vite proxy)`, { tokenPreview });
+    console.log(`[webrtc] Connecting to WebSocket: ${backendUrl} namespace=/webrtc (dev mode)`, { tokenPreview });
   } else {
-    console.log(`[webrtc] Connecting to WebSocket: ${fullUrl} (production)`, { tokenPreview });
+    console.log(`[webrtc] Connecting to WebSocket: ${backendUrl} namespace=/webrtc (production)`, { tokenPreview });
   }
   
   setSocketState("connecting");
-  socket = io(fullUrl, {
+  
+  // Connect directly to /webrtc namespace
+  // Socket.IO will construct: {backendUrl}/socket.io/?EIO=4&transport=websocket
+  // And join namespace /webrtc automatically when URL includes the namespace path
+  socket = io(`${backendUrl}/webrtc`, {
     auth: { token: authToken },
     transports: ["websocket"], // WebSocket only, no polling
     withCredentials: false, // JWT auth only, no cookies
@@ -189,7 +186,7 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
 
   socket.on("connect_error", (err) => {
     // Lightweight diagnostic to surface handshake failures
-    console.warn("[webrtc] socket connect_error", err?.message || err, { url: fullUrl });
+    console.warn("[webrtc] socket connect_error", err?.message || err, { url: backendUrl, namespace: '/webrtc' });
     // Don't overwrite if already failed
     if (socketState !== "failed") {
       setSocketState("failed");
