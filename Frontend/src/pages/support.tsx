@@ -60,6 +60,8 @@ export default function SupportPage() {
   const [subject, setSubject] = useState('');
   const [newTicketMessage, setNewTicketMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [firstContactTicketId, setFirstContactTicketId] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(0);
 
   const showSupport = !!user;
 
@@ -91,6 +93,26 @@ export default function SupportPage() {
     loadAdminQueues();
   }, [showSupport, isAdmin]);
 
+  useEffect(() => {
+    const interval = setInterval(() => setNowTick((v) => v + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!showSupport) return;
+    const interval = setInterval(() => {
+      if (tab === 'support') {
+        loadUserTickets();
+        if (selectedTicket?.id) loadTicketMessages(selectedTicket.id);
+      }
+      if (tab === 'admin' && isAdmin) {
+        loadAdminQueues();
+        if (selectedTicket?.id) loadTicketMessages(selectedTicket.id);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [showSupport, tab, selectedTicket?.id, isAdmin]);
+
   const handleBotSend = () => {
     if (!botInput.trim()) return;
     const userMsg: BotMessage = {
@@ -113,11 +135,13 @@ export default function SupportPage() {
     if (!newTicketMessage.trim()) return;
     setLoading(true);
     try {
+      const isFirst = tickets.length === 0;
       const ticket = await createSupportTicket({
         subject: subject.trim() || undefined,
         message: newTicketMessage.trim(),
       });
       setTickets((prev) => [ticket, ...prev]);
+      if (isFirst) setFirstContactTicketId(ticket.id);
       setSubject('');
       setNewTicketMessage('');
       await loadTicketMessages(ticket.id);
@@ -158,6 +182,32 @@ export default function SupportPage() {
     'How do refunds work?',
     'How to complete KYC?',
   ], []);
+
+  const supportWindow = useMemo(() => {
+    const now = new Date();
+    const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const istStart = new Date(istNow);
+    istStart.setHours(10, 0, 0, 0);
+    const istEnd = new Date(istNow);
+    istEnd.setHours(20, 0, 0, 0);
+    const isOpen = istNow >= istStart && istNow <= istEnd;
+    const localStart = new Date(istStart.getTime());
+    const localEnd = new Date(istEnd.getTime());
+    const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+    return {
+      isOpen,
+      localStartLabel: timeFmt.format(localStart),
+      localEndLabel: timeFmt.format(localEnd),
+    };
+  }, [nowTick]);
+
+  const isFirstContact = useMemo(() => {
+    if (!selectedTicket) return false;
+    if (tickets.length !== 1) return false;
+    if (firstContactTicketId === selectedTicket.id) return true;
+    if (messages.length === 1 && messages[0]?.senderId === user?.id) return true;
+    return false;
+  }, [selectedTicket, tickets.length, firstContactTicketId, messages, user?.id]);
 
   return (
     <main className="bg-slate-50/60 py-6">
@@ -298,7 +348,21 @@ export default function SupportPage() {
                         Mark resolved
                       </button>
                     </div>
+                    <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      Support chat hours: 10:00 AM – 8:00 PM IST
+                      <span className="ml-2 text-slate-500">(Your local time: {supportWindow.localStartLabel} – {supportWindow.localEndLabel})</span>
+                      {!supportWindow.isOpen && (
+                        <span className="ml-2 text-amber-600">We are currently offline.</span>
+                      )}
+                    </div>
                     <div className="h-[320px] overflow-y-auto space-y-3 pr-2">
+                      {isFirstContact && (
+                        <div className="flex justify-start">
+                          <div className="max-w-[80%] rounded-2xl px-3 py-2 text-sm bg-slate-100 text-slate-700">
+                            Thanks for contacting support team, soon our Support representative will join the chat.
+                          </div>
+                        </div>
+                      )}
                       {messages.map((m) => {
                         const isMe = m.senderId === user?.id;
                         return (
