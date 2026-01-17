@@ -112,10 +112,23 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.data.user = user;
       client.data.origin = client.handshake.headers.origin || client.handshake.headers.referer;
       this.logger.log(`socket connected booking?=? user=${user.id} role=${user.role} origin=${client.data.origin || '-'}`);
+      
+      // Log auth payload in dev mode
+      if (this.isDebug()) {
+        this.logger.debug(`[DEV] Socket authenticated with token for user ${user.id}`);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Socket auth failed: ${message} origin=${client.handshake.headers.origin || '-'}`);
-      client.disconnect();
+      
+      // Emit structured error BEFORE disconnecting so client can handle it
+      client.emit('gateway-error', {
+        code: 'AUTH_FAILED',
+        reason: 'Authentication failed. Please refresh and sign in again.',
+      });
+      
+      // Disconnect after a brief delay to ensure error is delivered
+      setTimeout(() => client.disconnect(), 100);
     }
   }
 

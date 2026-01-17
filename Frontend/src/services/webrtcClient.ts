@@ -121,11 +121,17 @@ function bindHandlers(handlers?: WebrtcHandlers) {
   if (onWhiteboardUpdate) socket.on("whiteboard-update", onWhiteboardUpdate);
   if (onChatMessage) socket.on("chat-message", onChatMessage);
   socket.on("gateway-error", (payload: { code: string; reason?: string }) => {
+    console.warn("[webrtc] gateway-error received:", payload);
     setSocketState("failed");
-    emitJoinFailed(payload?.reason || "JOIN_DENIED");
+    
+    // Differentiate auth failure from join denial
+    const failureCode = payload?.code || "UNKNOWN_ERROR";
+    const failureReason = payload?.reason || failureCode;
+    
+    emitJoinFailed(failureCode);
     handlers.onGatewayError?.(payload);
     if (handlers.onError) {
-      handlers.onError(payload?.reason || "JOIN_DENIED");
+      handlers.onError(failureReason);
     }
   });
   if (handlers.onMediasoupNewProducer) socket.on("mediasoup/new-producer", handlers.onMediasoupNewProducer);
@@ -172,7 +178,7 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     timeout: 20_000, // Increased timeout for production
-    withCredentials: false,
+    withCredentials: true, // Allow cookies if backend uses them in addition to JWT
     forceNew: true,
     path: "/socket.io",
     // Socket.IO automatically uses wss:// when URL is https://
@@ -181,6 +187,9 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
 
   socket.on("connect", () => {
     setSocketState("connected");
+    if (import.meta.env.DEV && authToken) {
+      console.log("[webrtc] Socket connected with auth token");
+    }
   });
 
   socket.on("connect_error", (err) => {
@@ -191,7 +200,25 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
 
   socket.on("disconnect", (reason) => {
     console.warn("[webrtc] socket disconnected", reason);
-    setSocketState("disconnected");
+    
+    // Check if disconnect was due to auth failure (before join-booking)
+    // Socket.IO disconnect reasons: https://socket.io/docs/v4/client-api/#event-disconnect
+    // Only treat as AUTH_FAILED if server disconnected us before we attempted to join
+    if (
+      reason === "io server disconnect" &&
+      socketState !== "joined" &&
+      !joinAttempted
+    ) {
+      // Server forcibly disconnected us before we joined
+      // This typically means auth failed
+      setSocketState("failed");
+      emitJoinFailed("AUTH_FAILED");
+      if (currentHandlers?.onError) {
+        currentHandlers.onError("AUTH_FAILED");
+      }
+    } else {
+      setSocketState("disconnected");
+    }
   });
 
   socket.on("reconnect_attempt", (attempt) => {
