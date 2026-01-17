@@ -8,7 +8,7 @@ type Props = {
   onSuccess?: (paymentId: string) => void;
 };
 
-export default function BuyTokensButton({ tutorId, defaultTokens = 10, onSuccess }: Props) {
+export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess }: Props) {
   const [tokens, setTokens] = useState<number>(defaultTokens);
   const [loading, setLoading] = useState(false);
 
@@ -68,10 +68,10 @@ export default function BuyTokensButton({ tutorId, defaultTokens = 10, onSuccess
     <div className="flex items-center gap-2">
       <input
         type="number"
-        min={10}
+        min={5}
         step={1}
         value={tokens}
-        onChange={(e) => setTokens(Math.max(10, Number(e.target.value) || 10))}
+        onChange={(e) => setTokens(Math.max(5, Number(e.target.value) || 5))}
         className="w-24 border rounded px-2 py-1"
       />
       <button

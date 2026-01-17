@@ -29,7 +29,7 @@ export default function Cart() {
   const { showError } = useToast();
 
   const [tutor, setTutor] = useState<Tutor | null>(null);
-  const [qty, setQty] = useState<number>(10); // tokens count
+  const [qty, setQty] = useState<number>(5); // tokens count
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
 
@@ -70,9 +70,9 @@ export default function Cart() {
   );
 
   const onQtyChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const n = parseInt(e.target.value || '10', 10);
+    const n = parseInt(e.target.value || '5', 10);
     if (Number.isNaN(n)) return;
-    setQty(Math.max(10, n));
+    setQty(Math.max(5, n));
   };
 
   const proceedToPayment = () => {
@@ -195,11 +195,11 @@ export default function Cart() {
 
           <div className="mt-6">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Tokens (min 10 for booking)
+              Tokens (min 5 for booking)
             </label>
             <input
               type="number"
-              min={10}
+              min={5}
               step={1}
               value={qty}
               onChange={onQtyChange}

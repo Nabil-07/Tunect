@@ -13,6 +13,7 @@ export type TutorCardProps = {
     id: string;
     name?: string;
     subjects?: string[];
+    classesTeach?: string[];
     languages?: string[];
     tags?: string[];
     rating?: number | null;
@@ -257,6 +258,22 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
                   className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700"
                 >
                   {s}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Classes/Grades */}
+        {(tutor.classesTeach ?? []).length > 0 && (
+          <div className="mt-2">
+            <div className="flex flex-wrap gap-2">
+              {(tutor.classesTeach ?? []).slice(0, 3).map((cls) => (
+                <span
+                  key={cls}
+                  className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700"
+                >
+                  {cls}
                 </span>
               ))}
             </div>
