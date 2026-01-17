@@ -257,30 +257,6 @@ async function tryGet<T>(path: string, params?: Record<string, any>) {
     return undefined;
   }
 }
-async function tryPut(path: string, body: any) {
-  try {
-    await api.put(path, body);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function tryPatch(path: string, body: any) {
-  try {
-    await api.patch(path, body);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function tryPost(path: string, body: any) {
-  try {
-    await api.post(path, body);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /** Normalize *any* backend slot shape to UI AvailabilitySlot[]. */
 function normalizeAnyToAvailability(arr: any[]): AvailabilitySlot[] {
