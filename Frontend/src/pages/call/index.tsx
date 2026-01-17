@@ -105,6 +105,7 @@ function deriveUiPhase(params: {
 
 function joinReasonMessage(reason?: string) {
   const reasonMap: Record<string, string> = {
+    AUTH_FAILED: "Session expired. Please refresh and sign in again.",
     NOT_PART_OF_BOOKING: "You are not part of this booking.",
     BOOKING_NOT_FOUND: "Booking not found.",
     BOOKING_NOT_ACTIVE: "This booking is not active yet.",
