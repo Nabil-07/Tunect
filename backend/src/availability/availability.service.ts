@@ -240,16 +240,19 @@ export class AvailabilityService {
     };
 
     const slotsInput: any[] = Array.isArray(body?.slots) ? body.slots : [];
-    if (slotsInput.length === 0) return { updated: 0 };
 
-    // If from/to provided: clear window first
+    // If from/to provided: clear window first (even if slots are empty)
+    let cleared = 0;
     if (body?.from || body?.to) {
       const from = body.from ? new Date(body.from) : new Date(0);
       const to = body.to ? new Date(body.to) : new Date(8640000000000000);
-      await this.prisma.availabilitySlot.deleteMany({
+      const res = await this.prisma.availabilitySlot.deleteMany({
         where: { tutorId: tutor.id, AND: [{ startTime: { lt: to } }, { endTime: { gt: from } }] },
       });
+      cleared = res?.count ?? 0;
     }
+
+    if (slotsInput.length === 0) return { updated: 0, cleared };
 
     // Upsert each slot: if id points to own slot, update; else create
     let updated = 0;
