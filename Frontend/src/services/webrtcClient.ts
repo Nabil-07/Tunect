@@ -163,10 +163,11 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
   const fullUrl = import.meta.env.DEV ? wsUrl : `${wsUrl}/webrtc`;
   
   // Log connection attempt for debugging
+  const tokenPreview = authToken ? `${authToken.substring(0, 20)}...` : 'MISSING';
   if (import.meta.env.DEV) {
-    console.log(`[webrtc] Connecting to WebSocket: ${fullUrl} (dev mode via Vite proxy)`);
+    console.log(`[webrtc] Connecting to WebSocket: ${fullUrl} (dev mode via Vite proxy)`, { tokenPreview });
   } else {
-    console.log(`[webrtc] Connecting to WebSocket: ${fullUrl} (production)`);
+    console.log(`[webrtc] Connecting to WebSocket: ${fullUrl} (production)`, { tokenPreview });
   }
   
   setSocketState("connecting");
@@ -189,30 +190,47 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
   socket.on("connect_error", (err) => {
     // Lightweight diagnostic to surface handshake failures
     console.warn("[webrtc] socket connect_error", err?.message || err, { url: fullUrl });
-    setSocketState("failed");
+    // Don't overwrite if already failed
+    if (socketState !== "failed") {
+      setSocketState("failed");
+    }
   });
 
   socket.on("disconnect", (reason) => {
     console.warn("[webrtc] socket disconnected", reason);
     
-    // Check if disconnect was due to auth failure (before join-booking)
-    // Socket.IO disconnect reasons: https://socket.io/docs/v4/client-api/#event-disconnect
-    // Only treat as AUTH_FAILED if server disconnected us before we attempted to join
-    if (
-      reason === "io server disconnect" &&
-      socketState !== "joined" &&
-      !joinAttempted
-    ) {
-      // Server forcibly disconnected us before we joined
-      // This typically means auth failed
+    // If we already joined, this is a normal disconnect (network drop, etc.)
+    if (socketState === "joined") {
+      setSocketState("disconnected");
+      return;
+    }
+    
+    // If we were already in failed state (from connect_error), don't change
+    if (socketState === "failed") {
+      return;
+    }
+    
+    // Server forcibly disconnected us before we joined - likely auth failure
+    if (reason === "io server disconnect" && !joinAttempted) {
       setSocketState("failed");
       emitJoinFailed("AUTH_FAILED");
       if (currentHandlers?.onError) {
         currentHandlers.onError("AUTH_FAILED");
       }
-    } else {
-      setSocketState("disconnected");
+      return;
     }
+    
+    // Any other disconnect before joining is a connection failure
+    if (!joinAttempted) {
+      setSocketState("failed");
+      emitJoinFailed("SOCKET_DISCONNECTED");
+      if (currentHandlers?.onError) {
+        currentHandlers.onError("SOCKET_DISCONNECTED");
+      }
+      return;
+    }
+    
+    setSocketState("disconnected");
   });
 
   socket.on("reconnect_attempt", (attempt) => {

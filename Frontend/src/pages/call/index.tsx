@@ -316,7 +316,9 @@ function CallSession({ bookingId, data, meUserId, meEmail, meName, onJoinBlocked
 
   useEffect(() => {
     if (blockedMessage) return;
-    if (socketState === "disconnected" && getWebrtcSocketState() !== "joined") {
+    const currentState = getWebrtcSocketState();
+    // Handle both failed and disconnected states before join succeeds
+    if ((socketState === "disconnected" || socketState === "failed") && currentState !== "joined") {
       handleJoinBlocked("SOCKET_DISCONNECTED");
     }
   }, [socketState, blockedMessage]);
