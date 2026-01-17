@@ -249,7 +249,9 @@ function monthRange(dateInMonth: Date) {
 
 async function tryGet<T>(path: string, params?: Record<string, any>) {
   try {
-    const { data } = await api.get<T>(path, params ? { params } : undefined);
+    // Add cache-busting timestamp to prevent stale 304 responses
+    const cacheParams = { ...params, _t: Date.now() };
+    const { data } = await api.get<T>(path, { params: cacheParams });
     return data;
   } catch {
     return undefined;
