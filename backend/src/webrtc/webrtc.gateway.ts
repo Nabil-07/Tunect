@@ -102,33 +102,44 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   async handleConnection(client: Socket) {
+    // ONLY read token from client.handshake.auth.token (NOT cookies)
+    const token = client.handshake.auth?.token as string;
+    
+    if (!token) {
+      this.logger.warn(`Socket auth failed: Missing auth token origin=${client.handshake.headers.origin || '-'}`);
+      client.emit('gateway-error', {
+        code: 'AUTH_FAILED',
+        reason: 'Invalid or expired token',
+      });
+      setTimeout(() => client.disconnect(), 150);
+      return;
+    }
+
     try {
-      const token = (client.handshake.auth?.token as string) || (client.handshake.headers.authorization as string)?.replace('Bearer ', '');
-      if (!token) throw new Error('Missing auth token');
       const decoded = await this.jwt.verifyAsync(token, {
         secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
       });
-      const user: AuthedUser = { id: decoded.sub, role: decoded.role } as AuthedUser;
-      client.data.user = user;
-      client.data.origin = client.handshake.headers.origin || client.handshake.headers.referer;
-      this.logger.log(`socket connected booking?=? user=${user.id} role=${user.role} origin=${client.data.origin || '-'}`);
       
-      // Log auth payload in dev mode
+      // Attach user data to socket
+      client.data.userId = decoded.sub;
+      client.data.role = decoded.role;
+      client.data.authenticated = true;
+      client.data.user = { id: decoded.sub, role: decoded.role } as AuthedUser;
+      client.data.origin = client.handshake.headers.origin || client.handshake.headers.referer;
+      
+      this.logger.log(`socket connected user=${decoded.sub} role=${decoded.role} origin=${client.data.origin || '-'}`);
+      
       if (this.isDebug()) {
-        this.logger.debug(`[DEV] Socket authenticated with token for user ${user.id}`);
+        this.logger.debug(`[WEBRTC_DEBUG] Auth success userId=${decoded.sub} role=${decoded.role}`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Socket auth failed: ${message} origin=${client.handshake.headers.origin || '-'}`);
-      
-      // Emit structured error BEFORE disconnecting so client can handle it
       client.emit('gateway-error', {
         code: 'AUTH_FAILED',
-        reason: 'Authentication failed. Please refresh and sign in again.',
+        reason: 'Invalid or expired token',
       });
-      
-      // Disconnect after a brief delay to ensure error is delivered
-      setTimeout(() => client.disconnect(), 100);
+      setTimeout(() => client.disconnect(), 150);
     }
   }
 
@@ -172,16 +183,26 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('join-booking')
   async handleJoin(@ConnectedSocket() client: Socket, @MessageBody() body: JoinPayload) {
+    // Check authentication first
+    if (!client.data.authenticated) {
+      this.logger.warn(`join-booking rejected: not authenticated`);
+      client.emit('gateway-error', { code: 'AUTH_FAILED', reason: 'Not authenticated' });
+      return { ok: false, reason: 'AUTH_FAILED' };
+    }
+
     const user: AuthedUser | undefined = client.data.user;
-    if (!user) {
-      client.emit('error', 'Not authenticated');
-      return;
+    const userId = client.data.userId as string;
+    const userRole = client.data.role as Role;
+    
+    if (!user || !userId) {
+      client.emit('gateway-error', { code: 'AUTH_FAILED', reason: 'User data missing' });
+      return { ok: false, reason: 'AUTH_FAILED' };
     }
 
     const bookingId = body?.bookingId;
     if (!bookingId) {
-      client.emit('error', 'bookingId is required');
-      return;
+      client.emit('gateway-error', { code: 'JOIN_DENIED', reason: 'bookingId is required' });
+      return { ok: false, reason: 'bookingId is required' };
     }
 
     if (client.data.joinAttempted) {
@@ -190,12 +211,19 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     client.data.joinAttempted = true;
 
+    // Validate participant - determine actual role in this booking
+    let bookingRole: 'tutor' | 'student';
     try {
-      this.logger.log(`join attempt booking=${bookingId} user=${user.id} role=${user.role}`);
-      await this.webrtc.validateParticipant(bookingId, user.id, user.role);
+      this.logger.log(`join attempt booking=${bookingId} user=${userId} role=${userRole}`);
+      const validation = await this.webrtc.validateParticipant(bookingId, userId, userRole);
+      bookingRole = validation.role; // 'tutor' or 'student' based on booking
+      
+      if (this.isDebug()) {
+        this.logger.debug(`[WEBRTC_DEBUG] join validated booking=${bookingId} user=${userId} bookingRole=${bookingRole}`);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Not allowed';
-      this.logger.warn(`join denied booking=${bookingId} user=${user.id} reason=${message}`);
+      this.logger.warn(`join denied booking=${bookingId} user=${userId} reason=${message}`);
       const reason =
         message.includes('not part') ? 'NOT_PART_OF_BOOKING'
         : message.includes('not found') ? 'BOOKING_NOT_FOUND'
@@ -205,28 +233,30 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
         : message.includes('Group sessions') ? 'GROUP_SESSION_NOT_SUPPORTED'
         : 'JOIN_DENIED';
       client.emit('gateway-error', { code: 'JOIN_DENIED', reason });
+      // DO NOT disconnect here - just return failure
       return { ok: false, reason };
     }
 
     // ensure single socket per user per booking
     const map = this.participants.get(bookingId) ?? new Map<string, ParticipantInfo>();
-    const existingSocketId = map.get(user.id)?.socketId;
+    const existingSocketId = map.get(userId)?.socketId;
     if (existingSocketId && existingSocketId !== client.id) {
       this.server.sockets.sockets.get(existingSocketId)?.disconnect(true);
     }
 
-    map.set(user.id, { socketId: client.id, role: user.role });
+    map.set(userId, { socketId: client.id, role: userRole });
     this.participants.set(bookingId, map);
     client.join(bookingId);
     client.data.bookingId = bookingId;
-    client.emit('joined', { bookingId });
+    client.data.joined = true;
+    client.emit('joined', { bookingId, role: bookingRole });
 
     client.emit('participants', {
       bookingId,
-      participants: Array.from(map.entries()).map(([userId, info]) => ({ userId, role: info.role })),
+      participants: Array.from(map.entries()).map(([uid, info]) => ({ userId: uid, role: info.role })),
     });
 
-    client.to(bookingId).emit('peer-joined', { userId: user.id, role: user.role });
+    client.to(bookingId).emit('peer-joined', { userId, role: userRole });
 
     if (map.size === 2) {
       const sortedIds = Array.from(map.keys()).sort();
@@ -235,7 +265,8 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.startTimeout(bookingId);
     }
 
-    return { ok: true };
+    this.logger.log(`join success booking=${bookingId} user=${userId} bookingRole=${bookingRole}`);
+    return { ok: true, role: bookingRole };
   }
 
   @SubscribeMessage('mediasoup/get-rtp-capabilities')

@@ -9,7 +9,7 @@ import { BookingsService } from '../bookings/bookings.service';
 export interface ParticipantContext {
   bookingId: string;
   userId: string;
-  role: Role;
+  role: 'tutor' | 'student'; // Role in THIS booking
   peerUserId: string | null;
 }
 
@@ -77,12 +77,15 @@ export class WebrtcService {
       throw new ForbiddenException('You are not part of this booking');
     }
 
+    // Return the actual role in THIS booking (tutor or student)
+    const bookingRole: 'tutor' | 'student' = isTutor ? 'tutor' : 'student';
+
     return {
       bookingId,
       userId,
-      role,
+      role: bookingRole, // Use booking role, not token role
       peerUserId: isTutor ? booking.studentId : booking.tutorId,
-    } satisfies ParticipantContext;
+    };
   }
 
   getIceConfig(userId: string): IceConfig {

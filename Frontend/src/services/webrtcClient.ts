@@ -172,17 +172,11 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
   setSocketState("connecting");
   socket = io(fullUrl, {
     auth: { token: authToken },
-    transports: ["websocket", "polling"], // Prefer websocket, fallback to polling
-    reconnection: true,
-    reconnectionAttempts: 8,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 20_000, // Increased timeout for production
-    withCredentials: true, // Allow cookies if backend uses them in addition to JWT
+    transports: ["websocket"], // WebSocket only, no polling
+    withCredentials: false, // JWT auth only, no cookies
     forceNew: true,
     path: "/socket.io",
-    // Socket.IO automatically uses wss:// when URL is https://
-    // No need to manually convert protocol
+    timeout: 20_000,
   });
 
   socket.on("connect", () => {
@@ -283,8 +277,8 @@ export async function joinBooking(bookingId: string) {
     return { ok: false, reason: "SOCKET_NOT_CONNECTED" };
   }
 
-  return await new Promise<{ ok: boolean; reason?: string }>((resolve) => {
-    socket?.emit("join-booking", { bookingId }, (ack: { ok: boolean; reason?: string }) => {
+  return await new Promise<{ ok: boolean; reason?: string; role?: 'tutor' | 'student' }>((resolve) => {
+    socket?.emit("join-booking", { bookingId }, (ack: { ok: boolean; reason?: string; role?: 'tutor' | 'student' }) => {
       if (!ack?.ok) {
         setSocketState("failed");
         emitJoinFailed(ack?.reason);
@@ -294,7 +288,10 @@ export async function joinBooking(bookingId: string) {
         return;
       }
       setSocketState("joined");
-      resolve({ ok: true });
+      if (import.meta.env.DEV) {
+        console.log(`[webrtc] join-booking ACK ok, role=${ack.role}`);
+      }
+      resolve({ ok: true, role: ack.role });
     });
   });
 }
