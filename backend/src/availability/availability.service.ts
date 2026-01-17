@@ -264,9 +264,22 @@ export class AvailabilityService {
       const date = s.date || s.day;
       if (!s.startTime || !s.endTime) continue;
 
-      const startIso = hasIso ? new Date(s.startTime).toISOString() : (date ? parseIso(date, s.startTime, tzOffset) : undefined);
-      const endIso = hasIso ? new Date(s.endTime).toISOString() : (date ? parseIso(date, s.endTime, tzOffset) : undefined);
+      let startIso: string | undefined;
+      let endIso: string | undefined;
+
+      if (hasIso) {
+        const startDate = new Date(s.startTime);
+        const endDate = new Date(s.endTime);
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) continue;
+        startIso = startDate.toISOString();
+        endIso = endDate.toISOString();
+      } else {
+        startIso = date ? parseIso(date, s.startTime, tzOffset) : undefined;
+        endIso = date ? parseIso(date, s.endTime, tzOffset) : undefined;
+      }
+
       if (!startIso || !endIso) continue;
+      if (new Date(endIso).getTime() <= new Date(startIso).getTime()) continue;
 
       if (s.id) {
         const existing = await this.prisma.availabilitySlot.findUnique({
