@@ -37,7 +37,7 @@ export class BookingsService {
     private bans: BansService,
   ) {}
 
-  private async ensureWebrtcMeeting(
+  private async ensureLivekitMeeting(
     bookingId: string,
     client: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
@@ -46,15 +46,15 @@ export class BookingsService {
       select: { meetingUrl: true, meetingProvider: true },
     });
 
-    if (current?.meetingUrl?.startsWith('webrtc:') && current?.meetingProvider === 'webrtc') {
+    if (current?.meetingUrl?.startsWith('livekit:') && current?.meetingProvider === 'livekit') {
       return current;
     }
 
     return client.booking.update({
       where: { id: bookingId },
       data: {
-        meetingUrl: `webrtc:${bookingId}`,
-        meetingProvider: 'webrtc',
+        meetingUrl: `livekit:${bookingId}`,
+        meetingProvider: 'livekit',
       },
       select: { meetingUrl: true, meetingProvider: true },
     });
@@ -280,7 +280,7 @@ export class BookingsService {
           console.error('Failed to create chat conversation:', error);
         }
 
-        await this.ensureWebrtcMeeting(booking.id);
+        await this.ensureLivekitMeeting(booking.id);
 
         return this.prisma.booking.findUnique({ where: { id: booking.id } });
       }
@@ -417,7 +417,7 @@ export class BookingsService {
         console.error('Failed to create chat conversation:', error);
       }
 
-      await this.ensureWebrtcMeeting(booking.id, tx);
+      await this.ensureLivekitMeeting(booking.id, tx);
 
       return tx.booking.findUnique({ where: { id: booking.id } });
     });
@@ -539,7 +539,7 @@ export class BookingsService {
       },
     });
 
-    await this.ensureWebrtcMeeting(updated!.id);
+    await this.ensureLivekitMeeting(updated!.id);
 
     return this.prisma.booking.findUnique({ where: { id: bookingId } });
   }
@@ -601,7 +601,7 @@ export class BookingsService {
 
     await this.prisma.reminder.create({ data: { bookingId: b.id, kind: 'RESCHEDULED' } });
 
-    await this.ensureWebrtcMeeting(updated.id);
+    await this.ensureLivekitMeeting(updated.id);
 
     return this.prisma.booking.findUnique({ where: { id: updated.id } });
   }
@@ -686,15 +686,15 @@ export class BookingsService {
       throw new ForbiddenException('You are not a participant of this booking');
     }
 
-    await this.ensureWebrtcMeeting(booking.id);
+    await this.ensureLivekitMeeting(booking.id);
 
     return {
       id: booking.id,
       startTime: booking.startTime,
       endTime: booking.endTime,
       status: booking.status,
-      meetingUrl: booking.meetingUrl ?? `webrtc:${booking.id}`,
-      meetingProvider: booking.meetingProvider ?? 'webrtc',
+      meetingUrl: booking.meetingUrl ?? `livekit:${booking.id}`,
+      meetingProvider: booking.meetingProvider ?? 'livekit',
       tutor: {
         id: booking.tutor?.id,
         name: booking.tutor?.user?.name ?? booking.tutor?.user?.email?.split('@')[0],
@@ -975,7 +975,7 @@ export class BookingsService {
       },
     });
 
-    await this.ensureWebrtcMeeting(booking.id);
+    await this.ensureLivekitMeeting(booking.id);
 
     const updated = await this.prisma.booking.findUnique({ where: { id: booking.id } });
 

@@ -164,7 +164,9 @@ export default function MySessions() {
             const isGroup = session.isGroupSession;
             const canConvert = canConvertToGroup(session);
             const meetingUrl = meetingLinks.get(session.id);
-            const joinUrl = meetingUrl?.startsWith('webrtc:') ? `/class/${session.id}` : meetingUrl;
+            const joinUrl = meetingUrl?.startsWith('livekit:') || meetingUrl?.startsWith('webrtc:')
+              ? `/class/${session.id}`
+              : meetingUrl;
 
             return (
               <div

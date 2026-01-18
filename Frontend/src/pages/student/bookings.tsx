@@ -459,7 +459,9 @@ function BookingCard({
   const groupBooking = booking as any;
   const isGroupSession = groupBooking.isGroupSession || false;
   const meetingUrl = meetingLink || groupBooking.meetingUrl;
-  const joinUrl = meetingUrl?.startsWith("webrtc:") ? `/class/${booking.id}` : meetingUrl;
+  const joinUrl = meetingUrl?.startsWith("livekit:") || meetingUrl?.startsWith("webrtc:")
+    ? `/class/${booking.id}`
+    : meetingUrl;
   const currentEnrollment = groupBooking.currentEnrollment || 1;
   const maxStudents = groupBooking.maxStudents || 1;
 

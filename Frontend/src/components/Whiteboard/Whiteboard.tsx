@@ -7,13 +7,12 @@ import {
   type AppState,
   type ExcalidrawImperativeAPI,
 } from '@excalidraw/excalidraw';
-import { connectWebrtc, currentSocket, emitWhiteboardUpdate, type WebrtcHandlers } from '../../services/webrtcClient';
 import { readToken } from '../../lib/apiClient';
 
 interface WhiteboardProps {
   bookingId: string;
   isReadOnly?: boolean;
-  /** If true, sync the board via Socket.IO (best-effort). */
+  /** If true, sync the board (reserved for future livekit data sync). */
   realtime?: boolean;
   /** Optional container class for embedding in panels. */
   className?: string;
@@ -44,46 +43,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
 
   useEffect(() => {
     if (!realtime) return;
-
-    // Best-effort: if a WebRTC socket is already connected, use it.
-    // Otherwise, connect using stored JWT.
-    if (!currentSocket()) {
-      const handlers: WebrtcHandlers = {
-        onWhiteboardUpdate: (payload: any) => {
-          if (!payload?.bookingId || payload.bookingId !== bookingId) return;
-          if (!excalidrawAPI) return;
-          // Avoid feedback loops when applying remote scene.
-          setIsApplyingRemote(true);
-          excalidrawAPI.updateScene({
-            elements: payload.elements || [],
-            appState: payload.appState || {},
-          });
-          setTimeout(() => setIsApplyingRemote(false), 0);
-        },
-      };
-      try {
-        connectWebrtc(handlers);
-      } catch {
-        // ignore; realtime sync is optional
-      }
-    } else {
-      const s = currentSocket();
-      const handler = (payload: any) => {
-        if (!payload?.bookingId || payload.bookingId !== bookingId) return;
-        if (!excalidrawAPI) return;
-        setIsApplyingRemote(true);
-        excalidrawAPI.updateScene({
-          elements: payload.elements || [],
-          appState: payload.appState || {},
-        });
-        setTimeout(() => setIsApplyingRemote(false), 0);
-      };
-      s?.on('whiteboard-update', handler);
-      return () => {
-        s?.off('whiteboard-update', handler);
-      };
-    }
-  }, [realtime, bookingId, excalidrawAPI]);
+    // LiveKit-based realtime sync can be added later via data channels.
+  }, [realtime]);
 
   const loadWhiteboardData = async () => {
     try {
@@ -137,7 +98,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
     return (data: any) => {
       if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
       emitTimerRef.current = setTimeout(() => {
-        emitWhiteboardUpdate({ bookingId, ...data });
+        // reserved for future livekit data channel sync
       }, 150);
     };
   })();

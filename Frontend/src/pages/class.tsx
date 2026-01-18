@@ -32,7 +32,7 @@ export default function ClassPage() {
   }
 
   const meetingUrl = data?.meetingUrl;
-  const isWebrtc = !!meetingUrl && meetingUrl.startsWith("webrtc:");
+  const isLivekit = !!meetingUrl && (meetingUrl.startsWith("livekit:") || meetingUrl.startsWith("webrtc:"));
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
@@ -88,7 +88,7 @@ export default function ClassPage() {
             <button
               onClick={() => {
                 if (!meetingUrl) return;
-                if (isWebrtc) {
+                if (isLivekit) {
                   navigate(`/call/${bookingId}`);
                   return;
                 }
@@ -98,7 +98,7 @@ export default function ClassPage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-white font-medium hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-600"
             >
               <Video className="h-5 w-5" />
-              {meetingUrl ? (isWebrtc ? "Open Classroom" : "Join Class") : "No meeting link"}
+              {meetingUrl ? (isLivekit ? "Open Classroom" : "Join Class") : "No meeting link"}
               <ExternalLink className="h-4 w-4" />
             </button>
 

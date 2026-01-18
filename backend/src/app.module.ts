@@ -50,8 +50,7 @@ import { FinancePayoutsModule } from './finance/payouts/finance-payouts.module';
 import { TutorBalancesModule } from './finance/balances/tutor-balances.module';
 import { TaxModule } from './finance/tax/tax.module';
 import { ReconModule } from './finance/recon/recon.module';
-import { WebrtcModule } from './webrtc/webrtc.module';
-import { MediasoupModule } from './mediasoup/mediasoup.module';
+import { LivekitModule } from './livekit/livekit.module';
 import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 
 @Module({
@@ -101,8 +100,7 @@ import { PreprodInternalGuard } from './auth/preprod-internal.guard';
     TutorBalancesModule,
     TaxModule,
     ReconModule,
-    WebrtcModule,
-    MediasoupModule,
+    LivekitModule,
   ],
   controllers: [AppController, ReadyController],
   providers: [
