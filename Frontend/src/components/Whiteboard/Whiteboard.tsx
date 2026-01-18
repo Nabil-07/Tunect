@@ -21,10 +21,8 @@ interface WhiteboardProps {
 export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = false, realtime = false, className }) => {
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isApplyingRemote, setIsApplyingRemote] = useState(false);
   const apiAvailableRef = useRef<boolean | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const emitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
   const whiteboardUrl = `${apiBase}/whiteboard/${bookingId}`;
@@ -37,7 +35,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
   useEffect(() => {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-      if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
     };
   }, []);
 
@@ -81,7 +78,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
 
   const handleChange = (elements: readonly ExcalidrawElement[], appState: AppState) => {
     if (isReadOnly) return;
-    if (isApplyingRemote) return;
 
     // Auto-save every 5 seconds
     debounceAutoSave({
@@ -90,18 +86,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
     });
 
     if (realtime) {
-      debounceEmit({ elements, appState });
+      // reserved for future livekit data channel sync
     }
   };
-
-  const debounceEmit = (() => {
-    return (data: any) => {
-      if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
-      emitTimerRef.current = setTimeout(() => {
-        // reserved for future livekit data channel sync
-      }, 150);
-    };
-  })();
 
   // Debounced auto-save function
   const debounceAutoSave = (() => {
