@@ -1,3 +1,11 @@
+
+import * as dotenv from 'dotenv';
+dotenv.config({
+  path: process.env.NODE_ENV === 'preprod'
+    ? '.env.preprod'
+    : '.env',
+});
+
 import { webcrypto } from 'crypto';
 
 if (!(globalThis as any).crypto) {
@@ -107,6 +115,12 @@ async function bootstrap() {
   });
 
   // Serve static files for uploads
+    import * as dotenv from 'dotenv';
+    dotenv.config({
+      path: process.env.NODE_ENV === 'preprod'
+        ? '.env.preprod'
+        : '.env',
+    });
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads',
   });
