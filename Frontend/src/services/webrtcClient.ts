@@ -77,14 +77,18 @@ export function onWebrtcSocketStateChange(cb: (state: WebrtcSocketState) => void
 }
 
 function wsBase(): string {
-  // Always use explicit backend URL from env var
-  // Socket.IO will append /socket.io and add namespace as query param
-  const rawBackendUrl = import.meta.env.VITE_API_URL ?? 
-    (import.meta.env.DEV ? 'http://localhost:3000' : 'https://api-preprod.tunectnow.com');
-  const backendUrl = rawBackendUrl.replace(/\/+$/, ''); // Remove trailing slashes
-  
-  // Socket.IO will construct: {backendUrl}/socket.io/?EIO=4&transport=websocket&ns=/webrtc
-  return backendUrl;
+  const devProxyTarget = import.meta.env.VITE_API_PROXY_TARGET;
+  const envApiUrl = import.meta.env.VITE_API_URL;
+
+  // In dev, prefer Vite proxy target, then explicit API URL, then same-origin.
+  if (import.meta.env.DEV) {
+    const devUrl = devProxyTarget || envApiUrl || window.location.origin;
+    return devUrl.replace(/\/+$/, "");
+  }
+
+  // In prod, always use explicit API URL (fallback to preprod).
+  const rawBackendUrl = envApiUrl || "https://api-preprod.tunectnow.com";
+  return rawBackendUrl.replace(/\/+$/, "");
 }
 
 function bindHandlers(handlers?: WebrtcHandlers) {
