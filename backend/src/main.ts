@@ -123,6 +123,26 @@ async function bootstrap() {
     preflightContinue: false,
   });
 
+  // Explicitly respond to preflight requests with CORS headers
+  app.use((req: any, res: any, next: any) => {
+    const origin = req.headers?.origin;
+    if (origin && isAllowedOrigin(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Vary', 'Origin');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+      res.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, X-Timezone, X-Requested-With, Accept, Origin, User-Agent, Cache-Control, Pragma',
+      );
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send();
+    }
+    return next();
+  });
+
   // Serve static files for uploads
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads',
