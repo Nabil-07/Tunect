@@ -76,19 +76,45 @@ export function onWebrtcSocketStateChange(cb: (state: WebrtcSocketState) => void
   return () => socketStateListeners.delete(cb);
 }
 
-function wsBase(): string {
+type SocketTarget = { origin: string; pathPrefix: string };
+
+function normalizePathPrefix(pathname: string): string {
+  if (!pathname || pathname === "/") return "";
+  const trimmed = `/${pathname.replace(/^\/+|\/+$/g, "")}`;
+  return trimmed === "/" ? "" : trimmed;
+}
+
+function resolveSocketTarget(raw?: string | null): SocketTarget {
+  const fallbackOrigin = window.location.origin;
+  if (!raw) return { origin: fallbackOrigin, pathPrefix: "" };
+
+  if (raw.startsWith("/")) {
+    return { origin: fallbackOrigin, pathPrefix: normalizePathPrefix(raw) };
+  }
+
+  if (!/^https?:\/\//i.test(raw)) {
+    return { origin: raw.replace(/\/+$/, ""), pathPrefix: "" };
+  }
+
+  try {
+    const url = new URL(raw);
+    return { origin: url.origin, pathPrefix: normalizePathPrefix(url.pathname) };
+  } catch {
+    return { origin: raw.replace(/\/+$/, ""), pathPrefix: "" };
+  }
+}
+
+function getSocketTarget(): SocketTarget {
   const devProxyTarget = import.meta.env.VITE_API_PROXY_TARGET;
   const envApiUrl = import.meta.env.VITE_API_URL;
 
   // In dev, prefer Vite proxy target, then explicit API URL, then same-origin.
   if (import.meta.env.DEV) {
-    const devUrl = devProxyTarget || envApiUrl || window.location.origin;
-    return devUrl.replace(/\/+$/, "");
+    return resolveSocketTarget(devProxyTarget || envApiUrl || window.location.origin);
   }
 
-  // In prod, always use explicit API URL (fallback to preprod).
-  const rawBackendUrl = envApiUrl || "https://api-preprod.tunectnow.com";
-  return rawBackendUrl.replace(/\/+$/, "");
+  // In prod, prefer explicit API URL, then same-origin.
+  return resolveSocketTarget(envApiUrl || window.location.origin || "https://api-preprod.tunectnow.com");
 }
 
 function bindHandlers(handlers?: WebrtcHandlers) {
@@ -150,7 +176,8 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
   const authToken = token ?? readToken();
   if (!authToken) throw new Error("Missing auth token for WebRTC signaling");
 
-  const backendUrl = wsBase();
+  const { origin, pathPrefix } = getSocketTarget();
+  const socketPath = pathPrefix ? `${pathPrefix}/socket.io` : "/socket.io";
   
   // Socket.IO namespace handling:
   // Connect to base server, then use .of('/webrtc') to join namespace
@@ -162,9 +189,9 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
   // Log connection attempt for debugging
   const tokenPreview = authToken ? `${authToken.substring(0, 20)}...` : 'MISSING';
   if (import.meta.env.DEV) {
-    console.log(`[webrtc] Connecting to WebSocket: ${backendUrl} namespace=/webrtc (dev mode)`, { tokenPreview });
+    console.log(`[webrtc] Connecting to WebSocket: ${origin} namespace=/webrtc path=${socketPath} (dev mode)`, { tokenPreview });
   } else {
-    console.log(`[webrtc] Connecting to WebSocket: ${backendUrl} namespace=/webrtc (production)`, { tokenPreview });
+    console.log(`[webrtc] Connecting to WebSocket: ${origin} namespace=/webrtc path=${socketPath} (production)`, { tokenPreview });
   }
   
   setSocketState("connecting");
@@ -172,12 +199,12 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
   // Connect directly to /webrtc namespace
   // Socket.IO will construct: {backendUrl}/socket.io/?EIO=4&transport=websocket
   // And join namespace /webrtc automatically when URL includes the namespace path
-  socket = io(`${backendUrl}/webrtc`, {
+  socket = io(`${origin}/webrtc`, {
     auth: { token: authToken },
     transports: ["websocket"], // WebSocket only, no polling
     withCredentials: false, // JWT auth only, no cookies
     forceNew: true,
-    path: "/socket.io",
+    path: socketPath,
     timeout: 20_000,
   });
 
@@ -190,7 +217,7 @@ export function connectWebrtc(handlers?: WebrtcHandlers, token?: string) {
 
   socket.on("connect_error", (err) => {
     // Lightweight diagnostic to surface handshake failures
-    console.warn("[webrtc] socket connect_error", err?.message || err, { url: backendUrl, namespace: '/webrtc' });
+    console.warn("[webrtc] socket connect_error", err?.message || err, { url: origin, path: socketPath, namespace: "/webrtc" });
     // Don't overwrite if already failed
     if (socketState !== "failed") {
       setSocketState("failed");
