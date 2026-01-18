@@ -46,6 +46,7 @@ type ParticipantInfo = {
 
 @WebSocketGateway({
   namespace: '/webrtc',
+  path: '/socket.io',
   cors: {
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps)
@@ -95,18 +96,54 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly cfg: ConfigService,
     private readonly webrtc: WebrtcService,
     private readonly mediasoup: MediasoupService,
-  ) {}
+  ) {
+    this.logger.log('WebrtcGateway initialized');
+  }
 
   private isDebug() {
     return this.cfg.get<string>('WEBRTC_DEBUG') === 'true';
   }
 
+  private isAuthDisabled() {
+    return this.cfg.get<string>('WEBRTC_AUTH_DISABLED') === 'true';
+  }
+
   async handleConnection(client: Socket) {
     // ONLY read token from client.handshake.auth.token (NOT cookies)
     const token = client.handshake.auth?.token as string;
+    const origin = client.handshake.headers.origin || client.handshake.headers.referer;
+    const transport = client.conn?.transport?.name;
+
+    if (this.isDebug()) {
+      const authKeys = Object.keys(client.handshake.auth || {});
+      const tokenInfo = token ? `${token.length} chars` : 'none';
+      this.logger.debug(
+        `[WEBRTC_DEBUG] handshake id=${client.id} origin=${origin || '-'} transport=${transport || '-'} nsp=${client.nsp?.name || '-'} url=${client.handshake?.url || '-'}`,
+      );
+      this.logger.debug(`[WEBRTC_DEBUG] auth keys=${authKeys.join(',') || 'none'} token=${tokenInfo}`);
+    }
+
+    client.on('disconnecting', (reason) => {
+      if (this.isDebug()) {
+        this.logger.debug(`[WEBRTC_DEBUG] disconnecting id=${client.id} reason=${reason}`);
+      }
+    });
+
+    if (this.isAuthDisabled()) {
+      const decoded: any = token ? this.jwt.decode(token) : null;
+      const userId = decoded?.sub || client.id;
+      const role = decoded?.role || Role.STUDENT;
+      client.data.userId = userId;
+      client.data.role = role;
+      client.data.authenticated = true;
+      client.data.user = { id: userId, role } as AuthedUser;
+      client.data.origin = origin;
+      this.logger.warn(`[WEBRTC_DEBUG] Auth disabled for socket id=${client.id} user=${userId} role=${role}`);
+      return;
+    }
     
     if (!token) {
-      this.logger.warn(`Socket auth failed: Missing auth token origin=${client.handshake.headers.origin || '-'}`);
+      this.logger.warn(`Socket auth failed: Missing auth token origin=${origin || '-'}`);
       client.emit('gateway-error', {
         code: 'AUTH_FAILED',
         reason: 'Invalid or expired token',
@@ -125,7 +162,7 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.data.role = decoded.role;
       client.data.authenticated = true;
       client.data.user = { id: decoded.sub, role: decoded.role } as AuthedUser;
-      client.data.origin = client.handshake.headers.origin || client.handshake.headers.referer;
+      client.data.origin = origin;
       
       this.logger.log(`socket connected user=${decoded.sub} role=${decoded.role} origin=${client.data.origin || '-'}`);
       
@@ -134,7 +171,7 @@ export class WebrtcGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Socket auth failed: ${message} origin=${client.handshake.headers.origin || '-'}`);
+      this.logger.warn(`Socket auth failed: ${message} origin=${origin || '-'}`);
       client.emit('gateway-error', {
         code: 'AUTH_FAILED',
         reason: 'Invalid or expired token',

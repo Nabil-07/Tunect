@@ -1,10 +1,6 @@
 
 import * as dotenv from 'dotenv';
-dotenv.config({
-  path: process.env.NODE_ENV === 'preprod'
-    ? '.env.preprod'
-    : '.env',
-});
+dotenv.config({ path: '.env.preprod' });
 
 import { webcrypto } from 'crypto';
 
@@ -36,7 +32,13 @@ class CorsSocketIoAdapter extends IoAdapter {
 
   override createIOServer(port: number, options?: ServerOptions) {
     const cors = {
-      origin: this.origins,
+      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+        if (!origin || isAllowedOrigin(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(new Error('Not allowed by CORS'));
+      },
       credentials: true,
     };
     const { path, ...rest } = options || {};
@@ -50,6 +52,18 @@ class CorsSocketIoAdapter extends IoAdapter {
   }
 }
 
+const allowedOrigins = [
+  'https://tn-internal-7f3a.preprod.tunectnow.com',
+  'http://tn-internal-7f3a.preprod.tunectnow.com',
+  'https://tunectnow.com',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+function isAllowedOrigin(origin: string) {
+  if (allowedOrigins.includes(origin)) return true;
+  return origin.includes('.preprod.tunectnow.com');
+}
 
 async function bootstrap() {
   if (process.env.SENTRY_DSN) {
@@ -67,14 +81,7 @@ async function bootstrap() {
   const cfg = app.get(ConfigService);
 
   // Global Socket.IO adapter with explicit CORS to match frontend origins
-  const wsOrigins = [
-    'https://tn-internal-7f3a.preprod.tunectnow.com',
-    'http://tn-internal-7f3a.preprod.tunectnow.com',
-    'https://tunectnow.com',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-  ];
-  app.useWebSocketAdapter(new CorsSocketIoAdapter(app, wsOrigins));
+  app.useWebSocketAdapter(new CorsSocketIoAdapter(app, allowedOrigins));
 
   // ⚡ GZIP Compression - reduces response size by 70-90%
   app.use(compression({
@@ -83,14 +90,6 @@ async function bootstrap() {
   }));
 
   // Enable CORS FIRST before other middleware to ensure preflight requests are handled
-  const allowedOrigins = [
-    'https://tn-internal-7f3a.preprod.tunectnow.com',
-    'http://tn-internal-7f3a.preprod.tunectnow.com',
-    'https://tunectnow.com',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-  ];
-  
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps or curl requests)
@@ -115,12 +114,6 @@ async function bootstrap() {
   });
 
   // Serve static files for uploads
-    import * as dotenv from 'dotenv';
-    dotenv.config({
-      path: process.env.NODE_ENV === 'preprod'
-        ? '.env.preprod'
-        : '.env',
-    });
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads',
   });
