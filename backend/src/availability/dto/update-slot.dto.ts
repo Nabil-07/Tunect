@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsISO8601, IsOptional } from 'class-validator';
+import { IsISO8601, IsOptional, IsNumber } from 'class-validator';
 
 export class UpdateSlotDto {
   @ApiPropertyOptional({ example: '2025-08-12T16:30:00.000Z' })
@@ -11,4 +11,9 @@ export class UpdateSlotDto {
   @IsOptional()
   @IsISO8601()
   endTime?: string;
+
+  @ApiPropertyOptional({ example: -330 })
+  @IsOptional()
+  @IsNumber()
+  tzOffsetMinutes?: number;
 }

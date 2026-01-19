@@ -62,6 +62,7 @@ const ADMIN_CENTER = [
   { to: '/admin/dashboard', label: 'Dashboard' },
   { to: '/support', label: 'Support' },
   { to: '/admin/analytics', label: 'Analytics' },
+  { to: '/admin/blogs', label: 'Blogs' },
 ];
 
 export default function Navbar() {
@@ -220,6 +221,7 @@ export default function Navbar() {
                     <Link to="/admin/reports" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Reports</Link>
                     <Link to="/admin/messages" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Messages</Link>
                     <Link to="/admin/reviews" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Reviews</Link>
+                    <Link to="/admin/blogs" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Blogs</Link>
                     <Link to="/admin/finance" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Finance</Link>
                     <div className="my-1 h-px bg-slate-200/70" />
                     <Link to="/support" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Support</Link>

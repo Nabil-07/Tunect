@@ -11,6 +11,7 @@ import {
   Users,
   ExternalLink,
   Coins,
+  Star,
 } from "lucide-react";
 import {
   getMyBookings,
@@ -24,6 +25,7 @@ import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useToast } from "../../contexts/ToastContext";
 import api from "../../lib/apiClient";
+import { createReview, getMyReviews } from "../../services/reviewService";
 
 type Booking = BookingDto;
 
@@ -38,6 +40,13 @@ export default function MyBookings() {
   const [loadingBalances, setLoadingBalances] = useState(true);
   const [tokenBalances, setTokenBalances] = useState<Map<string, number>>(new Map());
   const [meetingLinks, setMeetingLinks] = useState<Map<string, string>>(new Map());
+
+  const [reviewMap, setReviewMap] = useState<Map<string, number>>(new Map());
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   // slot picker state
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -208,12 +217,52 @@ export default function MyBookings() {
       })
       .catch(() => setTokenBalances(new Map()))
       .finally(() => setLoadingBalances(false));
+
+    getMyReviews()
+      .then((items) => {
+        const map = new Map<string, number>();
+        items.forEach((r) => {
+          if (r.bookingId) map.set(r.bookingId, r.rating);
+        });
+        setReviewMap(map);
+      })
+      .catch(() => setReviewMap(new Map()));
   }
 
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function openReviewModal(booking: Booking) {
+    setReviewBooking(booking);
+    setReviewRating(0);
+    setReviewComment("");
+    setReviewOpen(true);
+  }
+
+  async function submitReview() {
+    if (!reviewBooking) return;
+    if (reviewRating < 1 || reviewRating > 5) {
+      showError("Please select a rating.");
+      return;
+    }
+    try {
+      setReviewSubmitting(true);
+      await createReview({
+        bookingId: reviewBooking.id,
+        rating: reviewRating,
+        comment: reviewComment.trim() || undefined,
+      });
+      showSuccess("Thanks for your review!");
+      setReviewMap((prev) => new Map(prev).set(reviewBooking.id, reviewRating));
+      setReviewOpen(false);
+    } catch (err: any) {
+      showError(err.response?.data?.message || "Failed to submit review");
+    } finally {
+      setReviewSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     const confirmed = [...upcoming, ...completed].filter((b) => b.status === "CONFIRMED");
@@ -375,7 +424,24 @@ export default function MyBookings() {
       {/* Completed */}
       <Section title="Completed Sessions" emptyNote="No completed sessions yet.">
         {completed.map((b) => (
-          <BookingCard key={b.id} booking={b} meetingLink={meetingLinks.get(b.id)} />
+          <BookingCard
+            key={b.id}
+            booking={b}
+            meetingLink={meetingLinks.get(b.id)}
+            actions={
+              reviewMap.has(b.id) ? (
+                <div className="text-xs font-semibold text-emerald-700">Reviewed</div>
+              ) : (
+                <button
+                  onClick={() => openReviewModal(b)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+                >
+                  <Star className="h-4 w-4" />
+                  Leave Review
+                </button>
+              )
+            }
+          />
         ))}
       </Section>
         </>
@@ -404,6 +470,73 @@ export default function MyBookings() {
         variant="warning"
         isLoading={cancelling}
       />
+
+      {/* Review Modal */}
+      {reviewOpen && reviewBooking && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h3 className="text-lg font-semibold">Rate your session</h3>
+              <button className="p-1 rounded hover:bg-slate-100" onClick={() => setReviewOpen(false)}>
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <div className="text-sm text-slate-600 mb-2">Tutor</div>
+                <div className="font-medium">{reviewBooking.tutor?.name || "Tutor"}</div>
+              </div>
+
+              <div>
+                <div className="text-sm text-slate-600 mb-2">Your rating</div>
+                <div className="flex items-center gap-2">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setReviewRating(n)}
+                      className={`rounded-full p-2 ${
+                        n <= reviewRating ? "text-amber-500" : "text-slate-300"
+                      }`}
+                      aria-label={`Rate ${n}`}
+                    >
+                      <Star className="h-6 w-6 fill-current" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-600 mb-2">Comments (optional)</label>
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  placeholder="Share a quick note about your experience..."
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t flex items-center justify-end gap-2">
+              <button
+                className="rounded-xl border px-4 py-2 hover:bg-slate-50"
+                onClick={() => setReviewOpen(false)}
+                disabled={reviewSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-xl bg-amber-500 px-4 py-2 text-white hover:bg-amber-600 disabled:opacity-60"
+                onClick={submitReview}
+                disabled={reviewSubmitting}
+              >
+                {reviewSubmitting ? "Submitting..." : "Submit Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

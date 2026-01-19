@@ -38,6 +38,8 @@ import { WhiteboardModule } from './whiteboard/whiteboard.module';
 import { CommonModule } from './common/common.module';
 import { BansModule } from './bans/bans.module';
 import { SupportModule } from './support/support.module';
+import { StatsModule } from './stats/stats.module';
+import { BlogsModule } from './blogs/blogs.module';
 
 import { AppController } from './app.controller';
 import { ReadyController } from './health/ready.controller';
@@ -93,6 +95,8 @@ import { PreprodInternalGuard } from './auth/preprod-internal.guard';
     WhiteboardModule,
     BansModule,
     SupportModule,
+    StatsModule,
+    BlogsModule,
 
     FinanceDashboardModule,
     TokenLedgerModule,

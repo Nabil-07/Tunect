@@ -8,6 +8,7 @@ import { formatCurrency } from '../../utils/currency';
 import BuyTokensButton from '../../components/BuyTokensButton';
 import { createDemoBooking } from '../../services/bookingsService';
 import { useAuth } from '../../contexts/AuthContext';
+import NotificationModal from '../../components/common/NotificationModal';
 
 type BookableSlot = { startTime: string; endTime: string };
 
@@ -60,6 +61,7 @@ export default function TutorPublicProfile() {
   const [bookable, setBookable] = useState<BookableSlot[]>([]);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState<string | null>(null);
 
   const days = useMemo(() => {
     const start = startOfMonth(month);
@@ -186,12 +188,17 @@ export default function TutorPublicProfile() {
     } catch (e: any) {
       console.error(e);
       const status = e?.response?.status;
+      const apiError = e?.response?.data?.error;
+      if (apiError === 'INSUFFICIENT_TOKENS') {
+        setErrorModal(e?.response?.data?.message || 'You need more tokens to book this slot.');
+        return;
+      }
       if (status === 409 || status === 400) {
-        setToast('That slot was just taken. Please pick another.');
+        setErrorModal('That slot was just taken. Please pick another.');
         const slots = await fetchSlots(month);
         setBookable(slots);
       } else {
-        setToast('Could not book. Please try again.');
+        setErrorModal(e?.response?.data?.message || 'Could not book. Please try again.');
       }
     } finally {
       setBusy(false);
@@ -222,6 +229,14 @@ export default function TutorPublicProfile() {
   return (
     <main className="container mx-auto py-10 px-4 max-w-7xl">
       {toast && <div className="mb-4 p-3 rounded bg-black text-white inline-block">{toast}</div>}
+      <NotificationModal
+        open={!!errorModal}
+        onClose={() => setErrorModal(null)}
+        title="Booking Error"
+        message={errorModal || 'Could not book. Please try again.'}
+        type="error"
+        confirmText="Close"
+      />
 
       <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         <div className="space-y-4">

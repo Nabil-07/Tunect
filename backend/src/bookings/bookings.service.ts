@@ -264,17 +264,17 @@ export class BookingsService {
             notes: dto.notes,
           },
           include: {
-            student: { select: { userId: true } },
-            tutor: { select: { userId: true } },
+            student: { select: { id: true, userId: true } },
+            tutor: { select: { id: true, userId: true } },
           },
         });
 
         // Create direct chat conversation
         try {
           await this.chatTriggers.onDirectBookingCreated(
+            booking.student.id,
+            booking.tutor.id,
             booking.id,
-            booking.tutor.userId,
-            booking.student.userId,
           );
         } catch (error) {
           console.error('Failed to create chat conversation:', error);
@@ -314,7 +314,7 @@ export class BookingsService {
         dto.studentId!,
       );
 
-      return this.prisma.booking.create({
+      const pendingBooking = await this.prisma.booking.create({
         data: {
           tutorId: dto.tutorId,
           studentId: dto.studentId!,
@@ -324,12 +324,24 @@ export class BookingsService {
           notes: dto.notes,
         },
       });
+
+      try {
+        await this.chatTriggers.onDirectBookingCreated(
+          dto.studentId!,
+          dto.tutorId,
+          pendingBooking.id,
+        );
+      } catch (error) {
+        console.error('Failed to create chat conversation:', error);
+      }
+
+      return pendingBooking;
     }
 
     // ---- Paid booking ----
     if (!dto.startTime || !dto.endTime) {
       // allow booking without slot selection
-      return this.prisma.booking.create({
+      const pendingBooking = await this.prisma.booking.create({
         data: {
           tutorId: dto.tutorId,
           studentId: dto.studentId!,
@@ -339,6 +351,18 @@ export class BookingsService {
           notes: dto.notes,
         },
       });
+
+      try {
+        await this.chatTriggers.onDirectBookingCreated(
+          dto.studentId!,
+          dto.tutorId,
+          pendingBooking.id,
+        );
+      } catch (error) {
+        console.error('Failed to create chat conversation:', error);
+      }
+
+      return pendingBooking;
     }
 
     const start = toUtc(dto.startTime, tz);
@@ -386,8 +410,8 @@ export class BookingsService {
           notes: dto.notes,
         },
         include: {
-          student: { select: { userId: true } },
-          tutor: { select: { userId: true } },
+          student: { select: { id: true, userId: true } },
+          tutor: { select: { id: true, userId: true } },
         },
       });
 
@@ -409,9 +433,9 @@ export class BookingsService {
       // Create direct chat conversation
       try {
         await this.chatTriggers.onDirectBookingCreated(
+          booking.student.id,
+          booking.tutor.id,
           booking.id,
-          booking.tutor.userId,
-          booking.student.userId,
         );
       } catch (error) {
         console.error('Failed to create chat conversation:', error);
@@ -538,6 +562,16 @@ export class BookingsService {
         student: { include: { user: true } },
       },
     });
+
+    try {
+      await this.chatTriggers.onDirectBookingCreated(
+        updated!.studentId,
+        updated!.tutorId,
+        updated!.id,
+      );
+    } catch (error) {
+      console.error('Failed to create chat conversation:', error);
+    }
 
     await this.ensureLivekitMeeting(updated!.id);
 

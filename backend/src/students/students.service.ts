@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { BookingStatus, Prisma } from '@prisma/client';
 
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
@@ -35,9 +35,37 @@ export class StudentsService {
       throw new NotFoundException('Student profile not found');
     }
 
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [completedCount, monthlyBookings] = await Promise.all([
+      this.prisma.booking.count({
+        where: { studentId: user.student.id, status: BookingStatus.COMPLETED },
+      }),
+      this.prisma.booking.findMany({
+        where: {
+          studentId: user.student.id,
+          status: BookingStatus.COMPLETED,
+          startTime: { gte: startOfMonth },
+          endTime: { not: null },
+        },
+        select: { startTime: true, endTime: true },
+      }),
+    ]);
+
+    const hoursStudied = monthlyBookings.reduce((sum, b) => {
+      if (!b.startTime || !b.endTime) return sum;
+      return sum + (b.endTime.getTime() - b.startTime.getTime()) / 3_600_000;
+    }, 0);
+
     return {
       ...user,
-      student: { ...user.student, tokens: toNum(user.student.tokens) },
+      student: {
+        ...user.student,
+        tokens: toNum(user.student.tokens),
+        hoursStudied: Math.round(hoursStudied * 10) / 10,
+        sessionsCompleted: completedCount,
+      },
     };
   }
 

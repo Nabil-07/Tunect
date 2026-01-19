@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createOrder, verifyPayment } from "../services/paymentsService";
 import { ensureRazorpayLoaded, openRazorpay } from "../utils/razorpay";
+import NotificationModal from "./common/NotificationModal";
 
 type Props = {
   tutorId: string;
@@ -11,6 +12,7 @@ type Props = {
 export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess }: Props) {
   const [tokens, setTokens] = useState<number>(defaultTokens);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   async function handlePay() {
     try {
@@ -35,12 +37,12 @@ export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess 
             const verify = await verifyPayment(response);
             if (verify.ok) {
               onSuccess?.(verify.paymentId);
-              alert("Payment successful and tokens credited.");
+              setErrorMessage(null);
             } else {
-              alert("Payment verification failed.");
+              setErrorMessage("Payment verification failed.");
             }
           } catch (e: any) {
-            alert(e?.message || "Verification failed");
+            setErrorMessage(e?.message || "Verification failed");
           }
         },
         modal: {
@@ -58,29 +60,40 @@ export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess 
 
       openRazorpay(options);
     } catch (e: any) {
-      alert(e?.message || "Unable to start payment");
+      setErrorMessage(e?.response?.data?.message || e?.message || "Unable to start payment");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <input
-        type="number"
-        min={5}
-        step={1}
-        value={tokens}
-        onChange={(e) => setTokens(Math.max(5, Number(e.target.value) || 5))}
-        className="w-24 border rounded px-2 py-1"
+    <>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min={5}
+          step={1}
+          value={tokens}
+          onChange={(e) => setTokens(Math.max(5, Number(e.target.value) || 5))}
+          className="w-24 border rounded px-2 py-1"
+        />
+        <button
+          onClick={handlePay}
+          disabled={loading}
+          className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+        >
+          {loading ? "Processing..." : `Buy ${tokens} tokens`}
+        </button>
+      </div>
+
+      <NotificationModal
+        open={!!errorMessage}
+        onClose={() => setErrorMessage(null)}
+        title="Payment Error"
+        message={errorMessage || "Unable to start payment."}
+        type="error"
+        confirmText="Close"
       />
-      <button
-        onClick={handlePay}
-        disabled={loading}
-        className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-      >
-        {loading ? "Processing..." : `Buy ${tokens} tokens`}
-      </button>
-    </div>
+    </>
   );
 }

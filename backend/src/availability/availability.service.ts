@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
   import { CreateSlotDto } from './dto/create-slot.dto';
 import { UpdateSlotDto } from './dto/update-slot.dto';
 import { BookingStatus, TutorStatus } from '@prisma/client';
-import { addDays, addMinutes, isBefore } from 'date-fns';
+import { addDays, addMinutes, isBefore, startOfDay } from 'date-fns';
 import { BookableQueryDto } from './dto/bookable-query.dto';
 import { WaitlistService } from '../waitlist/waitlist.service';
 
@@ -43,6 +43,7 @@ export class AvailabilityService {
     start: Date,
     end: Date,
     excludeId?: string,
+    tzOffsetMinutes?: number,
   ) {
     // Check for any overlap or exact duplicate
     const overlap = await this.prisma.availabilitySlot.findFirst({
@@ -65,6 +66,15 @@ export class AvailabilityService {
     if (overlap) {
       // Format dates in a user-friendly way (YYYY-MM-DD HH:MM format)
       const formatDateTime = (date: Date) => {
+        if (typeof tzOffsetMinutes === 'number' && Number.isFinite(tzOffsetMinutes)) {
+          const adjusted = new Date(date.getTime() - tzOffsetMinutes * 60_000);
+          const year = adjusted.getUTCFullYear();
+          const month = String(adjusted.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(adjusted.getUTCDate()).padStart(2, '0');
+          const hours = String(adjusted.getUTCHours()).padStart(2, '0');
+          const minutes = String(adjusted.getUTCMinutes()).padStart(2, '0');
+          return `${year}-${month}-${day} ${hours}:${minutes}`;
+        }
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
@@ -152,6 +162,46 @@ export class AvailabilityService {
     }
   }
 
+  private async buildTemplateSlots(
+    tutorId: string,
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<Array<{ startTime: Date; endTime: Date }>> {
+    const templates = await this.prisma.recurringTemplate.findMany({
+      where: { tutorId, isActive: true },
+      select: { dayOfWeek: true, startTime: true, endTime: true },
+    });
+
+    if (templates.length === 0) return [];
+
+    const slots: Array<{ startTime: Date; endTime: Date }> = [];
+    const cursor = startOfDay(windowStart);
+    const endDay = startOfDay(windowEnd);
+
+    for (let d = new Date(cursor); d <= endDay; d.setDate(d.getDate() + 1)) {
+      const dayOfWeek = d.getDay();
+      const dayTemplates = templates.filter((t) => t.dayOfWeek === dayOfWeek);
+      if (dayTemplates.length === 0) continue;
+
+      for (const t of dayTemplates) {
+        const [sh, sm] = t.startTime.split(':').map(Number);
+        const [eh, em] = t.endTime.split(':').map(Number);
+        const start = new Date(d);
+        start.setHours(sh || 0, sm || 0, 0, 0);
+        const end = new Date(d);
+        end.setHours(eh || 0, em || 0, 0, 0);
+        if (end.getTime() <= start.getTime()) {
+          end.setDate(end.getDate() + 1);
+        }
+
+        if (end <= windowStart || start >= windowEnd) continue;
+        slots.push({ startTime: start, endTime: end });
+      }
+    }
+
+    return slots;
+  }
+
   // ---------------- tutor (me) ----------------
 
   async createMine(userId: string, dto: CreateSlotDto) {
@@ -161,7 +211,7 @@ export class AvailabilityService {
     const end = this.normalizeOvernightEnd(start, new Date(dto.endTime));
     this.validateWindow(start, end);
 
-    await this.ensureNoSlotOverlap(tutor.id, start, end);
+    await this.ensureNoSlotOverlap(tutor.id, start, end, undefined, dto.tzOffsetMinutes);
     await this.ensureNoBookingOverlap(tutor.id, start, end);
 
     const slot = await this.prisma.availabilitySlot.create({
@@ -213,7 +263,7 @@ export class AvailabilityService {
     const end = this.normalizeOvernightEnd(start, dto.endTime ? new Date(dto.endTime) : slot.endTime);
     this.validateWindow(start, end);
 
-    await this.ensureNoSlotOverlap(tutor.id, start, end, slotId);
+    await this.ensureNoSlotOverlap(tutor.id, start, end, slotId, dto.tzOffsetMinutes);
     await this.ensureNoBookingOverlap(tutor.id, start, end);
 
     return this.prisma.availabilitySlot.update({
@@ -428,6 +478,17 @@ export class AvailabilityService {
       }),
     ]);
 
+    const templateSlots = await this.buildTemplateSlots(tutorId, windowStart, windowEnd);
+    const dedupe = new Set<string>();
+    const mergedSlots = [...slots, ...templateSlots]
+      .filter((s) => {
+        const key = `${s.startTime.toISOString()}::${s.endTime.toISOString()}`;
+        if (dedupe.has(key)) return false;
+        dedupe.add(key);
+        return true;
+      })
+      .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
     // build blocked list (clamped to window)
     const blocked: Array<[Date, Date]> = [];
     for (const b of bookings) {
@@ -439,7 +500,7 @@ export class AvailabilityService {
     const freeWindows: Array<{ startTime: string; endTime: string }> = [];
     const slices: Array<{ startTime: string; endTime: string }> = [];
 
-    for (const s of slots) {
+    for (const s of mergedSlots) {
       const clamped = this.clampInterval(s.startTime, s.endTime, windowStart, windowEnd);
       if (!clamped) continue;
 
