@@ -129,6 +129,8 @@ const TutorPublicProfile = lazy(() => import('./pages/tutor/public-profile'));
 const About = lazy(() => import('./pages/about'));
 const Privacy = lazy(() => import('./pages/privacy'));
 const Terms = lazy(() => import('./pages/terms'));
+const Blogs = lazy(() => import('./pages/blogs'));
+const BlogPost = lazy(() => import('./pages/blog-post'));
 
 const ForgotPassword = lazy(() => import('./pages/forgot-password'));
 const ResetPassword = ForgotPassword;
@@ -189,6 +191,7 @@ const AdminFinanceRecon = lazy(() => import('./pages/admin/finance/Recon'));
 const AdminAnalytics = lazy(() => import('./pages/admin/analytics'));
 const AdminFinance = lazy(() => import('./pages/admin/finance'));
 const AdminPayoutDashboard = lazy(() => import('./pages/admin/finance/PayoutDashboard'));
+const AdminBlogs = lazy(() => import('./pages/admin/blogs'));
 
 /** Role chooser */
 const ChooseRole = lazy(() => import('./pages/choose-role'));
@@ -289,6 +292,8 @@ function App() {
           <Route path="/about" element={<About />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/blogs" element={<Blogs />} />
+          <Route path="/blogs/:slug" element={<BlogPost />} />
           <Route path="/tutors" element={<Navigate to="/find-tutors" replace />} />
           <Route path="/become-a-tutor" element={<Navigate to="/become-tutor" replace />} />
         </Route>
@@ -397,6 +402,7 @@ function App() {
           <Route path="/admin/chat" element={<AdminMessages />} />
           <Route path="/admin/chat/:conversationId" element={<AdminMessages />} />
           <Route path="/admin/reviews" element={<AdminReviews />} />
+          <Route path="/admin/blogs" element={<AdminBlogs />} />
           <Route path="/admin/finance" element={<AdminFinance />} />
           <Route path="/admin/finance/payouts" element={<AdminPayoutDashboard />} />
           <Route path="/admin/finance/recon" element={<AdminFinanceRecon />} />

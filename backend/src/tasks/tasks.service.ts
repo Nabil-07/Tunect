@@ -18,6 +18,15 @@ export class TasksService {
     private notifier: NotifierService,
   ) {}
 
+  private platformFeePercent(hourlyRate?: number | null): number {
+    const defaultFee = Number(process.env.FEE_PERCENT ?? 20);
+    const rate = Number(hourlyRate ?? 0);
+    if (!Number.isFinite(rate) || rate <= 0) return defaultFee;
+    if (rate < 400) return 25;
+    if (rate < 700) return 18;
+    return 15;
+  }
+
   // 1) Every minute: send reminders for sessions starting within next 30 minutes
   @Interval(60 * 1000)
   async sendUpcomingSessionReminders() {
@@ -74,15 +83,74 @@ export class TasksService {
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async completePastSessions() {
     const now = new Date();
-    const updated = await this.prisma.booking.updateMany({
+    const bookings = await this.prisma.booking.findMany({
       where: {
         status: BookingStatus.CONFIRMED,
-        endTime: { not: null, lt: now }, // only complete if endTime exists
+        endTime: { not: null, lt: now },
       },
-      data: { status: BookingStatus.COMPLETED },
+      select: {
+        id: true,
+        isDemo: true,
+        tokensCharged: true,
+        tutorId: true,
+        tutor: { select: { hourlyRate: true } },
+      },
     });
-    if (updated.count > 0) {
-      this.logger.log(`Auto-completed ${updated.count} finished sessions.`);
+
+    let completedCount = 0;
+
+    for (const booking of bookings) {
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          const fresh = await tx.booking.findUnique({
+            where: { id: booking.id },
+            select: {
+              id: true,
+              status: true,
+              isDemo: true,
+              tokensCharged: true,
+              tutorId: true,
+              tutor: { select: { hourlyRate: true } },
+            },
+          });
+
+          if (!fresh || fresh.status !== BookingStatus.CONFIRMED) return;
+
+          await tx.booking.update({
+            where: { id: booking.id },
+            data: { status: BookingStatus.COMPLETED },
+          });
+
+          if (!fresh.isDemo && Number(fresh.tokensCharged) > 0) {
+            const tokens = Number(fresh.tokensCharged);
+            const feePercent = this.platformFeePercent(fresh.tutor?.hourlyRate ?? null);
+            const tutorShare = Math.max(0, (tokens * (100 - feePercent)) / 100);
+
+            await tx.tutorWallet.upsert({
+              where: { tutorId: fresh.tutorId },
+              update: { balance: { increment: tutorShare } },
+              create: { tutorId: fresh.tutorId, balance: tutorShare },
+            });
+
+            await tx.tutorWalletLedger.create({
+              data: {
+                tutorId: fresh.tutorId,
+                bookingId: fresh.id,
+                delta: tutorShare,
+                reason: 'BOOKING_EARNED',
+                note: `Auto-complete share for booking ${fresh.id}`,
+              },
+            });
+          }
+        });
+        completedCount += 1;
+      } catch (error) {
+        this.logger.warn(`Failed to auto-complete booking ${booking.id}: ${error}`);
+      }
+    }
+
+    if (completedCount > 0) {
+      this.logger.log(`Auto-completed ${completedCount} finished sessions.`);
     }
   }
 

@@ -1,41 +1,49 @@
 import React from "react";
 import { ChevronLeft, ChevronRight, Star } from "lucide-react";
+import api from "../lib/apiClient";
 
 type Testimonial = {
-  quote: string;
-  name: string;
-  subtitle: string;
-  avatar?: string;
+  id: string;
+  rating: number;
+  comment: string;
+  studentName: string;
+  studentAvatar?: string | null;
+  tutorName: string;
+  tutorSubject?: string;
 };
-
-const testimonials: Testimonial[] = [
-  {
-    quote:
-      '“Sarah made calculus finally click for me! Her teaching style is incredibly clear and patient. Went from struggling to getting A\'s in my college math courses.”',
-    name: "Michael Johnson",
-    subtitle: "Mathematics with Sarah Thompson",
-  },
-  {
-    quote:
-      "“Rajesh is an amazing teacher! His real-world experience at Google really shows. I landed my first programming job thanks to his guidance.”",
-    name: "Priya Sharma",
-    subtitle: "Python Programming with Rajesh Kumar",
-  },
-  {
-    quote:
-      "“The demo class helped me choose the right tutor. The token system is simple and transparent—no confusing subscriptions.”",
-    name: "Arjun Mehta",
-    subtitle: "IELTS Prep with Ayesha Khan",
-  },
-];
 
 const Testimonials: React.FC = () => {
   const [idx, setIdx] = React.useState(0);
+  const [loading, setLoading] = React.useState(true);
+  const [items, setItems] = React.useState<Testimonial[]>([]);
 
-  const prev = () => setIdx((i) => (i - 1 + testimonials.length) % testimonials.length);
-  const next = () => setIdx((i) => (i + 1) % testimonials.length);
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const { data } = await api.get<Testimonial[]>("/reviews/featured", { params: { limit: 6 } });
+        if (!mounted) return;
+        const list = Array.isArray(data) ? data.filter((r) => r.comment) : [];
+        setItems(list);
+        setIdx(0);
+      } catch {
+        if (!mounted) return;
+        setItems([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  const t = testimonials[idx];
+  const prev = () => setIdx((i) => (i - 1 + items.length) % items.length);
+  const next = () => setIdx((i) => (i + 1) % items.length);
+
+  const t = items[idx];
+  const canSlide = items.length > 1;
 
   return (
     <section className="w-full bg-white py-14">
@@ -48,48 +56,74 @@ const Testimonials: React.FC = () => {
         </p>
 
         <div className="relative mx-auto mt-10 max-w-3xl rounded-2xl bg-white p-8 shadow-md">
-          <div className="flex items-center justify-center gap-1">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Star key={i} className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-            ))}
-          </div>
-
-          <p className="mt-6 text-center text-lg text-slate-800 leading-relaxed">
-            {t.quote}
-          </p>
-
-          <div className="mt-6 flex items-center justify-center gap-3">
-            <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200" />
-            <div className="text-center">
-              <div className="font-semibold text-slate-900">{t.name}</div>
-              <div className="text-sm text-slate-600">{t.subtitle}</div>
+          {loading ? (
+            <div className="h-32 animate-pulse rounded-xl bg-slate-50" />
+          ) : items.length === 0 ? (
+            <div className="text-center text-slate-600">
+              <div className="text-lg font-semibold text-slate-900">Be the first to share feedback</div>
+              <p className="mt-2 text-sm text-slate-600">
+                After your session, leave a review to help other students pick the right tutor.
+              </p>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-center gap-1">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`h-5 w-5 ${
+                      i < Math.round(t.rating) ? "fill-yellow-400 text-yellow-400" : "text-slate-300"
+                    }`}
+                  />
+                ))}
+              </div>
 
-          <button
-            aria-label="Previous"
-            onClick={prev}
-            className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white p-2 shadow hover:bg-slate-50"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button
-            aria-label="Next"
-            onClick={next}
-            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white p-2 shadow hover:bg-slate-50"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
+              <p className="mt-6 text-center text-lg text-slate-800 leading-relaxed">
+                “{t.comment}”
+              </p>
 
-          {/* dots */}
-          <div className="mt-6 flex items-center justify-center gap-2">
-            {testimonials.map((_, i) => (
-              <span
-                key={i}
-                className={`h-2 w-2 rounded-full ${i === idx ? "bg-slate-900" : "bg-slate-300"}`}
-              />
-            ))}
-          </div>
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200">
+                  {t.studentAvatar ? (
+                    <img src={t.studentAvatar} alt={t.studentName} className="h-full w-full object-cover" />
+                  ) : null}
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-slate-900">{t.studentName}</div>
+                  <div className="text-sm text-slate-600">
+                    {t.tutorSubject ? `${t.tutorSubject} with ${t.tutorName}` : `Session with ${t.tutorName}`}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                aria-label="Previous"
+                onClick={prev}
+                disabled={!canSlide}
+                className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white p-2 shadow hover:bg-slate-50 disabled:opacity-40"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                aria-label="Next"
+                onClick={next}
+                disabled={!canSlide}
+                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white p-2 shadow hover:bg-slate-50 disabled:opacity-40"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+
+              {/* dots */}
+              <div className="mt-6 flex items-center justify-center gap-2">
+                {items.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`h-2 w-2 rounded-full ${i === idx ? "bg-slate-900" : "bg-slate-300"}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </section>

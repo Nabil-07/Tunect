@@ -5,7 +5,7 @@ import type { AvailabilitySlot } from '../../services/tutorService';
 import api from '../../lib/apiClient';
 
 type DayKey = string; // "YYYY-MM-DD"
-type SlotVM = { id?: string; start: string; end: string; title?: string; booked?: boolean };
+type SlotVM = { id?: string; start: string; end: string; title?: string; booked?: boolean; templateId?: string };
 type SlotsByDay = Record<DayKey, SlotVM[]>;
 type ToastType = 'error' | 'success' | 'warning';
 
@@ -17,6 +17,8 @@ type RecurringTemplate = {
   title?: string;
   isActive: boolean;
 };
+
+const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function ymKey(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
 function ymd(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
@@ -106,6 +108,7 @@ function buildTemplateSlots(month: Date, templates: RecurringTemplate[]): SlotsB
     if (!matches.length) continue;
     out[dayKey] = matches.map((t) => ({
       id: `template:${t.id}`,
+      templateId: t.id,
       start: clampHHMM(t.startTime),
       end: clampHHMM(t.endTime),
       title: t.title,
@@ -134,6 +137,14 @@ export default function TutorAvailability() {
   const [draftEnd,   setDraftEnd]   = useState('10:00');
   const [draftTitle, setDraftTitle] = useState<string>('');
   const [draftBooked, setDraftBooked] = useState<boolean>(false); // if the slot is booked
+
+  // template editor state
+  const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<RecurringTemplate | null>(null);
+  const [templateStart, setTemplateStart] = useState('09:00');
+  const [templateEnd, setTemplateEnd] = useState('10:00');
+  const [templateTitle, setTemplateTitle] = useState('');
+  const [templateActive, setTemplateActive] = useState(true);
 
   // Auto-hide toast after 4 seconds
   useEffect(() => {
@@ -246,6 +257,46 @@ export default function TutorAvailability() {
     setDraftTitle(item.title || '');
     setDraftBooked(!!item.booked);
     setEditorOpen(true);
+  }
+
+  function openTemplateEditor(templateId?: string) {
+    if (!templateId) return;
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) return;
+    setEditingTemplate(template);
+    setTemplateStart(clampHHMM(template.startTime));
+    setTemplateEnd(clampHHMM(template.endTime));
+    setTemplateTitle(template.title || '');
+    setTemplateActive(!!template.isActive);
+    setTemplateEditorOpen(true);
+  }
+
+  async function saveTemplate() {
+    if (!editingTemplate) return;
+    if (templateStart >= templateEnd) {
+      setToast({ message: 'End time must be after start time.', type: 'error' });
+      return;
+    }
+    try {
+      setLoading(true);
+      await api.patch(`/recurring-templates/${editingTemplate.id}`, {
+        startTime: templateStart,
+        endTime: templateEnd,
+        title: templateTitle?.trim() || undefined,
+        isActive: templateActive,
+      });
+      setToast({ message: 'Template updated successfully!', type: 'success' });
+      await loadMonth(month);
+    } catch (error: any) {
+      setToast({
+        message: error?.response?.data?.message || error?.message || 'Failed to update template.',
+        type: 'error',
+      });
+    } finally {
+      setLoading(false);
+      setTemplateEditorOpen(false);
+      setEditingTemplate(null);
+    }
   }
 
   async function saveDraft() {
@@ -502,17 +553,18 @@ export default function TutorAvailability() {
                     ) : (
                       <div className="space-y-1">
                         {templateSlots.map((s, idx) => (
-                          <div
+                          <button
                             key={`template-${s.start}-${idx}`}
-                            className="w-full text-left flex items-center justify-between text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1"
-                            title="Recurring template"
+                            className="w-full text-left flex items-center justify-between text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1 hover:bg-emerald-100/70"
+                            title="Edit recurring template"
+                            onClick={() => openTemplateEditor(s.templateId)}
                           >
                             <span className="truncate text-emerald-700">
                               <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
                               {s.title ? <span className="ml-1 text-emerald-700">• {s.title}</span> : null}
                             </span>
                             <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Template</span>
-                          </div>
+                          </button>
                         ))}
                         {daySlots.map((s, idx) => (
                           <button
@@ -549,7 +601,7 @@ export default function TutorAvailability() {
           )}
 
           <div className="mt-6 flex items-center justify-between">
-            <p className="text-xs text-slate-500">Templates are shown in green and can be edited from Recurring Templates.</p>
+            <p className="text-xs text-slate-500">Templates are shown in green and can be edited here.</p>
             <button
               disabled={loading || !dirty}
               onClick={persist}
@@ -589,7 +641,7 @@ export default function TutorAvailability() {
                     value={draftStart}
                     onChange={(e) => onStartChange(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2"
-                    disabled={draftBooked}
+                    disabled={draftBooked || loading}
                   />
                 </label>
                 <label className="text-sm">
@@ -599,7 +651,7 @@ export default function TutorAvailability() {
                     value={draftEnd}
                     onChange={(e) => onEndChange(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2"
-                    disabled={draftBooked}
+                    disabled={draftBooked || loading}
                   />
                 </label>
               </div>
@@ -611,6 +663,7 @@ export default function TutorAvailability() {
                   onChange={(e) => setDraftTitle(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2"
                   placeholder="e.g., Algebra practice"
+                  disabled={loading}
                 />
               </label>
 
@@ -620,14 +673,102 @@ export default function TutorAvailability() {
             </div>
 
             <div className="px-4 py-3 border-t flex items-center justify-end gap-2">
-              <button className="rounded-lg border px-4 py-2 hover:bg-slate-50" onClick={() => setEditorOpen(false)}>
+              <button
+                className="rounded-lg border px-4 py-2 hover:bg-slate-50"
+                onClick={() => setEditorOpen(false)}
+                disabled={loading}
+              >
                 Cancel
               </button>
               <button
                 className="rounded-lg bg-blue-600 text-white px-4 py-2 hover:bg-blue-700"
                 onClick={saveDraft}
+                disabled={loading}
               >
-                {editingIndex === null ? 'Add slot' : 'Save'}
+                {loading ? 'Saving...' : editingIndex === null ? 'Add slot' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Template editor */}
+      {templateEditorOpen && editingTemplate && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center px-3">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="font-semibold">
+                Edit template — {DAYS_OF_WEEK[editingTemplate.dayOfWeek] ?? 'Day'}
+              </div>
+              <button
+                className="p-1 rounded hover:bg-slate-100"
+                onClick={() => setTemplateEditorOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="block text-slate-600 mb-1">Start</span>
+                  <input
+                    type="time"
+                    value={templateStart}
+                    onChange={(e) => setTemplateStart(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2"
+                    disabled={loading}
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="block text-slate-600 mb-1">End</span>
+                  <input
+                    type="time"
+                    value={templateEnd}
+                    onChange={(e) => setTemplateEnd(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2"
+                    disabled={loading}
+                  />
+                </label>
+              </div>
+
+              <label className="text-sm block">
+                <span className="block text-slate-600 mb-1">Title (optional)</span>
+                <input
+                  value={templateTitle}
+                  onChange={(e) => setTemplateTitle(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="e.g., Weekly slots"
+                  disabled={loading}
+                />
+              </label>
+
+              <label className="text-sm flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={templateActive}
+                  onChange={(e) => setTemplateActive(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                  disabled={loading}
+                />
+                <span className="text-slate-700">Active template</span>
+              </label>
+            </div>
+
+            <div className="px-4 py-3 border-t flex items-center justify-end gap-2">
+              <button
+                className="rounded-lg border px-4 py-2 hover:bg-slate-50"
+                onClick={() => setTemplateEditorOpen(false)}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-lg bg-emerald-600 text-white px-4 py-2 hover:bg-emerald-700"
+                onClick={saveTemplate}
+                disabled={loading}
+              >
+                {loading ? 'Saving...' : 'Save Template'}
               </button>
             </div>
           </div>

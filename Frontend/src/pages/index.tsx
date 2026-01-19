@@ -9,6 +9,7 @@ import HeroTrending from '../components/HeroTrending';
 import SubjectsGrid from '../components/SubjectsGrid';
 import TrustSection from '../components/TrustSection';
 import Testimonials from '../components/Testimonials';
+import StatsStrip from '../components/StatsStrip';
 
 
 // Optional animations: load framer-motion only if present
@@ -111,31 +112,7 @@ export default function Home() {
       <TrustSection />
 
       {/* Stats Strip */}
-      <section className="w-full bg-slate-900 py-14">
-        <div className="container-px mx-auto">
-          <h2 className="text-center text-2xl sm:text-3xl font-bold text-white">Trusted by Learners Worldwide</h2>
-          <p className="mt-2 text-center text-white/80">
-            Join thousands of students and tutors who’ve made learning their passion
-          </p>
-
-          <div className="mt-10 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { v: '10,000+', l: 'Active Students' },
-              { v: '2,500+', l: 'Verified Tutors' },
-              { v: '50+', l: 'Countries Served' },
-              { v: '100,000+', l: 'Sessions Completed' },
-            ].map((s) => (
-              <div key={s.l} className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10" />
-                <div>
-                  <div className="text-2xl font-bold text-white">{s.v}</div>
-                  <div className="text-white/80">{s.l}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <StatsStrip />
 
       {/* Testimonials */}
       <Testimonials />

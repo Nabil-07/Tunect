@@ -131,6 +131,60 @@ export class ReviewsService {
     };
   }
 
+  /** Public: latest reviews with comments for homepage. */
+  async listFeatured(limit = 6) {
+    const take = Math.max(1, Math.min(limit, 12));
+    const items = await this.prisma.review.findMany({
+      where: {
+        comment: { not: null, notIn: [''] },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
+        studentId: true,
+        tutorId: true,
+      },
+    });
+
+    const studentIds = Array.from(new Set(items.map((r) => r.studentId)));
+    const tutorIds = Array.from(new Set(items.map((r) => r.tutorId)));
+
+    const [students, tutors] = await Promise.all([
+      this.prisma.student.findMany({
+        where: { id: { in: studentIds } },
+        select: { id: true, user: { select: { name: true, email: true, avatarUrl: true } } },
+      }),
+      this.prisma.tutor.findMany({
+        where: { id: { in: tutorIds } },
+        select: { id: true, subjects: true, user: { select: { name: true, email: true, avatarUrl: true } } },
+      }),
+    ]);
+
+    const studentMap = new Map(students.map((s) => [s.id, s]));
+    const tutorMap = new Map(tutors.map((t) => [t.id, t]));
+
+    return items.map((r) => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      studentName:
+        studentMap.get(r.studentId)?.user?.name ??
+        studentMap.get(r.studentId)?.user?.email?.split('@')[0] ??
+        'Student',
+      studentAvatar: studentMap.get(r.studentId)?.user?.avatarUrl ?? null,
+      tutorName:
+        tutorMap.get(r.tutorId)?.user?.name ??
+        tutorMap.get(r.tutorId)?.user?.email?.split('@')[0] ??
+        'Tutor',
+      tutorSubject: tutorMap.get(r.tutorId)?.subjects?.[0] ?? '',
+    }));
+  }
+
   /** Student deletes own review. */
   async removeMine(studentUserId: string, reviewId: string) {
     const review = await this.prisma.review.findUnique({ where: { id: reviewId } });

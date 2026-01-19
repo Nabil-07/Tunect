@@ -333,9 +333,10 @@ export async function getAvailability(range?: {
  * Create a single availability slot
  */
 export async function createSlot(startTime: string, endTime: string): Promise<AvailabilitySlot> {
+  const tzOffsetMinutes = new Date().getTimezoneOffset();
   const { data } = await api.post<{ id: string; tutorId: string; startTime: string; endTime: string; createdAt: string }>(
     '/availability/me',
-    { startTime, endTime }
+    { startTime, endTime, tzOffsetMinutes }
   );
   
   // Convert ISO timestamps to date/startTime/endTime format
@@ -360,6 +361,7 @@ export async function updateSlot(slotId: string, startTime?: string, endTime?: s
   const body: any = {};
   if (startTime) body.startTime = startTime;
   if (endTime) body.endTime = endTime;
+  body.tzOffsetMinutes = new Date().getTimezoneOffset();
   
   const { data } = await api.patch<{ id: string; tutorId: string; startTime: string; endTime: string; createdAt: string }>(
     `/availability/me/${slotId}`,

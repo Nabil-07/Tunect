@@ -31,6 +31,12 @@ export class ReviewsController {
     return this.reviews.listForTutor(tutorId, q);
   }
 
+  /** Public: Featured reviews with comments for homepage */
+  @Get('featured')
+  featured(@Query('limit') limit?: number) {
+    return this.reviews.listFeatured(Number(limit) || 6);
+  }
+
   /** Student deletes own review */
   @UseGuards(JwtAuthGuard)
   @Delete(':id')

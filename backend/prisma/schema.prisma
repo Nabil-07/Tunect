@@ -60,6 +60,22 @@ model AvailabilitySlot {
   @@index([tutorId, startTime])
 }
 
+model BlogPost {
+  id            String     @id @default(cuid())
+  title         String
+  slug          String     @unique
+  summary       String?
+  content       String
+  coverImageUrl String?
+  status        BlogStatus @default(DRAFT)
+  publishedAt   DateTime?
+  authorName    String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @default(now()) @updatedAt
+
+  @@index([status, publishedAt])
+}
+
 model BankImport {
   id                      String                    @id @default(cuid())
   filename   String
@@ -1117,6 +1133,11 @@ enum BanScope {
   BOOKINGS
   PAYOUTS
   MESSAGING
+}
+
+enum BlogStatus {
+  DRAFT
+  PUBLISHED
 }
 
 enum BanForfeitureType {

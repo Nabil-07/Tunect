@@ -638,9 +638,52 @@ export class TutorsService {
       select: { id: true, startTime: true, endTime: true },
     });
 
+    const windowStart = from ? new Date(from) : new Date(Date.now());
+    const windowEnd = to ? new Date(to) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const templates = await this.prisma.recurringTemplate.findMany({
+      where: { tutorId, isActive: true },
+      select: { dayOfWeek: true, startTime: true, endTime: true },
+    });
+
+    const templateSlots: Array<{ startTime: Date; endTime: Date }> = [];
+    if (templates.length > 0) {
+      const cursor = new Date(windowStart);
+      cursor.setHours(0, 0, 0, 0);
+      const endDay = new Date(windowEnd);
+      endDay.setHours(0, 0, 0, 0);
+
+      for (let d = new Date(cursor); d <= endDay; d.setDate(d.getDate() + 1)) {
+        const dayTemplates = templates.filter((t) => t.dayOfWeek === d.getDay());
+        if (dayTemplates.length === 0) continue;
+        for (const t of dayTemplates) {
+          const [sh, sm] = t.startTime.split(':').map(Number);
+          const [eh, em] = t.endTime.split(':').map(Number);
+          const start = new Date(d);
+          start.setHours(sh || 0, sm || 0, 0, 0);
+          const end = new Date(d);
+          end.setHours(eh || 0, em || 0, 0, 0);
+          if (end.getTime() <= start.getTime()) {
+            end.setDate(end.getDate() + 1);
+          }
+          if (end <= windowStart || start >= windowEnd) continue;
+          templateSlots.push({ startTime: start, endTime: end });
+        }
+      }
+    }
+
+    const dedupe = new Set<string>();
+    const merged = [...rows, ...templateSlots]
+      .filter((s) => {
+        const key = `${s.startTime.toISOString()}::${s.endTime.toISOString()}`;
+        if (dedupe.has(key)) return false;
+        dedupe.add(key);
+        return true;
+      })
+      .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
     // Ensure plain ISO strings (Nest/JSON would serialize Dates anyway, but be explicit)
-    return rows.map((s) => ({
-      id: s.id,
+    return merged.map((s) => ({
+      id: 'id' in s ? (s as any).id : undefined,
       startTime: s.startTime.toISOString(),
       endTime: s.endTime.toISOString(),
     }));
