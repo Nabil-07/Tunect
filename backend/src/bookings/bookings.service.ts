@@ -259,9 +259,9 @@ export class BookingsService {
 
         // Trigger conversation creation for demo bookings
         await this.chatTriggers.onDirectBookingCreated(
-          booking.id,
           dto.studentId!,
           dto.tutorId,
+          booking.id,
         );
 
         return booking;
@@ -394,9 +394,9 @@ export class BookingsService {
 
       // Trigger conversation creation for paid bookings
       await this.chatTriggers.onDirectBookingCreated(
-        booking.id,
         dto.studentId!,
         dto.tutorId,
+        booking.id,
       );
 
       return booking;
@@ -969,9 +969,9 @@ export class BookingsService {
 
     // Trigger conversation creation when slot is assigned
     await this.chatTriggers.onDirectBookingCreated(
-      bookingId,
       booking.studentId,
       booking.tutorId,
+      bookingId,
     );
 
     return this.prisma.booking.findUnique({ where: { id: bookingId } });
