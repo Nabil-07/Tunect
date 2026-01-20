@@ -270,7 +270,6 @@ export default function MySessions() {
               <h3 className="text-xl font-semibold text-slate-800 mb-4">Completed Sessions</h3>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {completedSessions.map((session) => {
-                  const meetingUrl = meetingLinks.get(session.id);
                   const statusMeta = getStatusLabel(session.status);
                   const isGroup = session.isGroupSession;
 
