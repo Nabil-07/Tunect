@@ -210,7 +210,7 @@ export default function CallPage() {
             console.log('LiveKit disconnected:', reason);
             // Only show "Call ended" if it was a normal disconnection, not a connection failure
             // Check if it's a user-initiated disconnect or if the session actually ended
-            if (reason === DisconnectReason.USER || reason === DisconnectReason.CLIENT_REQUESTED || reason === DisconnectReason.SERVER_SHUTDOWN) {
+            if (reason === DisconnectReason.CLIENT_INITIATED || reason === DisconnectReason.SERVER_SHUTDOWN) {
               setDisconnected(true);
             } else {
               // Connection error - show error message instead of "Call ended"
