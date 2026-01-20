@@ -1,8 +1,8 @@
 // src/pages/student/cart.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ShoppingCart, CreditCard, ShieldCheck, CheckCircle } from 'lucide-react';
-import { getTutorById } from '../../services/tutorService';
+import { ShoppingCart, CreditCard, ShieldCheck, CheckCircle, Calendar, Clock, TrendingUp } from 'lucide-react';
+import { getTutorById, getTutorAvailability } from '../../services/tutorService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDisplayCurrency } from '../../hooks/useDisplayCurrency';
 import { formatCurrency } from '../../utils/currency';
@@ -32,6 +32,13 @@ export default function Cart() {
   const [qty, setQty] = useState<number>(5); // tokens count
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<Array<{ startTime: string; endTime: string }>>([]);
+  const [activityInfo, setActivityInfo] = useState<{
+    lastActiveDate: string | null;
+    activeDaysCount: number;
+    activityFrequency: string;
+  } | null>(null);
+  const [loadingSlots, setLoadingSlots] = useState(true);
 
   useEffect(() => {
     if (!tutorId) {
@@ -51,8 +58,26 @@ export default function Cart() {
           pricePerHour: t.pricePerHour,
           avatarUrl: t.avatarUrl ?? null,
         });
+        
+        // Load availability slots and activity info
+        const from = new Date();
+        const to = new Date();
+        to.setDate(to.getDate() + 14); // Next 14 days
+        
+        try {
+          const [slots, activity] = await Promise.all([
+            getTutorAvailability(tutorId, from.toISOString(), to.toISOString()),
+            api.get(`/tutors/${tutorId}/activity`).then(res => res.data).catch(() => null),
+          ]);
+          
+          setAvailableSlots(Array.isArray(slots) ? slots.slice(0, 10) : []); // Show first 10 slots
+          setActivityInfo(activity);
+        } catch (e) {
+          console.error('Failed to load tutor info:', e);
+        }
       } finally {
         setLoading(false);
+        setLoadingSlots(false);
       }
     })();
   }, [tutorId, nav]);
@@ -209,6 +234,63 @@ export default function Cart() {
               You need at least 5 tokens to book a tutor. First session can be a free demo.
             </p>
           </div>
+
+          {/* Tutor Activity Info */}
+          {activityInfo && (
+            <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="h-4 w-4 text-ocean-600" />
+                <h3 className="text-sm font-semibold text-slate-700">Tutor Activity</h3>
+              </div>
+              <div className="space-y-2 text-sm">
+                {activityInfo.lastActiveDate && (
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>Last active: {new Date(activityInfo.lastActiveDate).toLocaleDateString()}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-slate-700 font-medium">
+                  <Calendar className="h-3.5 w-3.5" />
+                  <span>{activityInfo.activityFrequency}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Available Slots Preview */}
+          {loadingSlots ? (
+            <div className="mt-6 h-24 animate-pulse rounded-lg bg-slate-100" />
+          ) : availableSlots.length > 0 ? (
+            <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Available Slots (Next 14 Days)
+              </h3>
+              <div className="space-y-2">
+                {availableSlots.slice(0, 5).map((slot, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
+                    <Clock className="h-3 w-3" />
+                    <span>
+                      {new Date(slot.startTime).toLocaleDateString()} {' '}
+                      {new Date(slot.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {' '}
+                      {new Date(slot.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+                {availableSlots.length > 5 && (
+                  <p className="text-xs text-slate-500 italic">
+                    +{availableSlots.length - 5} more slots available
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm text-amber-700">
+                No available slots in the next 14 days. Check back later or contact the tutor.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Summary */}

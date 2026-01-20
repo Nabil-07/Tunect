@@ -1,11 +1,12 @@
 // src/pages/tutor/sessions.tsx
 import { useEffect, useState } from 'react';
 import { getMySessions } from '../../services/sessionService';
-import { convertToGroupSession, getBookingDetails } from '../../services/bookingsService';
-import { Users, Clock, Calendar, UserPlus, X, IndianRupee } from 'lucide-react';
+import { convertToGroupSession, getBookingDetails, cancelBooking } from '../../services/bookingsService';
+import { Users, Clock, Calendar, UserPlus, X, IndianRupee, XCircle } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 import { differenceInHours } from 'date-fns';
 import Loader from '../../components/common/Loader';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 type Session = {
   id: string;
@@ -36,6 +37,9 @@ export default function MySessions() {
   const [pricePerStudent, setPricePerStudent] = useState(0.5);
   const [converting, setConverting] = useState(false);
   const [meetingLinks, setMeetingLinks] = useState<Map<string, string>>(new Map());
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [selectedCancelSession, setSelectedCancelSession] = useState<Session | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     loadSessions();
@@ -259,6 +263,18 @@ export default function MySessions() {
                       Convert to Group
                     </button>
                   )}
+                  {(session.status === 'UPCOMING' || session.status === 'CONFIRMED') && (
+                    <button
+                      onClick={() => {
+                        setSelectedCancelSession(session);
+                        setCancelModalOpen(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-red-300 bg-white text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Cancel Session
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -347,6 +363,36 @@ export default function MySessions() {
           </div>
         </div>
       )}
+
+      {/* Cancel Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={cancelModalOpen}
+        onClose={() => {
+          setCancelModalOpen(false);
+          setSelectedCancelSession(null);
+        }}
+        onConfirm={async () => {
+          if (!selectedCancelSession) return;
+          try {
+            setCancelling(true);
+            await cancelBooking(selectedCancelSession.id);
+            showSuccess('Session cancelled successfully. 1 token has been refunded to the student.');
+            setCancelModalOpen(false);
+            setSelectedCancelSession(null);
+            loadSessions();
+          } catch (err: any) {
+            showError(err?.response?.data?.message || 'Failed to cancel session');
+          } finally {
+            setCancelling(false);
+          }
+        }}
+        title="Cancel Session"
+        message="Are you sure you want to cancel this session? The student will receive 1 token refund, and you will receive 1 demerit point. If you reach 3 demerit points, your hourly rate will be deducted from your payout."
+        confirmText="Yes, Cancel"
+        cancelText="No, Keep It"
+        variant="warning"
+        isLoading={cancelling}
+      />
     </div>
   );
 }

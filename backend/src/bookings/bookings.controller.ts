@@ -257,7 +257,7 @@ export class BookingsController {
   @ApiOperation({ summary: 'Cancel booking (refund tokens if paid)' })
   @ApiParam({ name: 'id', required: true, description: 'Booking ID' })
   @Delete(':id')
-  @Roles(Role.STUDENT, Role.ADMIN)
+  @Roles(Role.STUDENT, Role.TUTOR, Role.ADMIN)
   @UseGuards(RolesGuard)
   cancel(@Param('id') id: string, @CurrentUser('sub') actorUserId: string) {
     return this.service.cancel(id, actorUserId);
@@ -272,11 +272,14 @@ export class BookingsController {
   createGroupSession(
     @Body() dto: CreateGroupBookingDto,
     @CurrentUser('tutorId') tutorId: string,
+    @Headers('x-timezone') tzHeader?: string,
+    @Query('tz') tzQuery?: string,
   ) {
     if (!tutorId) {
       throw new NotFoundException('Tutor account not found for logged-in user');
     }
-    return this.service.createGroupSession(dto, tutorId);
+    const tz = tzQuery || tzHeader || 'UTC';
+    return this.service.createGroupSession(dto, tutorId, tz);
   }
 
   @ApiOperation({ summary: 'Get available group sessions to join' })

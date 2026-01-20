@@ -16,7 +16,9 @@ export class LivekitController {
   @UseGuards(JwtAuthGuard)
   @Post('token')
   async createToken(@Req() req: any, @Body() body: LivekitTokenRequest) {
-    const userId = req.user?.userId || req.user?.sub;
-    return this.livekit.createToken(userId, body?.bookingId);
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const tutorId = req.user?.tutorId;
+    const studentId = req.user?.studentId;
+    return this.livekit.createToken(userId, body?.bookingId, tutorId, studentId);
   }
 }

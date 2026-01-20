@@ -159,8 +159,15 @@ export default function MyBookings() {
       const upc: Booking[] =
         (data?.upcoming as Booking[]) ?? byStatus("CONFIRMED");
 
-      const comp: Booking[] =
-        (data?.completed as Booking[]) ?? byStatus("COMPLETED");
+      // Trust backend's completed array (based on endTime < now)
+      // Also include any bookings with endTime in the past that aren't canceled
+      const backendCompleted = (data?.completed as Booking[]) ?? [];
+      const frontendCompleted = all.filter(
+        (b) => b.endTime && new Date(b.endTime) < new Date() && b.status !== "CANCELED"
+      );
+      const comp: Booking[] = Array.from(
+        new Map([...backendCompleted, ...frontendCompleted].map((b) => [b.id, b])).values()
+      );
 
       // Sorts
       const getCreated = (b: Booking) =>
@@ -242,23 +249,35 @@ export default function MyBookings() {
   }
 
   async function submitReview() {
-    if (!reviewBooking) return;
+    if (!reviewBooking || !reviewBooking.id) {
+      showError("Invalid booking selected.");
+      return;
+    }
     if (reviewRating < 1 || reviewRating > 5) {
       showError("Please select a rating.");
+      return;
+    }
+    // Ensure bookingId is a valid UUID string
+    const bookingId = String(reviewBooking.id).trim();
+    if (!bookingId || bookingId.length < 10) {
+      showError("Invalid booking ID.");
       return;
     }
     try {
       setReviewSubmitting(true);
       await createReview({
-        bookingId: reviewBooking.id,
+        bookingId,
         rating: reviewRating,
         comment: reviewComment.trim() || undefined,
       });
       showSuccess("Thanks for your review!");
-      setReviewMap((prev) => new Map(prev).set(reviewBooking.id, reviewRating));
+      setReviewMap((prev) => new Map(prev).set(bookingId, reviewRating));
       setReviewOpen(false);
+      await refresh(); // Refresh to update review status
     } catch (err: any) {
-      showError(err.response?.data?.message || "Failed to submit review");
+      const errorMsg = err.response?.data?.message || err.message || "Failed to submit review";
+      console.error("Review submission error:", err);
+      showError(errorMsg);
     } finally {
       setReviewSubmitting(false);
     }

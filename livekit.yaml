@@ -1,0 +1,9 @@
+port: 7880
+
+rtc:
+  udp_port_range:
+    start: 40000
+    end: 40020
+
+keys:
+  249fc3f1c452325106c8489877667917: a9ccf04d6b76452fe8ea33156a1b32b120892e55ee16d6f5f7bca111ca7d74eb

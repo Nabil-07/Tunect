@@ -107,9 +107,52 @@ export default function CallPage() {
       return;
     }
     fetchLivekitToken(bookingId)
-      .then((res) => setToken(res.token))
+      .then((res) => {
+        console.log('LiveKit token response:', res);
+        // Handle different response structures
+        let tokenString: string | undefined;
+        
+        // Check if token is directly a string
+        if (typeof res.token === 'string') {
+          tokenString = res.token;
+        }
+        // Check if token is nested in data
+        else if ((res as any).data?.token && typeof (res as any).data.token === 'string') {
+          tokenString = (res as any).data.token;
+        }
+        // Check if the entire response is the token string
+        else if (typeof res === 'string') {
+          tokenString = res;
+        }
+        // Check if token object has a value property (AccessToken serialization issue)
+        else if (res.token && typeof res.token === 'object') {
+          console.warn('Token is an object, attempting to extract:', res.token);
+          // Try common properties that might contain the JWT string
+          const tokenObj = res.token as any;
+          tokenString = tokenObj.value || tokenObj.jwt || tokenObj.token || tokenObj.toString?.() || tokenObj.toJwt?.();
+          
+          // If still not a string, try to find any string property
+          if (!tokenString || typeof tokenString !== 'string') {
+            for (const key in tokenObj) {
+              if (typeof tokenObj[key] === 'string' && tokenObj[key].length > 50) {
+                tokenString = tokenObj[key];
+                break;
+              }
+            }
+          }
+        }
+        
+        if (!tokenString || typeof tokenString !== 'string' || tokenString.length < 10) {
+          console.error('Invalid token format - received:', res);
+          setAccessDenied('Failed to get valid token. Please try again.');
+          return;
+        }
+        
+        setToken(tokenString);
+      })
       .catch((err: any) => {
-        const message = err?.response?.data?.message || "Access denied";
+        console.error('Failed to fetch LiveKit token:', err);
+        const message = err?.response?.data?.message || err?.message || "Access denied";
         setAccessDenied(message);
       });
   }, [bookingId, data, me]);
@@ -160,10 +203,27 @@ export default function CallPage() {
         <div className="p-6 text-slate-700">Call ended.</div>
       ) : (
         <LiveKitRoom
-          token={token}
-          serverUrl={serverUrl}
+          token={token!}
+          serverUrl={serverUrl!}
           connect={true}
-          onDisconnected={() => setDisconnected(true)}
+          onDisconnected={(reason) => {
+            console.log('LiveKit disconnected:', reason);
+            // Only show "Call ended" if it was a normal disconnection, not a connection failure
+            // Check if it's a user-initiated disconnect or if the session actually ended
+            if (reason === 'USER' || reason === 'CLIENT_REQUESTED' || reason === 'SERVER_SHUTDOWN') {
+              setDisconnected(true);
+            } else {
+              // Connection error - show error message instead of "Call ended"
+              const errorMsg = reason 
+                ? `Connection lost: ${reason}` 
+                : 'Unable to connect to LiveKit server. Please check your network connection and ensure the LiveKit server is accessible.';
+              setAccessDenied(errorMsg);
+            }
+          }}
+          onError={(error) => {
+            console.error('LiveKit error:', error);
+            setAccessDenied(`Connection error: ${error.message || 'Failed to connect to LiveKit server. Please check your network connection.'}`);
+          }}
           className="h-full"
         >
           <div className="grid h-[calc(100vh-56px)] grid-cols-1 gap-4 p-4 lg:grid-cols-[1fr_280px]">

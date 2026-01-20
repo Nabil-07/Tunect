@@ -771,6 +771,8 @@ model Tutor {
   country             String?
   isTrending          Boolean               @default(false)
   tutorTid            String?               @unique(map: "tutor_tid_unique") @map("tutor_tid")
+  demeritPoints       Int                   @default(0)
+  lastDemeritReset    DateTime?
   assignments         Assignment[]
   slots               AvailabilitySlot[]
   bookings            Booking[]
@@ -1193,6 +1195,7 @@ enum WalletReason {
   ADJUSTMENT
   PAYOUT
   FORFEITED
+  DEMERIT_PENALTY
 }
 
 enum SupportTicketStatus {
