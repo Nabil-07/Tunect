@@ -10,7 +10,7 @@ import {
   useParticipants,
   useTracks,
 } from "@livekit/components-react";
-import { Track, type Participant } from "livekit-client";
+import { Track, type Participant, DisconnectReason } from "livekit-client";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
 import { useToast } from "../../contexts/ToastContext";
 import { getTokenPayload } from "../../lib/apiClient";
@@ -210,12 +210,12 @@ export default function CallPage() {
             console.log('LiveKit disconnected:', reason);
             // Only show "Call ended" if it was a normal disconnection, not a connection failure
             // Check if it's a user-initiated disconnect or if the session actually ended
-            if (reason === 'USER' || reason === 'CLIENT_REQUESTED' || reason === 'SERVER_SHUTDOWN') {
+            if (reason === DisconnectReason.USER || reason === DisconnectReason.CLIENT_REQUESTED || reason === DisconnectReason.SERVER_SHUTDOWN) {
               setDisconnected(true);
             } else {
               // Connection error - show error message instead of "Call ended"
-              const errorMsg = reason 
-                ? `Connection lost: ${reason}` 
+              const errorMsg = reason !== undefined
+                ? `Connection lost: ${DisconnectReason[reason] || reason}` 
                 : 'Unable to connect to LiveKit server. Please check your network connection and ensure the LiveKit server is accessible.';
               setAccessDenied(errorMsg);
             }

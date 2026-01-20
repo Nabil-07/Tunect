@@ -271,9 +271,6 @@ export default function MySessions() {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {completedSessions.map((session) => {
                   const meetingUrl = meetingLinks.get(session.id);
-                  const joinUrl = meetingUrl?.startsWith('livekit:') || meetingUrl?.startsWith('webrtc:')
-                    ? `/class/${session.id}`
-                    : meetingUrl;
                   const statusMeta = getStatusLabel(session.status);
                   const isGroup = session.isGroupSession;
 
