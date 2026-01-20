@@ -15,14 +15,22 @@ export class LivekitService {
   ) {}
 
   private getApiKey() {
-    return this.cfg.get<string>('LIVEKIT_API_KEY') || '';
+    const key = this.cfg.get<string>('LIVEKIT_API_KEY') || '';
+    if (!key) {
+      this.logger.warn('LIVEKIT_API_KEY is empty or not set');
+    }
+    return key;
   }
 
   private getApiSecret() {
-    return this.cfg.get<string>('LIVEKIT_API_SECRET') || '';
+    const secret = this.cfg.get<string>('LIVEKIT_API_SECRET') || '';
+    if (!secret) {
+      this.logger.warn('LIVEKIT_API_SECRET is empty or not set');
+    }
+    return secret;
   }
 
-  async createToken(userId: string, bookingId: string) {
+  async createToken(userId: string, bookingId: string, tutorId?: string, studentId?: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
       select: {
@@ -63,8 +71,33 @@ export class LivekitService {
       throw new ForbiddenException('Call window not active');
     }
 
-    const isTutor = booking.tutorId === userId;
-    const isStudent = booking.studentId === userId;
+    // Check if user is tutor or student by comparing tutorId/studentId from JWT
+    // If not provided, fallback to looking up by userId
+    let isTutor = false;
+    let isStudent = false;
+
+    if (tutorId) {
+      isTutor = booking.tutorId === tutorId;
+    }
+    if (studentId) {
+      isStudent = booking.studentId === studentId;
+    }
+
+    // Fallback: if tutorId/studentId not provided, look up from userId
+    if (!isTutor && !isStudent) {
+      const [tutor, student] = await Promise.all([
+        this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } }),
+        this.prisma.student.findUnique({ where: { userId }, select: { id: true } }),
+      ]);
+
+      if (tutor) {
+        isTutor = booking.tutorId === tutor.id;
+      }
+      if (student) {
+        isStudent = booking.studentId === student.id;
+      }
+    }
+
     if (!isTutor && !isStudent) {
       throw new ForbiddenException('You are not part of this booking');
     }
@@ -72,7 +105,8 @@ export class LivekitService {
     const apiKey = this.getApiKey();
     const apiSecret = this.getApiSecret();
     if (!apiKey || !apiSecret) {
-      this.logger.error('LiveKit API credentials missing');
+      this.logger.error(`LiveKit API credentials missing - Key: ${apiKey ? 'present' : 'missing'}, Secret: ${apiSecret ? 'present' : 'missing'}`);
+      this.logger.error(`Environment check - LIVEKIT_API_KEY exists: ${!!this.cfg.get<string>('LIVEKIT_API_KEY')}, LIVEKIT_API_SECRET exists: ${!!this.cfg.get<string>('LIVEKIT_API_SECRET')}`);
       throw new ForbiddenException('LiveKit is not configured');
     }
 
@@ -89,8 +123,25 @@ export class LivekitService {
       canPublishData: true,
     });
 
+    // toJwt() is async in livekit-server-sdk v2.15+ and returns a Promise<string>
+    let jwtToken: string;
+    try {
+      const jwtResult = token.toJwt();
+      // Always await since toJwt() returns Promise<string> in v2.15+
+      jwtToken = await jwtResult;
+    } catch (error) {
+      this.logger.error('Failed to generate JWT token:', error);
+      throw new ForbiddenException('Failed to generate token');
+    }
+    
+    // Ensure we return a string
+    if (typeof jwtToken !== 'string' || jwtToken.length === 0) {
+      this.logger.error('Token.toJwt() did not return a valid string:', typeof jwtToken, jwtToken);
+      throw new ForbiddenException('Failed to generate token');
+    }
+    
     return {
-      token: token.toJwt(),
+      token: jwtToken,
       room: bookingId,
       identity: userId,
     };

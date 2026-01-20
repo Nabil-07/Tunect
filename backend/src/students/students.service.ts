@@ -40,14 +40,18 @@ export class StudentsService {
 
     const [completedCount, monthlyBookings] = await Promise.all([
       this.prisma.booking.count({
-        where: { studentId: user.student.id, status: BookingStatus.COMPLETED },
+        where: {
+          studentId: user.student.id,
+          endTime: { not: null, lt: now },
+          status: { not: BookingStatus.CANCELED },
+        },
       }),
       this.prisma.booking.findMany({
         where: {
           studentId: user.student.id,
-          status: BookingStatus.COMPLETED,
+          endTime: { not: null, lt: now },
+          status: { not: BookingStatus.CANCELED },
           startTime: { gte: startOfMonth },
-          endTime: { not: null },
         },
         select: { startTime: true, endTime: true },
       }),

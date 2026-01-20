@@ -462,7 +462,10 @@ export class TutorsService {
     });
     if (!t) throw new NotFoundException('Tutor not found for logged-in user');
 
-    // Get active students count (students with CONFIRMED or COMPLETED bookings)
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Get active students count (students with confirmed/completed sessions)
     const activeStudentsResult = await this.prisma.booking.groupBy({
       by: ['studentId'],
       where: {
@@ -472,34 +475,50 @@ export class TutorsService {
     });
     const activeStudentsCount = activeStudentsResult.length;
 
-    // Get total earnings and sessions completed
+    // Completed sessions based on endTime (even if status not updated yet)
     const completedBookings = await this.prisma.booking.findMany({
       where: {
         tutorId,
-        status: 'COMPLETED',
+        endTime: { not: null, lt: now },
+        status: { not: 'CANCELED' },
+        isDemo: false,
       },
       select: {
+        id: true,
+        endTime: true,
+        isDemo: true,
         tokensCharged: true,
+        tutor: { select: { hourlyRate: true } },
       },
     });
 
-    const totalEarnings = completedBookings.reduce((sum, b) => sum + Number(b.tokensCharged || 0), 0);
     const sessionsCompleted = completedBookings.length;
 
-    // Get monthly earnings (this month)
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthlyBookings = await this.prisma.booking.findMany({
-      where: {
-        tutorId,
-        status: 'COMPLETED',
-        endTime: { gte: startOfMonth },
-      },
-      select: {
-        tokensCharged: true,
-      },
-    });
-    const monthlyEarnings = monthlyBookings.reduce((sum, b) => sum + Number(b.tokensCharged || 0), 0);
+    const platformFeePercent = (hourlyRate?: number | null) => {
+      const defaultFee = Number(process.env.FEE_PERCENT ?? 20);
+      const rate = Number(hourlyRate ?? 0);
+      if (!Number.isFinite(rate) || rate <= 0) return defaultFee;
+      if (rate < 400) return 25;
+      if (rate < 700) return 18;
+      return 15;
+    };
+
+    const totalEarnings = completedBookings.reduce((sum, b) => {
+      const tokens = Number(b.tokensCharged || 0);
+      if (!tokens) return sum;
+      const fee = platformFeePercent(b.tutor?.hourlyRate ?? null);
+      const share = Math.max(0, (tokens * (100 - fee)) / 100);
+      return sum + share;
+    }, 0);
+
+    const monthlyBookings = completedBookings.filter((b) => b.endTime && new Date(b.endTime) >= startOfMonth);
+    const monthlyEarnings = monthlyBookings.reduce((sum, b) => {
+      const tokens = Number(b.tokensCharged || 0);
+      if (!tokens) return sum;
+      const fee = platformFeePercent(b.tutor?.hourlyRate ?? null);
+      const share = Math.max(0, (tokens * (100 - fee)) / 100);
+      return sum + share;
+    }, 0);
 
     // Get rating and reviews
     const reviews = await this.prisma.review.findMany({
@@ -617,6 +636,81 @@ export class TutorsService {
     });
 
     return this.getMe(t.id);
+  }
+
+  // ---------- TUTOR ACTIVITY INFO ----------
+  async getActivityInfo(tutorId: string) {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    
+    // Get last active date (last booking or slot creation)
+    const [lastBooking, lastSlot] = await Promise.all([
+      this.prisma.booking.findFirst({
+        where: {
+          tutorId,
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      this.prisma.availabilitySlot.findFirst({
+        where: {
+          tutorId,
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+    ]);
+    
+    const lastActive = lastBooking?.createdAt || lastSlot?.createdAt || null;
+    
+    // Calculate activity frequency (days active in last 30 days)
+    const activeDays = new Set<string>();
+    
+    // Count days from bookings
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        tutorId,
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      select: { createdAt: true },
+    });
+    bookings.forEach(b => {
+      const day = b.createdAt.toISOString().split('T')[0];
+      activeDays.add(day);
+    });
+    
+    // Count days from slots
+    const slots = await this.prisma.availabilitySlot.findMany({
+      where: {
+        tutorId,
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      select: { createdAt: true },
+    });
+    slots.forEach(s => {
+      const day = s.createdAt.toISOString().split('T')[0];
+      activeDays.add(day);
+    });
+    
+    const activeDaysCount = activeDays.size;
+    let activityFrequency = 'Inactive';
+    if (activeDaysCount >= 20) {
+      activityFrequency = 'Active almost daily';
+    } else if (activeDaysCount >= 10) {
+      activityFrequency = 'Active frequently';
+    } else if (activeDaysCount >= 5) {
+      activityFrequency = 'Active 2-3 days per week';
+    } else if (activeDaysCount >= 1) {
+      activityFrequency = 'Active occasionally';
+    }
+    
+    return {
+      lastActiveDate: lastActive?.toISOString() || null,
+      activeDaysCount,
+      activityFrequency,
+    };
   }
 
   // ---------- AVAILABILITY ----------

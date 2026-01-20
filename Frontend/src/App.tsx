@@ -142,6 +142,7 @@ const AccountSecurity = lazy(() => import('./pages/account/security'));
 const StudentDashboard = lazy(() => import('./pages/student/dashboard'));
 const StudentProfile = lazy(() => import('./pages/student/profile'));
 const StudentBookings = lazy(() => import('./pages/student/bookings'));
+const StudentSessions = lazy(() => import('./pages/student/sessions'));
 const StudentChat = lazy(() => import('./pages/student/chat'));
 const StudentNotifications = lazy(() => import('./pages/student/notifications'));
 const StudentFavorites = lazy(() => import('./pages/student/favorites'));
@@ -328,6 +329,7 @@ function App() {
           <Route path="/student/dashboard" element={<StudentDashboard />} />
           <Route path="/student/profile" element={<StudentProfile />} />
           <Route path="/student/bookings" element={<StudentBookings />} />
+          <Route path="/student/sessions" element={<StudentSessions />} />
           <Route path="/student/token-balance" element={<TokenBalance />} />
           <Route path="/student/messages" element={<StudentChat />} />
           <Route path="/student/chat" element={<StudentChat />} />

@@ -134,6 +134,12 @@ export class TutorsController {
     return this.svc.getByIdOrTid(idOrTid);
   }
 
+  @ApiOperation({ summary: 'Get tutor activity info (last active, frequency)' })
+  @Get(':id/activity')
+  getActivity(@Param('id') tutorId: string) {
+    return this.svc.getActivityInfo(tutorId);
+  }
+
   /* === Availability for a tutor === */
   @ApiOperation({ summary: 'List availability slots for a tutor' })
   @ApiParam({ name: 'id', required: true, description: 'Tutor ID' })

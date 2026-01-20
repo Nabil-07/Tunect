@@ -160,24 +160,26 @@ export default function StudentDashboard() {
       }
     })();
 
-    // Load student stats
+    // Load student stats - call /students/me directly for stats
     (async () => {
       try {
-        const meRes = await getMe();
+        // Call /students/me directly to get hoursStudied and sessionsCompleted
+        const meRes = await api.get('/students/me');
+        const studentData = meRes?.data?.student;
         
-        if (isMounted) {
+        if (isMounted && studentData) {
           setHoursStudied(
-            typeof meRes?.student?.hoursStudied === 'number' ? meRes.student.hoursStudied : null
+            typeof studentData?.hoursStudied === 'number' ? studentData.hoursStudied : null
           );
           setSessionsCompleted(
-            typeof meRes?.student?.sessionsCompleted === 'number'
-              ? meRes.student.sessionsCompleted
+            typeof studentData?.sessionsCompleted === 'number'
+              ? studentData.sessionsCompleted
               : null
           );
 
           const subjects: SubjectStat[] =
-            Array.isArray(meRes?.student?.subjectProgress)
-              ? meRes.student.subjectProgress
+            Array.isArray(studentData?.subjectProgress)
+              ? studentData.subjectProgress
                   .map((s: any) => ({
                     name: String(s?.name ?? 'Subject'),
                     progress: clampPercent(s?.progress),
@@ -188,6 +190,16 @@ export default function StudentDashboard() {
         }
       } catch (e) {
         console.error('Failed to load student stats:', e);
+        // Fallback: try getMe() as backup
+        try {
+          const meRes = await getMe();
+          if (isMounted && meRes?.student) {
+            setHoursStudied(meRes.student.hoursStudied ?? null);
+            setSessionsCompleted(meRes.student.sessionsCompleted ?? null);
+          }
+        } catch (e2) {
+          console.error('Fallback getMe() also failed:', e2);
+        }
       } finally {
         if (isMounted) setLoadingStats(false);
       }

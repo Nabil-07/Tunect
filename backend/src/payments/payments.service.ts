@@ -30,11 +30,19 @@ export class PaymentsService {
     private prisma: PrismaService,
     private ledger: TokenLedgerService,
   ) {
-    const key_id = process.env.RAZORPAY_KEY_ID;
-    const key_secret = process.env.RAZORPAY_KEY_SECRET;
+    // Try both env var naming conventions
+    const key_id = process.env.RAZORPAY_KEY_ID || process.env.RZP_KEY_ID;
+    const key_secret = process.env.RAZORPAY_KEY_SECRET || process.env.RZP_KEY_SECRET;
     if (key_id && key_secret) {
-      this.razor = new Razorpay({ key_id, key_secret });
+      try {
+        this.razor = new Razorpay({ key_id, key_secret });
+        this.logger.log('Razorpay initialized successfully');
+      } catch (e) {
+        this.logger.error('Failed to initialize Razorpay', e);
+        this.razor = undefined;
+      }
     } else {
+      this.logger.warn('Razorpay keys not found. Payment features will be disabled.');
       this.razor = undefined;
     }
   }
@@ -202,7 +210,7 @@ export class PaymentsService {
       orderId: order.id,
       amount: amountInMinor,
       currency: 'INR',
-      keyId: process.env.RAZORPAY_KEY_ID!,
+      keyId: process.env.RAZORPAY_KEY_ID || process.env.RZP_KEY_ID || '',
       paymentId: payment.id,
     };
   }
@@ -214,7 +222,7 @@ export class PaymentsService {
     });
     if (!payment) throw new BadRequestException('Payment not found for user');
 
-    const secret = process.env.RAZORPAY_KEY_SECRET as string;
+    const secret = (process.env.RAZORPAY_KEY_SECRET || process.env.RZP_KEY_SECRET) as string;
     if (!secret) throw new BadRequestException('Razorpay secret not configured');
 
     const computed = crypto

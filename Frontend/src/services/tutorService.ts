@@ -1,4 +1,5 @@
 import { http as api } from '../api/http';
+import { getTutorAvailability } from './bookingsService';
 
 /* ---------- Types ---------- */
 
@@ -186,6 +187,9 @@ export async function getTutor(id: string) {
   return normalizeTutor(data);
 }
 export const getTutorById = getTutor;
+
+// Re-export getTutorAvailability from bookingsService for convenience
+export { getTutorAvailability };
 
 export async function getRecommendedTutors(limit = 6) {
   const { data } = await api.get<ListResponse<any> | any[]>('/tutors', {

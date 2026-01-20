@@ -52,6 +52,7 @@ const STUDENT_CENTER = [
   { to: '/find-tutors', label: 'Find Tutor' },
   { to: '/student/dashboard', label: 'Dashboard' },
   { to: '/student/bookings', label: 'Bookings' },
+  { to: '/student/sessions', label: 'Sessions' },
   { to: '/student/messages', label: 'Messages' },
 ];
 

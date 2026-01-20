@@ -391,6 +391,8 @@ export class MessagesService {
       this.prisma.tutor.findUnique({ where: { userId } }),
     ]);
 
+    await this.ensureConversationsForUser(student?.id, tutor?.id);
+
     const ors: Array<Record<string, any>> = [];
     if (student) ors.push({ studentId: student.id });
     if (tutor) ors.push({ tutorId: tutor.id });
@@ -496,6 +498,46 @@ export class MessagesService {
     const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].createdAt.toISOString() : null;
 
     return { items, nextCursor };
+  }
+
+  private async ensureConversationsForUser(studentId?: string, tutorId?: string) {
+    if (!studentId && !tutorId) return;
+
+    const since = new Date();
+    since.setDate(since.getDate() - 180);
+
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        OR: [
+          studentId ? { studentId } : undefined,
+          tutorId ? { tutorId } : undefined,
+        ].filter(Boolean) as Array<Record<string, any>>,
+        status: { in: ['CONFIRMED', 'COMPLETED'] },
+        createdAt: { gte: since },
+      },
+      select: { id: true, studentId: true, tutorId: true },
+      take: 200,
+    });
+
+    if (!bookings.length) return;
+
+    for (const booking of bookings) {
+      await this.prisma.conversation.upsert({
+        where: {
+          studentId_tutorId_bookingId: {
+            studentId: booking.studentId,
+            tutorId: booking.tutorId,
+            bookingId: booking.id,
+          },
+        },
+        create: {
+          studentId: booking.studentId,
+          tutorId: booking.tutorId,
+          bookingId: booking.id,
+        },
+        update: {},
+      });
+    }
   }
 
   /**

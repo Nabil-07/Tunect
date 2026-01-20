@@ -1,25 +1,44 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15
-    container_name: tunect_postgres
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: Test_2025_tunectDB
-      POSTGRES_DB: tunect_db_test
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      # Optional: Initialize with your old data
-      # - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # postgres:
+  #   image: postgres:15
+  #   container_name: tunect_postgres
+  #   restart: always
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: Test_2025_tunectDB
+  #     POSTGRES_DB: tunect_db_test
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     # Optional: Initialize with your old data
+  #     # - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - tunect_network
 
-volumes:
-  postgres_data:
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: tunect_livekit
+    restart: unless-stopped
+    ports:
+      - "7880:7880"      # HTTP/WebSocket port
+      - "40000-40020:40000-40020/udp"  # RTC UDP ports (matches livekit.yaml)
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    command: --config /etc/livekit.yaml
+    networks:
+      - tunect_network
+
+networks:
+  tunect_network:
+    driver: bridge
+
+# volumes:
+#   postgres_data:
