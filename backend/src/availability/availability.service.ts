@@ -91,15 +91,32 @@ export class AvailabilityService {
   }
 
   private async ensureNoBookingOverlap(tutorId: string, start: Date, end: Date) {
+    const now = new Date();
+    // Only check for active bookings (not completed, canceled, failed, or in the past)
+    // A booking is considered active if:
+    // 1. It's PENDING or CONFIRMED status
+    // 2. It has both startTime and endTime set
+    // 3. It hasn't ended yet (endTime is in the future)
+    // 4. It overlaps with the requested time slot
     const booked = await this.prisma.booking.findFirst({
       where: {
         tutorId,
         status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
-        AND: [{ startTime: { lt: end } }, { endTime: { gt: start } }],
+        startTime: { not: null }, // Must have startTime
+        endTime: { 
+          not: null, // Must have endTime
+        },
+        AND: [
+          { endTime: { gt: now } }, // Only check bookings that haven't ended yet
+          { startTime: { lt: end } }, // Booking starts before requested slot ends
+          { endTime: { gt: start } }, // Booking ends after requested slot starts
+        ],
       },
-      select: { id: true },
+      select: { id: true, startTime: true, endTime: true, status: true },
     });
-    if (booked) throw new BadRequestException('Time conflicts with an existing booking');
+    if (booked) {
+      throw new BadRequestException('Time conflicts with an existing booking');
+    }
   }
 
   private validateWindow(start: Date, end: Date) {

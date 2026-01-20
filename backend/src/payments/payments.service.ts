@@ -33,24 +33,41 @@ export class PaymentsService {
     // Try both env var naming conventions
     const key_id = process.env.RAZORPAY_KEY_ID || process.env.RZP_KEY_ID;
     const key_secret = process.env.RAZORPAY_KEY_SECRET || process.env.RZP_KEY_SECRET;
+    
+    this.logger.log(`Razorpay initialization check - Key ID: ${key_id ? 'present' : 'missing'}, Key Secret: ${key_secret ? 'present' : 'missing'}`);
+    
     if (key_id && key_secret) {
       try {
         this.razor = new Razorpay({ key_id, key_secret });
-        this.logger.log('Razorpay initialized successfully');
+        this.logger.log(`Razorpay initialized successfully with key_id: ${key_id.substring(0, 8)}...`);
       } catch (e) {
         this.logger.error('Failed to initialize Razorpay', e);
         this.razor = undefined;
       }
     } else {
       this.logger.warn('Razorpay keys not found. Payment features will be disabled.');
+      this.logger.warn(`Checked env vars: RAZORPAY_KEY_ID=${!!process.env.RAZORPAY_KEY_ID}, RZP_KEY_ID=${!!process.env.RZP_KEY_ID}, RAZORPAY_KEY_SECRET=${!!process.env.RAZORPAY_KEY_SECRET}, RZP_KEY_SECRET=${!!process.env.RZP_KEY_SECRET}`);
       this.razor = undefined;
     }
   }
 
   private requireRazor() {
     if (!this.razor) {
+      const keyId = process.env.RAZORPAY_KEY_ID || process.env.RZP_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RZP_KEY_SECRET;
+      const hasKeyId = !!keyId;
+      const hasKeySecret = !!keySecret;
+      
+      this.logger.error('Razorpay not initialized', {
+        hasKeyId,
+        hasKeySecret,
+        keyIdPrefix: keyId ? keyId.substring(0, 8) + '...' : 'missing',
+      });
+      
       throw new BadRequestException(
-        'Razorpay keys are missing on the server. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.',
+        hasKeyId && hasKeySecret
+          ? 'Razorpay authentication failed. Please verify your API keys are correct and match (test keys with test mode, production keys with production mode).'
+          : 'Razorpay keys are missing on the server. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET (or RZP_KEY_ID and RZP_KEY_SECRET).',
       );
     }
     return this.razor;
@@ -180,8 +197,38 @@ export class PaymentsService {
         receipt, // ✅ <= 40 chars now
       });
     } catch (e: any) {
-      this.logger.error('Razorpay order create failed', e);
-      const msg = e?.error?.description || e?.message || 'Could not create Razorpay order';
+      // Log full error details for debugging
+      const errorDetails = {
+        error: e,
+        errorMessage: e?.message,
+        errorDescription: e?.error?.description,
+        errorCode: e?.error?.code,
+        statusCode: e?.statusCode,
+        statusMessage: e?.statusMessage,
+        keyId: (process.env.RAZORPAY_KEY_ID || process.env.RZP_KEY_ID || 'NOT_SET').substring(0, 12) + '...',
+        hasKeySecret: !!(process.env.RAZORPAY_KEY_SECRET || process.env.RZP_KEY_SECRET),
+        amountInMinor,
+        receipt,
+      };
+      
+      this.logger.error('Razorpay order create failed', errorDetails);
+      
+      // Extract detailed error message
+      let msg = 'Could not create Razorpay order';
+      
+      // Razorpay API errors typically have this structure:
+      // { error: { code: 'BAD_REQUEST_ERROR', description: '...', source: '...', step: '...', reason: '...' } }
+      // 401 errors indicate authentication failure
+      if (e?.statusCode === 401 || (e?.error?.code === 'BAD_REQUEST_ERROR' && e?.error?.description?.toLowerCase().includes('authentication'))) {
+        msg = 'Authentication failed. Please verify your Razorpay API keys are correct and match each other. Ensure: 1) Key ID and Key Secret are from the same Razorpay account, 2) Test keys (rzp_test_*) are used for test mode, 3) Production keys (rzp_live_*) are used for production mode, 4) Keys are not expired or revoked.';
+      } else if (e?.error?.description) {
+        msg = e.error.description;
+      } else if (e?.error?.code === 'BAD_REQUEST_ERROR' || e?.statusCode === 400) {
+        msg = e?.error?.description || 'Invalid request to Razorpay. Please check your payment configuration.';
+      } else if (e?.message) {
+        msg = e.message;
+      }
+      
       throw new BadRequestException(msg);
     }
 
