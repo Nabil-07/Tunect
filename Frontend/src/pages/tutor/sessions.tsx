@@ -14,7 +14,7 @@ type Session = {
   subject?: string;
   startTime: string;
   endTime: string;
-  status?: 'UPCOMING' | 'COMPLETED' | 'PENDING_SLOT';
+  status?: 'UPCOMING' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED';
   isGroupSession?: boolean;
   maxStudents?: number;
   currentEnrollment?: number;
