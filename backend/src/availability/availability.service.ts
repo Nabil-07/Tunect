@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   Inject,
   forwardRef,
@@ -18,6 +19,8 @@ const MIN_BLOCK_MINUTES = 15;
 
 @Injectable()
 export class AvailabilityService {
+  private readonly logger = new Logger(AvailabilityService.name);
+
   constructor(
     private prisma: PrismaService,
     @Inject(forwardRef(() => WaitlistService))
@@ -98,25 +101,79 @@ export class AvailabilityService {
     // 2. It has both startTime and endTime set
     // 3. It hasn't ended yet (endTime is in the future)
     // 4. It overlaps with the requested time slot
-    const booked = await this.prisma.booking.findFirst({
+    
+    // First, get all potential conflicting bookings for debugging
+    const allBookings = await this.prisma.booking.findMany({
       where: {
         tutorId,
-        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
-        startTime: { not: null }, // Must have startTime
-        endTime: { 
-          not: null, // Must have endTime
-        },
-        AND: [
-          { endTime: { gt: now } }, // Only check bookings that haven't ended yet
-          { startTime: { lt: end } }, // Booking starts before requested slot ends
-          { endTime: { gt: start } }, // Booking ends after requested slot starts
-        ],
+        startTime: { not: null },
+        endTime: { not: null },
       },
-      select: { id: true, startTime: true, endTime: true, status: true },
+      select: { 
+        id: true, 
+        startTime: true, 
+        endTime: true, 
+        status: true,
+        student: {
+          select: {
+            user: {
+              select: { name: true, email: true }
+            }
+          }
+        }
+      },
+      orderBy: { startTime: 'desc' },
+      take: 20, // Get recent bookings for debugging
     });
+    
+    // Log all bookings for debugging
+    this.logger.log(`[ensureNoBookingOverlap] Checking ${allBookings.length} bookings for tutor ${tutorId}`);
+    this.logger.log(`[ensureNoBookingOverlap] Requested slot: ${start.toISOString()} to ${end.toISOString()}`);
+    this.logger.log(`[ensureNoBookingOverlap] Current time: ${now.toISOString()}`);
+    
+    // Filter to only active future bookings that overlap
+    const booked = allBookings.find((b) => {
+      if (!b.startTime || !b.endTime) {
+        this.logger.debug(`[ensureNoBookingOverlap] Skipping booking ${b.id}: missing times`);
+        return false;
+      }
+      if (b.status !== BookingStatus.PENDING && b.status !== BookingStatus.CONFIRMED) {
+        this.logger.debug(`[ensureNoBookingOverlap] Skipping booking ${b.id}: status=${b.status}`);
+        return false;
+      }
+      if (b.endTime <= now) {
+        this.logger.debug(`[ensureNoBookingOverlap] Skipping booking ${b.id}: past booking (ended ${b.endTime.toISOString()})`);
+        return false;
+      }
+      // Check overlap
+      const overlaps = b.startTime < end && b.endTime > start;
+      if (overlaps) {
+        this.logger.warn(`[ensureNoBookingOverlap] CONFLICT FOUND: Booking ${b.id} overlaps with requested slot`);
+        this.logger.warn(`  Booking: ${b.startTime.toISOString()} to ${b.endTime.toISOString()}, status=${b.status}`);
+        this.logger.warn(`  Requested: ${start.toISOString()} to ${end.toISOString()}`);
+      }
+      return overlaps;
+    });
+    
     if (booked) {
-      throw new BadRequestException('Time conflicts with an existing booking');
+      const studentName = booked.student?.user?.name || booked.student?.user?.email || 'Unknown';
+      const formatTime = (d: Date) => d.toLocaleString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      const errorMsg = `Time conflicts with an existing ${booked.status.toLowerCase()} booking ` +
+        `(${formatTime(booked.startTime!)} - ${formatTime(booked.endTime!)}) ` +
+        `with student: ${studentName}. ` +
+        `Please choose a different time slot.`;
+      this.logger.error(`[ensureNoBookingOverlap] ${errorMsg}`);
+      throw new BadRequestException(errorMsg);
     }
+    
+    this.logger.log(`[ensureNoBookingOverlap] No conflicts found - slot creation allowed`);
   }
 
   private validateWindow(start: Date, end: Date) {
