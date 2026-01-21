@@ -37,11 +37,22 @@ export default function RecurringTemplates() {
     loadTemplates();
   }, []);
 
-  const loadTemplates = async () => {
+  const loadTemplates = async (forceRefresh = false) => {
     try {
       setLoading(true);
-      const res = await api.get('/recurring-templates/my');
+      // Add cache-busting timestamp to force fresh data after updates
+      const res = await api.get('/recurring-templates/my', {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+        // Prevent axios from caching the response - add timestamp param to bypass browser cache
+        params: forceRefresh ? { _t: Date.now() } : {},
+      });
       setTemplates(res.data || []);
+      // Clear any error state on successful load
+      setError(null);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load templates');
     } finally {
@@ -70,7 +81,8 @@ export default function RecurringTemplates() {
       }
       
       resetForm();
-      loadTemplates();
+      // Force refresh to bypass cache after update
+      await loadTemplates(true);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to save template');
@@ -95,7 +107,8 @@ export default function RecurringTemplates() {
     try {
       await api.delete(`/recurring-templates/${id}`);
       setSuccess('Template deleted successfully!');
-      loadTemplates();
+      // Force refresh to bypass cache after delete
+      await loadTemplates(true);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to delete template');
@@ -106,7 +119,8 @@ export default function RecurringTemplates() {
     try {
       await api.patch(`/recurring-templates/${id}/toggle`);
       setSuccess(`Template ${currentState ? 'deactivated' : 'activated'}!`);
-      loadTemplates();
+      // Force refresh to bypass cache after toggle
+      await loadTemplates(true);
       setTimeout(() => setSuccess(null), 2000);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to toggle template');

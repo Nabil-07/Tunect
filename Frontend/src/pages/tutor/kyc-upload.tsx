@@ -426,8 +426,8 @@ export default function TutorKYC() {
         <section className="rounded-2xl border p-4 bg-white shadow-sm">
           <h3 className="font-semibold mb-3">Identity & documents</h3>
 
-          {/* India → DigiLocker block (only for India) */}
-          {isIndia && (
+          {/* India → DigiLocker block (only for India) - TEMPORARILY DISABLED */}
+          {false && isIndia && (
             <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-indigo-800">
               <div className="font-medium">Verification method: DigiLocker (Aadhaar)</div>
               <p className="text-sm">For India, identity verification is completed securely via DigiLocker. No document upload is needed here.</p>

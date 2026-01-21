@@ -6,6 +6,7 @@ import {
   HttpStatus,
   ForbiddenException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -450,7 +451,13 @@ export class BookingsService {
   }
 
   // ---------- cancel ----------
-  async cancel(id: string, actorUserId?: string) {
+  async cancel(
+    id: string, 
+    actorUserId?: string,
+    actorTutorId?: string,
+    actorStudentId?: string,
+    actorRole?: Role,
+  ) {
     return this.prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id },
@@ -461,9 +468,35 @@ export class BookingsService {
       });
       if (!booking) throw new NotFoundException('Booking not found');
 
-      if (actorUserId) {
-        const allowed = actorUserId === booking.tutor.userId || actorUserId === booking.student.userId;
-        if (!allowed) throw new ForbiddenException('You cannot cancel this booking.');
+      // Authorization check with detailed logging
+      const logger = new Logger(BookingsService.name);
+      logger.log(`[cancel] Authorization check for booking ${id}`);
+      logger.log(`  Booking tutor.userId: ${booking.tutor.userId}, tutor.id: ${booking.tutor.id}`);
+      logger.log(`  Booking student.userId: ${booking.student.userId}, student.id: ${booking.student.id}`);
+      logger.log(`  Actor userId: ${actorUserId}, tutorId: ${actorTutorId}, studentId: ${actorStudentId}, role: ${actorRole}`);
+
+      if (actorRole === Role.ADMIN) {
+        // Admin can always cancel
+        logger.log(`[cancel] Admin access granted`);
+      }
+      // Check by userId (most reliable)
+      else if (actorUserId && (actorUserId === booking.tutor.userId || actorUserId === booking.student.userId)) {
+        logger.log(`[cancel] Authorization granted by userId match`);
+      }
+      // Check by tutorId/studentId from JWT (fallback)
+      else if (actorTutorId && actorTutorId === booking.tutor.id) {
+        logger.log(`[cancel] Authorization granted by tutorId match`);
+      }
+      else if (actorStudentId && actorStudentId === booking.student.id) {
+        logger.log(`[cancel] Authorization granted by studentId match`);
+      }
+      else {
+        // No match found - forbidden
+        const errorMsg = `You cannot cancel this booking. ` +
+          `Booking tutorId: ${booking.tutor.id}, studentId: ${booking.student.id}. ` +
+          `Your userId: ${actorUserId}, tutorId: ${actorTutorId}, studentId: ${actorStudentId}`;
+        logger.error(`[cancel] Authorization DENIED: ${errorMsg}`);
+        throw new ForbiddenException(errorMsg);
       }
 
       if (booking.status === BookingStatus.CANCELED) return booking;
@@ -488,8 +521,13 @@ export class BookingsService {
           let refundReason = TokenReason.REFUND;
 
           // Determine who is canceling
-          const isTutorCanceling = actorUserId === booking.tutor.userId;
-          const isStudentCanceling = actorUserId === booking.student.userId;
+          // Check by userId first, then fallback to tutorId/studentId from JWT
+          const isTutorCanceling = 
+            actorUserId === booking.tutor.userId || 
+            (actorTutorId && actorTutorId === booking.tutor.id);
+          const isStudentCanceling = 
+            actorUserId === booking.student.userId || 
+            (actorStudentId && actorStudentId === booking.student.id);
 
           if (isTutorCanceling) {
             // Tutor cancellation: Refund 1 token to student

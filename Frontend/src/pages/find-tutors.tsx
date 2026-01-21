@@ -250,6 +250,39 @@ export default function FindTutors() {
           </div>
         )}
 
+        {/* Search Results Header with Segregation Info */}
+        {!loading && items.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
+            <span className="font-semibold text-slate-700">
+              Found {total} {total === 1 ? 'tutor' : 'tutors'}
+            </span>
+            {(q || subject || classTeach || language) && (
+              <div className="flex flex-wrap gap-2">
+                {q && (
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-700">
+                    Search: "{q}"
+                  </span>
+                )}
+                {subject && (
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-green-700">
+                    Subject: {subject}
+                  </span>
+                )}
+                {classTeach && (
+                  <span className="rounded-full bg-purple-100 px-3 py-1 text-purple-700">
+                    Class: {classTeach}
+                  </span>
+                )}
+                {language && (
+                  <span className="rounded-full bg-orange-100 px-3 py-1 text-orange-700">
+                    Language: {language}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {loading
             ? Array.from({ length: pageSize }).map((_, i) => <div key={i} className="card h-28 animate-pulse" />)
@@ -259,7 +292,16 @@ export default function FindTutors() {
                   <TutorCard tutor={t} />
                 </div>
               ))
-            : <div className="text-sm text-slate-600">No tutors found.</div>}
+            : (
+              <div className="col-span-full text-center py-8">
+                <div className="text-sm text-slate-600 mb-2">No tutors found.</div>
+                {(q || subject || classTeach || language) && (
+                  <div className="text-xs text-slate-500">
+                    Try adjusting your search filters or clearing them to see more results.
+                  </div>
+                )}
+              </div>
+            )}
         </div>
 
         {/* Pagination */}

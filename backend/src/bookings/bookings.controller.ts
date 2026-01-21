@@ -259,8 +259,14 @@ export class BookingsController {
   @Delete(':id')
   @Roles(Role.STUDENT, Role.TUTOR, Role.ADMIN)
   @UseGuards(RolesGuard)
-  cancel(@Param('id') id: string, @CurrentUser('sub') actorUserId: string) {
-    return this.service.cancel(id, actorUserId);
+  cancel(
+    @Param('id') id: string, 
+    @CurrentUser('sub') actorUserId: string,
+    @CurrentUser('tutorId') tutorId?: string,
+    @CurrentUser('studentId') studentId?: string,
+    @CurrentUser('role') role?: Role,
+  ) {
+    return this.service.cancel(id, actorUserId, tutorId, studentId, role);
   }
 
   // ==================== GROUP SESSIONS ====================

@@ -38,6 +38,15 @@ export class RecurringTemplatesController {
     return this.service.update(id, userId, dto);
   }
 
+  @Patch(':id')
+  updatePatch(
+    @Param('id') id: string,
+    @CurrentUser('sub') userId: string,
+    @Body() dto: UpdateTemplateDto,
+  ) {
+    return this.service.update(id, userId, dto);
+  }
+
   @Patch(':id/toggle')
   toggleActive(@Param('id') id: string, @CurrentUser('sub') userId: string) {
     return this.service.toggleActive(id, userId);
