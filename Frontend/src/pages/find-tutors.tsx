@@ -104,16 +104,62 @@ export default function FindTutors() {
 
         let list: TutorWithDemo[] = (res.items ?? []) as TutorWithDemo[];
 
-        // 2) client-side fallbacks
+        // 2) Client-side filtering for additional safety (ensures proper segregation)
+        // This is CRITICAL - filters out any tutors that don't match the selected criteria
+        const originalCount = list.length;
+        
+        // Subject filter - STRICT: ensure tutor actually teaches the selected subject
+        if (subject && subject.trim()) {
+          const subjectLower = subject.trim().toLowerCase();
+          const beforeFilter = list.length;
+          list = list.filter((t) => {
+            const tutorSubjects = (t.subjects || []).map((s: string) => s.toLowerCase());
+            const matches = tutorSubjects.includes(subjectLower);
+            if (!matches && tutorSubjects.length > 0) {
+              console.warn(
+                `[find-tutors] Filtered out tutor ${t.id} (${t.name}) - ` +
+                `selected subject: "${subject}", tutor subjects: [${tutorSubjects.join(', ')}]`
+              );
+            }
+            return matches;
+          });
+          console.log(
+            `[find-tutors] Subject filter "${subject}": ${beforeFilter} → ${list.length} tutors ` +
+            `(${beforeFilter - list.length} filtered out)`
+          );
+        }
+
+        // Language filter - ensure tutor teaches the selected language
+        if (language && language.trim()) {
+          const langLower = language.trim().toLowerCase();
+          list = list.filter((t) => {
+            const tutorLanguages = (t.languages || []).map((l: string) => l.toLowerCase());
+            return tutorLanguages.includes(langLower);
+          });
+        }
+
+        // Class filter - ensure tutor teaches the selected class
+        if (classTeach && classTeach.trim()) {
+          const classLower = classTeach.trim().toLowerCase();
+          list = list.filter((t) => {
+            const tutorClasses = (t.classesTeach || []).map((c: string) => c.toLowerCase());
+            return tutorClasses.includes(classLower);
+          });
+        }
+
+        // Price filters
         if (priceMin != null) list = list.filter((t) => (t.hourlyRate ?? 0) >= priceMin);
         if (priceMax != null) list = list.filter((t) => (t.hourlyRate ?? 0) <= priceMax);
+        
+        // Sorting
         if (sort === 'price_asc') list = [...list].sort((a, b) => (a.hourlyRate ?? 0) - (b.hourlyRate ?? 0));
         if (sort === 'price_desc') list = [...list].sort((a, b) => (b.hourlyRate ?? 0) - (a.hourlyRate ?? 0));
         if (sort === 'rating_desc') list = [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
 
         // 3) render immediately without demo flags (avoids flicker)
+        // Update total to reflect filtered count
         setItems(list);
-        setTotal(res.total ?? list.length);
+        setTotal(list.length); // Use filtered count, not backend total
 
         // 4) fetch demo-used statuses in parallel and merge into items
         const ids = list.map((t) => t.id).filter(Boolean);
@@ -289,7 +335,7 @@ export default function FindTutors() {
             : items.length > 0
             ? items.map((t) => (
                 <div key={t.id} className="space-y-2">
-                  <TutorCard tutor={t} />
+                  <TutorCard tutor={t} searchSubject={subject || undefined} />
                 </div>
               ))
             : (
