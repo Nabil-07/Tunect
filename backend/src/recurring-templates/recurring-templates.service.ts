@@ -78,14 +78,17 @@ export class RecurringTemplatesService {
       throw new ForbiddenException('You can only update your own templates');
     }
 
+    // Build update data object, only including fields that are provided
+    const updateData: any = {};
+    if (dto.dayOfWeek !== undefined) updateData.dayOfWeek = dto.dayOfWeek;
+    if (dto.startTime !== undefined) updateData.startTime = dto.startTime;
+    if (dto.endTime !== undefined) updateData.endTime = dto.endTime;
+    if (dto.title !== undefined) updateData.title = dto.title;
+    if (dto.isActive !== undefined) updateData.isActive = dto.isActive;
+
     return this.prisma.recurringTemplate.update({
       where: { id: templateId },
-      data: {
-        startTime: dto.startTime,
-        endTime: dto.endTime,
-        title: dto.title,
-        isActive: dto.isActive,
-      },
+      data: updateData,
     });
   }
 

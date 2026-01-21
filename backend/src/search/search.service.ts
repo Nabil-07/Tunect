@@ -21,10 +21,20 @@ export class SearchService {
 
     // Base filter: only approved tutors
     const whereTutor: any = { status: TutorStatus.APPROVED };
+    const AND: any[] = [];
 
-    // Subject filter (assuming Tutor.subjects: string[])
+    // Subject filter (assuming Tutor.subjects: string[]) - MUST match exactly
     if (q.subject && q.subject.trim()) {
-      whereTutor.subjects = { has: q.subject.trim() };
+      const subject = q.subject.trim();
+      // Case-insensitive matching for subject - use OR within AND for case variants
+      AND.push({
+        OR: [
+          { subjects: { has: subject } },
+          { subjects: { has: subject.toUpperCase() } },
+          { subjects: { has: subject.toLowerCase() } },
+          { subjects: { has: subject.charAt(0).toUpperCase() + subject.slice(1).toLowerCase() } }, // Capitalized
+        ],
+      });
     }
 
     // Rate filter
@@ -35,9 +45,20 @@ export class SearchService {
       whereTutor.hourlyRate = rate;
     }
 
-    // Simple text search against bio
+    // Simple text search against bio or tutor name (OR condition within AND)
     if (q.q && q.q.trim()) {
-      whereTutor.bio = { contains: q.q.trim(), mode: 'insensitive' };
+      const searchText = q.q.trim();
+      AND.push({
+        OR: [
+          { bio: { contains: searchText, mode: 'insensitive' } },
+          { user: { name: { contains: searchText, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    // Apply AND conditions if any
+    if (AND.length > 0) {
+      whereTutor.AND = AND;
     }
 
     // Availability window → precompute matching tutor IDs via the AvailabilitySlot table
@@ -61,7 +82,11 @@ export class SearchService {
       }
 
       // add to base filter
-      whereTutor.id = { in: tutorIdsByWindow };
+      if (whereTutor.AND) {
+        whereTutor.AND.push({ id: { in: tutorIdsByWindow } });
+      } else {
+        whereTutor.id = { in: tutorIdsByWindow };
+      }
     }
 
     // Fetch tutors page (safe orderBy)

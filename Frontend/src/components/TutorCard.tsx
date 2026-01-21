@@ -38,6 +38,7 @@ export type TutorCardProps = {
   tokenBalance?: number; // token balance for this specific tutor
   onBookDemo?: (tutorId: string) => void;
   onMessage?: (tutorId: string) => void;
+  searchSubject?: string; // Subject that student searched for - will be prioritized in display
 };
 
 const Stars: React.FC<{ value?: number }> = ({ value = 0 }) => {
@@ -54,7 +55,7 @@ const Stars: React.FC<{ value?: number }> = ({ value = 0 }) => {
   );
 };
 
-const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBalance, onBookDemo, onMessage }) => {
+const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBalance, onBookDemo, onMessage, searchSubject }) => {
   const displayName = tutor.name || tutor.user?.name || 'Tutor';
   const nav = useNavigate();
   const { user } = useAuth();
@@ -63,6 +64,27 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [tokenBalance, setTokenBalance] = useState<number | null>(propTokenBalance ?? null);
   const [tokenBalanceLoading, setTokenBalanceLoading] = useState<boolean>(user?.role === 'STUDENT' && propTokenBalance === undefined);
+
+  // Sort subjects to prioritize the searched subject
+  const sortedSubjects = useMemo(() => {
+    const subjects = tutor.tags ?? tutor.subjects ?? [];
+    if (!searchSubject || subjects.length === 0) return subjects;
+    
+    const searchSubjectLower = searchSubject.trim().toLowerCase();
+    const matchingSubjects: string[] = [];
+    const otherSubjects: string[] = [];
+    
+    subjects.forEach((subject) => {
+      if (subject.toLowerCase() === searchSubjectLower) {
+        matchingSubjects.push(subject);
+      } else {
+        otherSubjects.push(subject);
+      }
+    });
+    
+    // Return matching subjects first, then others
+    return [...matchingSubjects, ...otherSubjects];
+  }, [tutor.tags, tutor.subjects, searchSubject]);
 
   useEffect(() => {
     // If tokenBalance was passed as prop, use it
@@ -248,18 +270,26 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
           </div>
         )}
 
-        {/* Subjects */}
-        {(tutor.tags ?? tutor.subjects ?? []).length > 0 && (
+        {/* Subjects - sorted with searched subject first */}
+        {sortedSubjects.length > 0 && (
           <div className="mt-3">
             <div className="flex flex-wrap gap-2">
-              {(tutor.tags ?? tutor.subjects ?? []).slice(0, 3).map((s) => (
-                <span
-                  key={s}
-                  className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700"
-                >
-                  {s}
-                </span>
-              ))}
+              {sortedSubjects.slice(0, 3).map((s) => {
+                // Highlight the searched subject
+                const isSearchedSubject = searchSubject && s.toLowerCase() === searchSubject.trim().toLowerCase();
+                return (
+                  <span
+                    key={s}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                      isSearchedSubject
+                        ? 'bg-emerald-500 text-white font-semibold' // Highlight searched subject
+                        : 'bg-indigo-100 text-indigo-700'
+                    }`}
+                  >
+                    {s}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}

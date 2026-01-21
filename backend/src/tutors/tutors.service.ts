@@ -3,6 +3,7 @@ import { Prisma, TutorStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TrendingTutorDto } from './dto/trending-tutor.dto';
 import { Cacheable } from '../common/cache.decorator';
+import { Logger } from '@nestjs/common';
 
 export type TutorPublic = {
   id: string;
@@ -62,6 +63,8 @@ function normalizeTutor(row: any): TutorPublic {
 
 @Injectable()
 export class TutorsService {
+  private readonly logger = new Logger(TutorsService.name);
+  
   constructor(private readonly prisma: PrismaService) {}
 
   // ---------- FILTER OPTIONS ----------
@@ -240,44 +243,58 @@ export class TutorsService {
     // ✅ Only tutors with APPROVED status
     const where: any = { status: TutorStatus.APPROVED };
     const AND: any[] = [];
-    const OR: any[] = [];
 
+    // Text search (q) - can match bio OR tutor name (OR condition)
     if (params?.q && params.q.trim()) {
       const q = params.q.trim();
-      OR.push(
-        { bio: { contains: q, mode: Prisma.QueryMode.insensitive } },
-        { user: { is: { name: { contains: q, mode: Prisma.QueryMode.insensitive } } } },
-      );
+      AND.push({
+        OR: [
+          { bio: { contains: q, mode: Prisma.QueryMode.insensitive } },
+          { user: { is: { name: { contains: q, mode: Prisma.QueryMode.insensitive } } } },
+        ],
+      });
     }
 
+    // Subject filter - MUST match (AND condition) - STRICT filtering
+    // Tutor MUST have this subject in their subjects array
     if (params?.subject && params.subject.trim()) {
       const s = params.subject.trim();
-      OR.push(
-        { subjects: { has: s } },
-        { subjects: { has: s.toUpperCase() } },
-        { subjects: { has: s.toLowerCase() } },
-      );
+      this.logger.log(`[search] Filtering by subject: "${s}"`);
+      // Prisma's 'has' operator checks if array contains the exact value (case-sensitive)
+      // Check multiple case variants to handle different storage formats
+      AND.push({
+        OR: [
+          { subjects: { has: s } },
+          { subjects: { has: s.toUpperCase() } },
+          { subjects: { has: s.toLowerCase() } },
+          { subjects: { has: s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() } }, // Capitalized (e.g., "Jee")
+        ],
+      });
     }
 
+    // Language filter - MUST match (AND condition)
     if (params?.language && params.language.trim()) {
       const lang = params.language.trim();
-      OR.push(
-        { languages: { has: lang } },
-        { languages: { has: lang.toUpperCase() } },
-        { languages: { has: lang.toLowerCase() } },
-      );
+      AND.push({
+        OR: [
+          { languages: { has: lang } },
+          { languages: { has: lang.toUpperCase() } },
+          { languages: { has: lang.toLowerCase() } },
+        ],
+      });
     }
 
+    // Class filter - MUST match (AND condition)
     if (params?.classTeach && params.classTeach.trim()) {
       const cls = params.classTeach.trim();
-      OR.push(
-        { classesTeach: { has: cls } },
-        { classesTeach: { has: cls.toUpperCase() } },
-        { classesTeach: { has: cls.toLowerCase() } },
-      );
+      AND.push({
+        OR: [
+          { classesTeach: { has: cls } },
+          { classesTeach: { has: cls.toUpperCase() } },
+          { classesTeach: { has: cls.toLowerCase() } },
+        ],
+      });
     }
-
-    if (OR.length) AND.push({ OR });
 
     if (Number.isFinite(params?.priceMin) || Number.isFinite(params?.priceMax)) {
       const hr: any = {};
@@ -290,7 +307,10 @@ export class TutorsService {
       AND.push({ reviews: { some: { rating: { gte: Number(params!.minRating) } } } });
     }
 
-    if (AND.length) where.AND = AND;
+    if (AND.length) {
+      where.AND = AND;
+      this.logger.debug(`[search] Applied ${AND.length} AND conditions:`, JSON.stringify(AND, null, 2));
+    }
 
     let orderBy: any = { id: 'desc' as const };
     if (params?.sort === 'price_asc') orderBy = { hourlyRate: 'asc' as const };
@@ -310,7 +330,32 @@ export class TutorsService {
       this.prisma.tutor.count({ where }),
     ]);
 
-    return { items: rows.map(normalizeTutor), total, page, pageSize };
+    // Post-query validation: Double-check subject filter matches (safety net)
+    // This ensures that even if Prisma query has issues, we filter correctly
+    let filteredRows = rows;
+    if (params?.subject && params.subject.trim()) {
+      const subjectLower = params.subject.trim().toLowerCase();
+      const beforeFilter = filteredRows.length;
+      filteredRows = filteredRows.filter((tutor) => {
+        const tutorSubjects = (tutor.subjects || []).map((s: string) => s.toLowerCase());
+        const matches = tutorSubjects.includes(subjectLower);
+        if (!matches) {
+          this.logger.warn(
+            `[search] Backend filter failed: Tutor ${tutor.id} (${tutor.user?.name || 'Unknown'}) ` +
+            `does NOT teach "${params.subject}" but was returned by Prisma query. ` +
+            `Tutor subjects: [${(tutor.subjects || []).join(', ')}]`
+          );
+        }
+        return matches;
+      });
+      if (filteredRows.length < beforeFilter) {
+        this.logger.warn(
+          `[search] Filtered out ${beforeFilter - filteredRows.length} tutors that didn't match subject "${params.subject}"`
+        );
+      }
+    }
+
+    return { items: filteredRows.map(normalizeTutor), total: filteredRows.length, page, pageSize };
   }
 
   // ---------- DETAIL ----------

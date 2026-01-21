@@ -1,6 +1,12 @@
-import { IsString, IsBoolean, IsOptional } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsNumber, Min, Max } from 'class-validator';
 
 export class UpdateTemplateDto {
+  @IsNumber()
+  @Min(0)
+  @Max(6)
+  @IsOptional()
+  dayOfWeek?: number; // 0 = Sunday, 6 = Saturday
+
   @IsString()
   @IsOptional()
   startTime?: string;
