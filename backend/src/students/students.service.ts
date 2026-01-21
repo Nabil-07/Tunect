@@ -405,16 +405,23 @@ export class StudentsService {
     }));
   }
 
-  async getTutorTokenBalances(userId: string) {
-    const student = await this.prisma.student.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-    if (!student) throw new NotFoundException('Student profile not found');
+  async getTutorTokenBalances(userId: string, studentId?: string) {
+    // Use studentId from JWT if available, otherwise lookup by userId
+    let studentIdToUse: string;
+    if (studentId) {
+      studentIdToUse = studentId;
+    } else {
+      const student = await this.prisma.student.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (!student) throw new NotFoundException('Student profile not found');
+      studentIdToUse = student.id;
+    }
 
     const balances = await this.prisma.tutorTokenBalance.findMany({
       where: { 
-        studentId: student.id,
+        studentId: studentIdToUse,
         balance: { gt: 0 }, // Only fetch non-zero balances
       },
       select: {
@@ -451,15 +458,22 @@ export class StudentsService {
     }));
   }
 
-  async getTokenLedgerAll(userId: string) {
-    const student = await this.prisma.student.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-    if (!student) throw new NotFoundException('Student profile not found');
+  async getTokenLedgerAll(userId: string, studentId?: string) {
+    // Use studentId from JWT if available, otherwise lookup by userId
+    let studentIdToUse: string;
+    if (studentId) {
+      studentIdToUse = studentId;
+    } else {
+      const student = await this.prisma.student.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (!student) throw new NotFoundException('Student profile not found');
+      studentIdToUse = student.id;
+    }
 
     const ledger = await this.prisma.tokenLedger.findMany({
-      where: { studentId: student.id },
+      where: { studentId: studentIdToUse },
       orderBy: { createdAt: 'desc' },
       take: 100,
       select: {
