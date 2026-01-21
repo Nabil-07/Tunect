@@ -107,15 +107,21 @@ export class StudentsController {
   @ApiOperation({ summary: 'Get my token balances per tutor' })
   @Get('me/token-balances')
   @Roles(Role.STUDENT)
-  getTokenBalances(@CurrentUser('id') userId: string) {
-    return this.students.getTutorTokenBalances(userId);
+  getTokenBalances(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('studentId') studentId?: string,
+  ) {
+    return this.students.getTutorTokenBalances(userId, studentId);
   }
 
   @ApiOperation({ summary: 'Get my token ledger' })
   @Get('me/token-ledger')
   @Roles(Role.STUDENT)
-  getTokenLedgerAll(@CurrentUser('id') userId: string) {
-    return this.students.getTokenLedgerAll(userId);
+  getTokenLedgerAll(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('studentId') studentId?: string,
+  ) {
+    return this.students.getTokenLedgerAll(userId, studentId);
   }
 
   // ----- Tutor -----

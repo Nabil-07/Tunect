@@ -106,7 +106,6 @@ export default function FindTutors() {
 
         // 2) Client-side filtering for additional safety (ensures proper segregation)
         // This is CRITICAL - filters out any tutors that don't match the selected criteria
-        const originalCount = list.length;
         
         // Subject filter - STRICT: ensure tutor actually teaches the selected subject
         if (subject && subject.trim()) {
