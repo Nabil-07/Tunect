@@ -77,7 +77,8 @@ export default function FindTutors() {
     });
   }, []);
 
-  const hasFilters =
+  // Check if we should use search API (use debounced q for this check)
+  const shouldUseSearch = useMemo(() => 
     q.length > 0 ||
     !!subject ||
     !!classTeach ||
@@ -85,7 +86,9 @@ export default function FindTutors() {
     !!minRating ||
     priceMin !== undefined ||
     priceMax !== undefined ||
-    sort !== 'rating_desc';
+    sort !== 'rating_desc',
+    [q, subject, classTeach, language, minRating, priceMin, priceMax, sort]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -95,8 +98,8 @@ export default function FindTutors() {
         setLoading(true);
         setErr(null);
 
-        // 1) fetch tutors
-        const res = hasFilters
+        // 1) fetch tutors - use search API if there are any filters, otherwise use list API
+        const res = shouldUseSearch
           ? await searchTutors({ q, subject, classTeach, language, minRating, priceMin, priceMax, page, pageSize })
           : await listTutors({ page, pageSize, subject: subject || undefined, classTeach: classTeach || undefined, language: language || undefined });
 
@@ -106,6 +109,40 @@ export default function FindTutors() {
 
         // 2) Client-side filtering for additional safety (ensures proper segregation)
         // This is CRITICAL - filters out any tutors that don't match the selected criteria
+        
+        // Text search filter (q) - STRICT: ensure tutor matches the search query
+        // Search should match tutor name OR any subject OR bio
+        if (q && q.trim()) {
+          const searchLower = q.trim().toLowerCase();
+          const beforeFilter = list.length;
+          list = list.filter((t) => {
+            // Check tutor name
+            const nameMatch = (t.name || '').toLowerCase().includes(searchLower);
+            
+            // Check subjects (any subject should contain the search term)
+            const subjectsMatch = (t.subjects || []).some((s: string) => 
+              s.toLowerCase().includes(searchLower)
+            );
+            
+            // Check bio if available
+            const bioMatch = (t as any).bio ? 
+              (t as any).bio.toLowerCase().includes(searchLower) : false;
+            
+            const matches = nameMatch || subjectsMatch || bioMatch;
+            
+            if (!matches) {
+              console.warn(
+                `[find-tutors] Filtered out tutor ${t.id} (${t.name}) - ` +
+                `search query: "${q}", tutor subjects: [${(t.subjects || []).join(', ')}]`
+              );
+            }
+            return matches;
+          });
+          console.log(
+            `[find-tutors] Text search filter "${q}": ${beforeFilter} → ${list.length} tutors ` +
+            `(${beforeFilter - list.length} filtered out)`
+          );
+        }
         
         // Subject filter - STRICT: ensure tutor actually teaches the selected subject
         if (subject && subject.trim()) {
@@ -178,8 +215,8 @@ export default function FindTutors() {
     return () => {
       mounted = false;
     };
-    // include qRaw so the debounce updates
-  }, [q, qRaw, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize, hasFilters]);
+    // Depend on debounced q and shouldUseSearch (which includes q in its calculation)
+  }, [q, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize, shouldUseSearch]);
 
   const setParam = (k: string, v?: string) => {
     const nxt = new URLSearchParams(sp);

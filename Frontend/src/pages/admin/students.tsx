@@ -19,7 +19,6 @@ export default function AdminStudents() {
   const [emailFilter, setEmailFilter] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BLOCKED'>('ALL');
-  const [searchTerm, setSearchTerm] = useState('');
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>('createdAt');
@@ -30,7 +29,8 @@ export default function AdminStudents() {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchStudents({ page, pageSize, q: searchTerm.trim() || undefined });
+        // Load all students for client-side filtering (no search query)
+        const data = await fetchStudents({ page, pageSize });
         setStudents(data.items);
         setMeta(data.meta);
       } catch (err: any) {
@@ -42,13 +42,13 @@ export default function AdminStudents() {
       }
     };
     load();
-  }, [page, pageSize, searchTerm]);
+  }, [page, pageSize]);
 
   const handleUnban = async (userId: string) => {
     try {
       await unbanUser(userId);
       // Reload students to get updated ban status
-      const data = await fetchStudents({ page, pageSize, q: searchTerm.trim() || undefined });
+      const data = await fetchStudents({ page, pageSize });
       setStudents(data.items);
       setMeta(data.meta);
       setError(null);
@@ -72,7 +72,7 @@ export default function AdminStudents() {
   const filtered = useMemo(() => {
     let result = [...students];
 
-    // Apply text filters
+    // Apply text filters (client-side filtering - no API calls)
     if (emailFilter) {
       result = result.filter((s) => 
         s.user.email.toLowerCase().includes(emailFilter.toLowerCase())
@@ -190,12 +190,7 @@ export default function AdminStudents() {
                     placeholder="Search email..."
                     className="w-full text-xs border rounded px-2 py-1"
                     value={emailFilter}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setEmailFilter(val);
-                      setSearchTerm(val);
-                      setPage(1);
-                    }}
+                    onChange={(e) => setEmailFilter(e.target.value)}
                   />
                 </th>
                 <th className="px-4 py-2">

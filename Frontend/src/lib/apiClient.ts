@@ -267,7 +267,27 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 });
 
 api.interceptors.response.use(
-  (res) => res,
+  async (res) => {
+    // Auto-decrypt encrypted fields if decryption is enabled
+    if (res.data && import.meta.env.VITE_ENCRYPTION_KEY) {
+      try {
+        const { decryptObject } = await import('../utils/decryption');
+        const fieldsToDecrypt = ['email', 'phone', 'user.email', 'user.phone', 'tutor.user.email', 'student.user.email'];
+        
+        if (Array.isArray(res.data)) {
+          res.data = await Promise.all(res.data.map((item: any) => decryptObject(item, fieldsToDecrypt)));
+        } else if (res.data.items && Array.isArray(res.data.items)) {
+          // Paginated response
+          res.data.items = await Promise.all(res.data.items.map((item: any) => decryptObject(item, fieldsToDecrypt)));
+        } else if (typeof res.data === 'object') {
+          res.data = await decryptObject(res.data, fieldsToDecrypt);
+        }
+      } catch (error) {
+        console.warn('[API Client] Failed to decrypt response:', error);
+      }
+    }
+    return res;
+  },
   async (err: AxiosError) => {
     const status = err.response?.status ?? 0;
     const original = err.config as any;
