@@ -60,7 +60,9 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     const user = request.user;
     
     // Check if encryption is enabled
-    if (!this.encryptionService.isEncryptionEnabled()) {
+    const encryptionEnabled = this.encryptionService.isEncryptionEnabled();
+    if (!encryptionEnabled) {
+      this.logger.debug(`[EncryptResponse] Encryption disabled - skipping for ${request.url}`);
       return next.handle();
     }
 
@@ -74,19 +76,40 @@ export class EncryptResponseInterceptor implements NestInterceptor {
       if (internalTesterEmails) {
         const emailList = internalTesterEmails.split(',').map(e => e.trim().toLowerCase());
         isInternalTester = emailList.includes(user.email.toLowerCase());
+        if (isInternalTester) {
+          this.logger.debug(`[EncryptResponse] User ${user.email} is internal tester (INTERNAL_TESTER_EMAILS)`);
+        }
       } else {
         // Fallback: use preprod allowlist if INTERNAL_TESTER_EMAILS is not set
         isInternalTester = isPreprodAllowedEmail(this.config, user.email);
+        if (isInternalTester) {
+          this.logger.debug(`[EncryptResponse] User ${user.email} is internal tester (PREPROD_ALLOWED_EMAILS)`);
+        }
       }
     }
 
     // Only encrypt for non-admin users and non-internal testers
     // Admins and internal testers see plain data (no encryption)
+    // IMPORTANT: If no user (public endpoint), we still encrypt to protect PII
     const shouldEncrypt = 
-      this.encryptionService.isEncryptionEnabled() && 
+      encryptionEnabled && 
       (!user || (user.role !== 'ADMIN' && !isInternalTester));
     
+    // Debug logging - log at INFO level for visibility
+    if (user) {
+      this.logger.log(
+        `[EncryptResponse] User: ${user.email}, Role: ${user.role}, ` +
+        `IsInternalTester: ${isInternalTester}, ShouldEncrypt: ${shouldEncrypt}, ` +
+        `URL: ${request.url}`
+      );
+    } else {
+      this.logger.log(`[EncryptResponse] No user (public endpoint) - ShouldEncrypt: ${shouldEncrypt}, EncryptionEnabled: ${encryptionEnabled}, URL: ${request.url}`);
+    }
+    
     if (!shouldEncrypt) {
+      if (user) {
+        this.logger.log(`[EncryptResponse] Skipping encryption for ${user.email} (ADMIN: ${user.role === 'ADMIN'}, InternalTester: ${isInternalTester})`);
+      }
       return next.handle();
     }
 
