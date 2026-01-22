@@ -1,7 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import * as bodyParser from 'body-parser';
 
@@ -54,6 +54,7 @@ import { TaxModule } from './finance/tax/tax.module';
 import { ReconModule } from './finance/recon/recon.module';
 import { LivekitModule } from './livekit/livekit.module';
 import { PreprodInternalGuard } from './auth/preprod-internal.guard';
+import { EncryptResponseInterceptor } from './common/interceptors/encrypt-response.interceptor';
 
 @Module({
   imports: [
@@ -109,6 +110,7 @@ import { PreprodInternalGuard } from './auth/preprod-internal.guard';
   controllers: [AppController, ReadyController],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: EncryptResponseInterceptor },
     PreprodInternalGuard,
   ],
 })
