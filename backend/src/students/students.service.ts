@@ -31,8 +31,27 @@ export class StudentsService {
       },
     });
 
-    if (!user?.student) {
-      throw new NotFoundException('Student profile not found');
+    if (!user) {
+      throw new NotFoundException(`User not found: ${userId}`);
+    }
+
+    if (user.role !== 'STUDENT') {
+      throw new NotFoundException(`User ${user.email} (${userId}) has role ${user.role}, not STUDENT`);
+    }
+
+    // Auto-create student profile if it doesn't exist (defensive approach)
+    let student = user.student;
+    if (!student) {
+      student = await this.prisma.student.create({
+        data: { userId, tokens: 0 },
+        select: {
+          id: true,
+          grade: true,
+          tokens: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
     }
 
     const now = new Date();
@@ -41,14 +60,14 @@ export class StudentsService {
     const [completedCount, monthlyBookings] = await Promise.all([
       this.prisma.booking.count({
         where: {
-          studentId: user.student.id,
+          studentId: student.id,
           endTime: { not: null, lt: now },
           status: { not: BookingStatus.CANCELED },
         },
       }),
       this.prisma.booking.findMany({
         where: {
-          studentId: user.student.id,
+          studentId: student.id,
           endTime: { not: null, lt: now },
           status: { not: BookingStatus.CANCELED },
           startTime: { gte: startOfMonth },
@@ -65,8 +84,8 @@ export class StudentsService {
     return {
       ...user,
       student: {
-        ...user.student,
-        tokens: toNum(user.student.tokens),
+        ...student,
+        tokens: toNum(student.tokens),
         hoursStudied: Math.round(hoursStudied * 10) / 10,
         sessionsCompleted: completedCount,
       },
@@ -411,11 +430,31 @@ export class StudentsService {
     if (studentId) {
       studentIdToUse = studentId;
     } else {
-      const student = await this.prisma.student.findUnique({
+      // Lookup student profile by userId
+      let student = await this.prisma.student.findUnique({
         where: { userId },
         select: { id: true },
       });
-      if (!student) throw new NotFoundException('Student profile not found');
+      
+      if (!student) {
+        // Verify user exists and has STUDENT role
+        const user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, email: true, role: true },
+        });
+        if (!user) {
+          throw new NotFoundException(`User not found: ${userId}`);
+        }
+        if (user.role !== 'STUDENT') {
+          throw new NotFoundException(`User ${user.email} (${userId}) has role ${user.role}, not STUDENT`);
+        }
+        
+        // Auto-create student profile if it doesn't exist (defensive approach)
+        student = await this.prisma.student.create({
+          data: { userId, tokens: 0 },
+          select: { id: true },
+        });
+      }
       studentIdToUse = student.id;
     }
 
@@ -464,11 +503,31 @@ export class StudentsService {
     if (studentId) {
       studentIdToUse = studentId;
     } else {
-      const student = await this.prisma.student.findUnique({
+      // Lookup student profile by userId
+      let student = await this.prisma.student.findUnique({
         where: { userId },
         select: { id: true },
       });
-      if (!student) throw new NotFoundException('Student profile not found');
+      
+      if (!student) {
+        // Verify user exists and has STUDENT role
+        const user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, email: true, role: true },
+        });
+        if (!user) {
+          throw new NotFoundException(`User not found: ${userId}`);
+        }
+        if (user.role !== 'STUDENT') {
+          throw new NotFoundException(`User ${user.email} (${userId}) has role ${user.role}, not STUDENT`);
+        }
+        
+        // Auto-create student profile if it doesn't exist (defensive approach)
+        student = await this.prisma.student.create({
+          data: { userId, tokens: 0 },
+          select: { id: true },
+        });
+      }
       studentIdToUse = student.id;
     }
 

@@ -272,7 +272,17 @@ api.interceptors.response.use(
     if (res.data && import.meta.env.VITE_ENCRYPTION_KEY) {
       try {
         const { decryptObject } = await import('../utils/decryption');
-        const fieldsToDecrypt = ['email', 'phone', 'user.email', 'user.phone', 'tutor.user.email', 'student.user.email'];
+        // Note: Names are NOT decrypted - only email and phone are decrypted
+        const fieldsToDecrypt = [
+          'email',
+          'phone',
+          'user.email',
+          'user.phone',
+          'tutor.user.email',
+          'tutor.email', // Flattened structure (e.g., booking details)
+          'student.user.email',
+          'student.email', // Flattened structure (e.g., booking details)
+        ];
         
         if (Array.isArray(res.data)) {
           res.data = await Promise.all(res.data.map((item: any) => decryptObject(item, fieldsToDecrypt)));

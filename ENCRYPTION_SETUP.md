@@ -73,7 +73,22 @@ VITE_ENCRYPTION_KEY=K8j3mN9pQ2rT5vX8zA1bC4dE7fG0hI3jK6lM9nO2pQ5rS8tU1vW4xY7zA0b=
 
 **Note:** Frontend key must match backend key exactly.
 
-### Step 4: Restart Services
+### Step 4: Configure Internal Testers (Optional)
+
+If you want internal testers to see plain (unencrypted) data for easier testing, add their emails to your backend `.env` file:
+
+```env
+# Backend .env
+INTERNAL_TESTER_EMAILS=testuser1@example.com,testuser2@example.com,developer@tunectnow.com
+```
+
+**Note:** 
+- Internal testers will see plain data in API responses (no encryption)
+- If `INTERNAL_TESTER_EMAILS` is not set, the system will fallback to `PREPROD_ALLOWED_EMAILS` (if configured)
+- Separate multiple emails with commas
+- Email matching is case-insensitive
+
+### Step 5: Restart Services
 
 ```bash
 # Backend
@@ -89,10 +104,11 @@ npm run dev
 
 1. API endpoint returns data with sensitive fields (e.g., `email: "user@example.com"`)
 2. `EncryptResponseInterceptor` intercepts the response
-3. Checks if user is ADMIN:
+3. Checks user access level:
    - **ADMIN users**: Returns plain data (no encryption)
-   - **Non-admin users**: Encrypts sensitive fields
-4. Returns encrypted response: `email: "aGVsbG8gd29ybGQ=..."`
+   - **Internal testers** (emails in `INTERNAL_TESTER_EMAILS` or `PREPROD_ALLOWED_EMAILS`): Returns plain data (no encryption)
+   - **Regular users**: Encrypts sensitive fields
+4. Returns encrypted response: `email: "aGVsbG8gd29ybGQ=..."` (for regular users)
 
 ### Frontend Flow
 
@@ -138,6 +154,11 @@ private readonly encryptableFields = [
 3. **As ADMIN user:**
    - Inspect network tab → See plain values (no encryption)
    - Frontend shows plain values
+
+4. **As Internal Tester:**
+   - Inspect network tab → See plain values (no encryption)
+   - Frontend shows plain values
+   - No decryption needed (data is already plain)
 
 ### Manual Decryption (for debugging)
 
@@ -187,7 +208,8 @@ console.log(plainEmail); // user@example.com
 **Check:**
 1. Is `ENCRYPTION_KEY` set in backend `.env`?
 2. Is the interceptor registered in `app.module.ts`?
-3. Is the user an ADMIN? (Admins see plain data)
+3. Is the user an ADMIN or Internal Tester? (Admins and internal testers see plain data)
+4. Is the user's email in `INTERNAL_TESTER_EMAILS` or `PREPROD_ALLOWED_EMAILS`?
 
 ### Issue: Frontend shows encrypted values
 
@@ -251,6 +273,7 @@ intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
 **Backend (Production):**
 ```env
 ENCRYPTION_KEY=<your-production-key>
+INTERNAL_TESTER_EMAILS=internal1@company.com,internal2@company.com  # Optional
 ```
 
 **Frontend (Production):**

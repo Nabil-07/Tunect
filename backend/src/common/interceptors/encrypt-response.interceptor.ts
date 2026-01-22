@@ -10,6 +10,7 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { EncryptionService } from '../services/encryption.service';
 import { ConfigService } from '@nestjs/config';
+import { isPreprodAllowedEmail } from '../../auth/preprod-allowlist';
 
 /**
  * Response Interceptor to encrypt sensitive PII fields
@@ -34,17 +35,19 @@ export class EncryptResponseInterceptor implements NestInterceptor {
   private readonly logger = new Logger(EncryptResponseInterceptor.name);
   
   // Fields that should be encrypted (supports nested paths)
+  // Note: Names are NOT encrypted - only email and phone are encrypted
   private readonly encryptableFields = [
     'email',
     'phone',
     'address',
     'user.email',
     'user.phone',
-    'user.name', // Optional: encrypt names too
     'tutor.user.email',
     'tutor.user.phone',
+    'tutor.email', // Flattened structure (e.g., booking details)
     'student.user.email',
     'student.user.phone',
+    'student.email', // Flattened structure (e.g., booking details)
   ];
 
   constructor(
@@ -61,12 +64,27 @@ export class EncryptResponseInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Only encrypt for non-admin users (admins see plain data)
-    // Also check if encryption is enabled via environment variable
-    // You can customize this logic based on your needs
+    // Check if user is an internal tester
+    // 1. Check INTERNAL_TESTER_EMAILS environment variable (comma-separated list)
+    // 2. Fallback to PREPROD_ALLOWED_EMAILS (if configured)
+    // Internal testers see plain data (no encryption) for easier testing
+    let isInternalTester = false;
+    if (user?.email) {
+      const internalTesterEmails = this.config.get<string>('INTERNAL_TESTER_EMAILS', '');
+      if (internalTesterEmails) {
+        const emailList = internalTesterEmails.split(',').map(e => e.trim().toLowerCase());
+        isInternalTester = emailList.includes(user.email.toLowerCase());
+      } else {
+        // Fallback: use preprod allowlist if INTERNAL_TESTER_EMAILS is not set
+        isInternalTester = isPreprodAllowedEmail(this.config, user.email);
+      }
+    }
+
+    // Only encrypt for non-admin users and non-internal testers
+    // Admins and internal testers see plain data (no encryption)
     const shouldEncrypt = 
       this.encryptionService.isEncryptionEnabled() && 
-      (!user || user.role !== 'ADMIN');
+      (!user || (user.role !== 'ADMIN' && !isInternalTester));
     
     if (!shouldEncrypt) {
       return next.handle();
