@@ -12,6 +12,40 @@ function toNum(v: unknown): number {
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Helper method to ensure student profile exists, auto-creating if needed
+   * @param userId - The user ID to check
+   * @returns The student ID
+   */
+  private async ensureStudentProfile(userId: string): Promise<string> {
+    let student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!student) {
+      // Verify user exists and has STUDENT role
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, role: true },
+      });
+      if (!user) {
+        throw new NotFoundException(`User not found: ${userId}`);
+      }
+      if (user.role !== 'STUDENT') {
+        throw new NotFoundException(`User ${user.email} (${userId}) has role ${user.role}, not STUDENT`);
+      }
+
+      // Auto-create student profile if it doesn't exist (defensive approach)
+      student = await this.prisma.student.create({
+        data: { userId, tokens: 0 },
+        select: { id: true },
+      });
+    }
+
+    return student.id;
+  }
+
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -93,11 +127,10 @@ export class StudentsService {
   }
 
   async patchMe(userId: string, data: { grade?: string }) {
-    const student = await this.prisma.student.findUnique({ where: { userId } });
-    if (!student) throw new NotFoundException('Student profile not found');
+    const studentId = await this.ensureStudentProfile(userId);
 
     const updated = await this.prisma.student.update({
-      where: { id: student.id },
+      where: { id: studentId },
       data: { grade: data.grade },
       select: { id: true, grade: true, tokens: true, updatedAt: true },
     });
@@ -107,17 +140,13 @@ export class StudentsService {
 
   // -------- Bookings with payment enrichment + unscheduled grouping --------
   async getMyBookings(userId: string) {
-    const student = await this.prisma.student.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-    if (!student) throw new NotFoundException('Student profile not found');
+    const studentId = await this.ensureStudentProfile(userId);
 
     const now = new Date();
 
     // ✅ OPTIMIZED: Single query with joins instead of N+1
     const rawBookings = await this.prisma.booking.findMany({
-      where: { studentId: student.id },
+      where: { studentId },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -273,8 +302,10 @@ export class StudentsService {
   }
 
   async getTokenBalance(userId: string) {
+    const studentId = await this.ensureStudentProfile(userId);
+    
     const s = await this.prisma.student.findUnique({
-      where: { userId },
+      where: { id: studentId },
       select: { tokens: true },
     });
 
@@ -284,11 +315,7 @@ export class StudentsService {
   }
 
   async getTokenLedger(userId: string, page = 1, pageSize = 20) {
-    const student = await this.prisma.student.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-    if (!student) throw new NotFoundException('Student profile not found');
+    const studentId = await this.ensureStudentProfile(userId);
 
     const safePage = Math.max(1, page);
     const safePageSize = Math.max(1, pageSize);
@@ -296,7 +323,7 @@ export class StudentsService {
 
     const [itemsRaw, total] = await this.prisma.$transaction([
       this.prisma.tokenLedger.findMany({
-        where: { studentId: student.id },
+        where: { studentId },
         skip,
         take: safePageSize,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -309,7 +336,7 @@ export class StudentsService {
           createdAt: true,
         },
       }),
-      this.prisma.tokenLedger.count({ where: { studentId: student.id } }),
+      this.prisma.tokenLedger.count({ where: { studentId } }),
     ]);
 
     const items = itemsRaw.map((it) => ({ ...it, delta: toNum(it.delta) }));
@@ -365,14 +392,16 @@ export class StudentsService {
   }
 
   async verifyTokenInvariant(userId: string) {
+    const studentId = await this.ensureStudentProfile(userId);
+
     const student = await this.prisma.student.findUnique({
-      where: { userId },
+      where: { id: studentId },
       select: { id: true, tokens: true },
     });
     if (!student) throw new NotFoundException('Student profile not found');
 
     const agg = await this.prisma.tokenLedger.aggregate({
-      where: { studentId: student.id },
+      where: { studentId },
       _sum: { delta: true },
     });
 
@@ -425,38 +454,8 @@ export class StudentsService {
   }
 
   async getTutorTokenBalances(userId: string, studentId?: string) {
-    // Use studentId from JWT if available, otherwise lookup by userId
-    let studentIdToUse: string;
-    if (studentId) {
-      studentIdToUse = studentId;
-    } else {
-      // Lookup student profile by userId
-      let student = await this.prisma.student.findUnique({
-        where: { userId },
-        select: { id: true },
-      });
-      
-      if (!student) {
-        // Verify user exists and has STUDENT role
-        const user = await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { id: true, email: true, role: true },
-        });
-        if (!user) {
-          throw new NotFoundException(`User not found: ${userId}`);
-        }
-        if (user.role !== 'STUDENT') {
-          throw new NotFoundException(`User ${user.email} (${userId}) has role ${user.role}, not STUDENT`);
-        }
-        
-        // Auto-create student profile if it doesn't exist (defensive approach)
-        student = await this.prisma.student.create({
-          data: { userId, tokens: 0 },
-          select: { id: true },
-        });
-      }
-      studentIdToUse = student.id;
-    }
+    // Use studentId from JWT if available, otherwise ensure profile exists
+    const studentIdToUse = studentId || await this.ensureStudentProfile(userId);
 
     const balances = await this.prisma.tutorTokenBalance.findMany({
       where: { 
@@ -498,38 +497,8 @@ export class StudentsService {
   }
 
   async getTokenLedgerAll(userId: string, studentId?: string) {
-    // Use studentId from JWT if available, otherwise lookup by userId
-    let studentIdToUse: string;
-    if (studentId) {
-      studentIdToUse = studentId;
-    } else {
-      // Lookup student profile by userId
-      let student = await this.prisma.student.findUnique({
-        where: { userId },
-        select: { id: true },
-      });
-      
-      if (!student) {
-        // Verify user exists and has STUDENT role
-        const user = await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { id: true, email: true, role: true },
-        });
-        if (!user) {
-          throw new NotFoundException(`User not found: ${userId}`);
-        }
-        if (user.role !== 'STUDENT') {
-          throw new NotFoundException(`User ${user.email} (${userId}) has role ${user.role}, not STUDENT`);
-        }
-        
-        // Auto-create student profile if it doesn't exist (defensive approach)
-        student = await this.prisma.student.create({
-          data: { userId, tokens: 0 },
-          select: { id: true },
-        });
-      }
-      studentIdToUse = student.id;
-    }
+    // Use studentId from JWT if available, otherwise ensure profile exists
+    const studentIdToUse = studentId || await this.ensureStudentProfile(userId);
 
     const ledger = await this.prisma.tokenLedger.findMany({
       where: { studentId: studentIdToUse },
