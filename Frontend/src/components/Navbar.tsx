@@ -130,7 +130,22 @@ export default function Navbar() {
   }, []);
 
   /* DISPLAY NAME */
-  const displayName = user?.name || user?.email?.split('@')[0] || 'User';
+  // Helper to check if email looks encrypted (long base64 string without @)
+  const isEmailEncrypted = (email: string | null | undefined): boolean => {
+    if (!email) return false;
+    return email.length > 50 && !email.toLowerCase().includes('@');
+  };
+
+  // Get display name: prefer name, then email (if not encrypted), then fallback
+  const getDisplayName = (): string => {
+    if (user?.name) return user.name;
+    if (user?.email && !isEmailEncrypted(user.email)) {
+      return user.email.split('@')[0];
+    }
+    return 'User';
+  };
+
+  const displayName = getDisplayName();
   const avatarSeed = displayName || 'U';
   const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
 

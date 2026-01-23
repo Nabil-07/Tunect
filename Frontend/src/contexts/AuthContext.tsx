@@ -295,17 +295,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthHeader(freshToken);
       }
       
-      // Then update user data if provided, or fetch it
-      if (userData && alive) {
-        setUser(userData);
-        // Reset navigation guard when user is refreshed and has profile
-        if (hasProfile(userData)) {
-          hasNavigated.current = false;
-        }
-      } else if (freshToken && !user) {
-        // Only fetch profile if we don't already have user data
-        // This prevents unnecessary API calls during keepalive refreshes
-        void rehydrate();
+      // ALWAYS fetch fresh user data after token refresh to ensure we have decrypted data
+      // Don't trust userData from refresh event as it might have encrypted email
+      // This prevents showing stale encrypted email when token expires
+      if (freshToken) {
+        (async () => {
+          try {
+            const u = await fetchMe();
+            const resolved = (u as any)?.user ?? u ?? null;
+            if (alive) {
+              setUser(resolved);
+              if (resolved && hasProfile(resolved)) {
+                hasNavigated.current = false;
+              }
+            }
+          } catch (err) {
+            console.error('❌ Failed to fetch user after token refresh:', err);
+            // If fetch fails but we have userData from event, use it as fallback
+            // (though it might have encrypted email, it's better than nothing)
+            if (userData && alive) {
+              setUser(userData);
+              if (hasProfile(userData)) {
+                hasNavigated.current = false;
+              }
+            }
+          }
+        })();
       }
     }
 

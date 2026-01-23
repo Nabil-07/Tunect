@@ -49,6 +49,12 @@ export default function CheckoutPage() {
       setConfirming(true);
       await createDemoBooking({ tutorId });
       setBooked(true); // Mark as booked to prevent duplicate clicks
+      
+      // Refresh demo status after successful booking
+      window.dispatchEvent(new CustomEvent('demo-status-changed', { 
+        detail: { tutorId } 
+      }));
+      
       // Don't set message here - let afterConfirm handle it
       await afterConfirm();
     } catch (e: any) {
@@ -61,6 +67,11 @@ export default function CheckoutPage() {
           message: message || 'You have already used your free demo with this tutor.'
         });
         setBooked(true); // Prevent further attempts
+        
+        // Refresh demo status even on conflict (to update UI)
+        window.dispatchEvent(new CustomEvent('demo-status-changed', { 
+          detail: { tutorId } 
+        }));
       } else if (status === 401) {
         navigate('/login');
       } else if (status === 400 && message.includes('Student profile not found')) {

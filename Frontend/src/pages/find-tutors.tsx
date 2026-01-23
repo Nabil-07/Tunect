@@ -218,6 +218,29 @@ export default function FindTutors() {
     // Depend on debounced q and shouldUseSearch (which includes q in its calculation)
   }, [q, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize, shouldUseSearch]);
 
+  // Listen for demo status changes and refresh
+  useEffect(() => {
+    const handleDemoStatusChange = async (event: CustomEvent) => {
+      const tutorId = event.detail?.tutorId;
+      if (!tutorId) return;
+      
+      // Refresh demo status for the specific tutor
+      try {
+        const used = await getDemoStatusForTutor(tutorId);
+        setItems((prev) => prev.map((t) => 
+          t.id === tutorId ? { ...t, demoUsed: used } : t
+        ));
+      } catch (e) {
+        console.error('Failed to refresh demo status:', e);
+      }
+    };
+
+    window.addEventListener('demo-status-changed', handleDemoStatusChange as EventListener);
+    return () => {
+      window.removeEventListener('demo-status-changed', handleDemoStatusChange as EventListener);
+    };
+  }, []);
+
   const setParam = (k: string, v?: string) => {
     const nxt = new URLSearchParams(sp);
     if (v && v.length) nxt.set(k, v);

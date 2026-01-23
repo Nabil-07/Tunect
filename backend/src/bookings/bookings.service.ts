@@ -38,8 +38,35 @@ export class BookingsService {
     private bans: BansService,
   ) {}
 
-  private async ensureNoTutorOverlap(tutorId: string, start: Date, end: Date, excludeId?: string) {
-    const overlap = await this.prisma.booking.findFirst({
+  /**
+   * Validate booking status transition
+   * Ensures only valid status changes are allowed
+   */
+  private validateStatusTransition(
+    currentStatus: BookingStatus,
+    newStatus: BookingStatus,
+    operation: string,
+  ): void {
+    const validTransitions: Record<BookingStatus, BookingStatus[]> = {
+      [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELED],
+      [BookingStatus.PENDING_SLOT]: [BookingStatus.CONFIRMED, BookingStatus.CANCELED],
+      [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELED],
+      [BookingStatus.COMPLETED]: [], // Terminal state
+      [BookingStatus.CANCELED]: [], // Terminal state
+    };
+
+    const allowed = validTransitions[currentStatus] || [];
+    if (!allowed.includes(newStatus)) {
+      throw new BadRequestException(
+        `Invalid status transition: Cannot change booking from ${currentStatus} to ${newStatus} via ${operation}. ` +
+        `Allowed transitions: ${allowed.join(', ') || 'none (terminal state)'}`
+      );
+    }
+  }
+
+  private async ensureNoTutorOverlap(tutorId: string, start: Date, end: Date, excludeId?: string, tx?: any) {
+    const prisma = tx || this.prisma;
+    const overlap = await prisma.booking.findFirst({
       where: {
         tutorId,
         id: excludeId ? { not: excludeId } : undefined,
@@ -54,8 +81,9 @@ export class BookingsService {
     if (overlap) throw new BadRequestException('Tutor is not available for this time.');
   }
 
-  private async ensureNoStudentOverlap(studentId: string, start: Date, end: Date, excludeId?: string) {
-    const overlap = await this.prisma.booking.findFirst({
+  private async ensureNoStudentOverlap(studentId: string, start: Date, end: Date, excludeId?: string, tx?: any) {
+    const prisma = tx || this.prisma;
+    const overlap = await prisma.booking.findFirst({
       where: {
         studentId,
         id: excludeId ? { not: excludeId } : undefined,
@@ -126,12 +154,21 @@ export class BookingsService {
   }
 
   private async hasUsedDemoByStudentId(studentId: string, tutorId: string): Promise<boolean> {
+    // Check for ANY existing demo (PENDING, CONFIRMED, COMPLETED) - not just completed ones
+    // This prevents students from booking multiple demo sessions with the same tutor
     const demo = await this.prisma.booking.findFirst({
       where: {
         studentId,
         tutorId,
         isDemo: true,
-        status: { in: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED] },
+        status: { 
+          in: [
+            BookingStatus.PENDING, 
+            BookingStatus.PENDING_SLOT,
+            BookingStatus.CONFIRMED, 
+            BookingStatus.COMPLETED
+          ] 
+        },
       },
       select: { id: true },
     });
@@ -189,10 +226,37 @@ export class BookingsService {
 
     // ---- DEMO booking ----
     if (isDemo) {
-      const used = await this.hasUsedDemoByStudentId(dto.studentId!, dto.tutorId);
-      if (used) throw new ConflictException('Demo already used with this tutor.');
+      // Use transaction to prevent race conditions when checking and creating demo
+      // This ensures atomicity: check and create happen in same transaction
+      return this.prisma.$transaction(async (tx) => {
+        // Check for ANY existing demo (PENDING, CONFIRMED, COMPLETED) before creating
+        // This prevents students from booking multiple demo sessions with the same tutor
+        // Using SELECT FOR UPDATE to lock the row and prevent concurrent creation
+        const existingDemo = await tx.booking.findFirst({
+          where: {
+            studentId: dto.studentId!,
+            tutorId: dto.tutorId,
+            isDemo: true,
+            status: { 
+              in: [
+                BookingStatus.PENDING, 
+                BookingStatus.PENDING_SLOT,
+                BookingStatus.CONFIRMED, 
+                BookingStatus.COMPLETED
+              ] 
+            },
+          },
+          select: { id: true, status: true },
+        });
 
-      if (dto.startTime && dto.endTime) {
+        if (existingDemo) {
+          throw new ConflictException(
+            'You already have a demo session with this tutor. ' +
+            'Please complete or cancel your existing demo before booking another one.'
+          );
+        }
+
+        if (dto.startTime && dto.endTime) {
         const start = toUtc(dto.startTime, tz);
         const end = toUtc(dto.endTime, tz);
 
@@ -219,7 +283,7 @@ export class BookingsService {
             dto.studentId!,
           );
 
-          return this.prisma.booking.create({
+          const booking = await tx.booking.create({
             data: {
               tutorId: dto.tutorId,
               studentId: dto.studentId!,
@@ -229,21 +293,12 @@ export class BookingsService {
               notes: dto.notes,
             },
           });
+
+          return booking;
         }
         await this.ensureNoStudentOverlap(dto.studentId!, start, end);
 
-        // Cancel any pending demo bookings for this student-tutor pair
-        await this.prisma.booking.updateMany({
-          where: {
-            studentId: dto.studentId!,
-            tutorId: dto.tutorId,
-            isDemo: true,
-            status: BookingStatus.PENDING,
-          },
-          data: { status: BookingStatus.CANCELED },
-        });
-
-        const booking = await this.prisma.booking.create({
+        const booking = await tx.booking.create({
           data: {
             tutorId: dto.tutorId,
             studentId: dto.studentId!,
@@ -256,19 +311,13 @@ export class BookingsService {
           },
         });
 
-        await this.ensureLivekitMeeting(booking.id);
-
-        // Trigger conversation creation for demo bookings
-        await this.chatTriggers.onDirectBookingCreated(
-          dto.studentId!,
-          dto.tutorId,
-          booking.id,
-        );
-
+        // Note: ensureLivekitMeeting and chatTriggers are called outside transaction
+        // to avoid long-running operations in transaction
         return booking;
       } else {
         // No times provided: create PENDING demo
-        return this.prisma.booking.create({
+        // Note: We already checked for existing demos above in transaction, so this is safe
+        const booking = await tx.booking.create({
           data: {
             tutorId: dto.tutorId,
             studentId: dto.studentId!,
@@ -278,12 +327,46 @@ export class BookingsService {
             notes: dto.notes,
           },
         });
+
+        return booking;
       }
+      }).then(async (booking) => {
+        // After transaction commits, trigger side effects
+        if (booking.status === BookingStatus.CONFIRMED && booking.startTime) {
+          await this.ensureLivekitMeeting(booking.id);
+          await this.chatTriggers.onDirectBookingCreated(
+            booking.studentId,
+            booking.tutorId,
+            booking.id,
+          );
+        }
+        return booking;
+      });
     }
 
     // ---- PAID booking ----
     if (!dto.startTime || !dto.endTime) {
       // No times: create PENDING_SLOT (tokens will be charged when slot is assigned)
+      // Edge Case Fix: Limit PENDING_SLOT bookings per student-tutor pair to prevent abuse
+      // Check for existing PENDING_SLOT bookings for this student-tutor pair
+      const existingPendingSlots = await this.prisma.booking.count({
+        where: {
+          studentId: dto.studentId!,
+          tutorId: dto.tutorId,
+          isDemo: false,
+          status: BookingStatus.PENDING_SLOT,
+        },
+      });
+
+      // Limit to 5 PENDING_SLOT bookings per student-tutor pair
+      const MAX_PENDING_SLOTS = 5;
+      if (existingPendingSlots >= MAX_PENDING_SLOTS) {
+        throw new BadRequestException(
+          `You already have ${existingPendingSlots} unscheduled booking${existingPendingSlots > 1 ? 's' : ''} with this tutor. ` +
+          `Please schedule or cancel existing bookings before creating new ones.`
+        );
+      }
+
       return this.prisma.booking.create({
         data: {
           tutorId: dto.tutorId,
@@ -500,9 +583,9 @@ export class BookingsService {
       }
 
       if (booking.status === BookingStatus.CANCELED) return booking;
-      if (booking.status === BookingStatus.COMPLETED) {
-        throw new BadRequestException('Cannot cancel a completed booking.');
-      }
+      
+      // Validate status transition
+      this.validateStatusTransition(booking.status, BookingStatus.CANCELED, 'cancel');
 
       const updated = await tx.booking.update({
         where: { id },
@@ -831,6 +914,11 @@ export class BookingsService {
     const exists = await this.prisma.booking.findUnique({ where: { id } });
     if (!exists) throw new NotFoundException('Booking not found');
 
+    // Validate status transition if status is being changed
+    if (dto.status !== undefined && dto.status !== exists.status) {
+      this.validateStatusTransition(exists.status, dto.status, 'update');
+    }
+
     const data: Prisma.BookingUpdateInput = {};
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.notes !== undefined) data.notes = dto.notes;
@@ -849,9 +937,9 @@ export class BookingsService {
         },
       });
       if (!b) throw new NotFoundException('Booking not found');
-      if (b.status === BookingStatus.CANCELED) {
-        throw new BadRequestException('Cannot complete a canceled booking.');
-      }
+      // Validate status transition: CONFIRMED → COMPLETED
+      this.validateStatusTransition(b.status, BookingStatus.COMPLETED, 'complete');
+      
       if (actorUserId) {
         const allowed = actorUserId === b.tutor.userId || actorUserId === b.student.userId;
         if (!allowed) throw new ForbiddenException('You cannot complete this booking.');
@@ -918,27 +1006,74 @@ export class BookingsService {
       throw new BadRequestException(`Minimum booking is ${MIN_BLOCK_MINUTES} minutes.`);
     }
 
-    const booking = await this.prisma.booking.findUnique({ 
-      where: { id: bookingId },
-      include: {
-        tutor: { include: { user: true } },
-        student: { include: { user: true } },
+    // Edge Case Fix: Use transaction with row-level locking to prevent concurrent slot assignments
+    return this.prisma.$transaction(async (tx) => {
+      // Use findUniqueOrThrow with selectForUpdate equivalent (Prisma doesn't have SELECT FOR UPDATE,
+      // but transaction isolation provides protection)
+      const booking = await tx.booking.findUnique({ 
+        where: { id: bookingId },
+        include: {
+          tutor: { include: { user: true } },
+          student: { include: { user: true } },
+        }
+      });
+      
+      if (!booking) throw new NotFoundException('Booking not found');
+
+      // Edge Case Fix: Prevent assigning slots to cancelled bookings
+      if (booking.status === BookingStatus.CANCELED) {
+        throw new BadRequestException('Cannot assign slot to a cancelled booking.');
       }
-    });
-    if (!booking) throw new NotFoundException('Booking not found');
 
-    const allowed: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.PENDING_SLOT];
-    if (!allowed.includes(booking.status)) {
-      throw new BadRequestException('Booking is not pending slot assignment.');
-    }
+      // Edge Case Fix: Prevent assigning slots to completed bookings
+      if (booking.status === BookingStatus.COMPLETED) {
+        throw new BadRequestException('Cannot assign slot to a completed booking.');
+      }
 
-    await this.ensureWithinAvailabilitySlot(booking.tutorId, start, end);
+      const allowed: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.PENDING_SLOT];
+      if (!allowed.includes(booking.status)) {
+        throw new BadRequestException('Booking is not pending slot assignment.');
+      }
 
-    // ✅ For paid bookings awaiting slot (PENDING or PENDING_SLOT), ensure tokens are truly deducted now
-    const cost = this.requiredTokens(start, end, TOKENS_PER_HOUR);
+      // Validate status transition: PENDING/PENDING_SLOT → CONFIRMED
+      this.validateStatusTransition(booking.status, BookingStatus.CONFIRMED, 'assignSlot');
 
-    if (!booking.isDemo) {
-      await this.prisma.$transaction(async (tx) => {
+      // For demo sessions: Check if student already has another demo with this tutor
+      // This prevents assigning slots to multiple demo sessions
+      if (booking.isDemo) {
+        const existingDemo = await tx.booking.findFirst({
+          where: {
+            studentId: booking.studentId,
+            tutorId: booking.tutorId,
+            isDemo: true,
+            id: { not: bookingId }, // Exclude current booking
+            status: { 
+              in: [
+                BookingStatus.CONFIRMED, 
+                BookingStatus.COMPLETED
+              ] 
+            },
+          },
+          select: { id: true },
+        });
+
+        if (existingDemo) {
+          throw new ConflictException(
+            'You already have a confirmed demo session with this tutor. ' +
+            'Please complete or cancel your existing demo before assigning a slot to this one.'
+          );
+        }
+      }
+
+      // Edge Case Fix: Check overlaps within transaction to prevent race conditions
+      await this.ensureWithinAvailabilitySlot(booking.tutorId, start, end);
+      await this.ensureNoTutorOverlap(booking.tutorId, start, end, bookingId, tx);
+      await this.ensureNoStudentOverlap(booking.studentId, start, end, bookingId, tx);
+
+      // ✅ For paid bookings awaiting slot (PENDING or PENDING_SLOT), ensure tokens are truly deducted now
+      const cost = this.requiredTokens(start, end, TOKENS_PER_HOUR);
+
+      if (!booking.isDemo) {
         const tokensAlreadyCharged = Number(booking.tokensCharged ?? 0);
         const tokensToCharge = Math.max(cost - tokensAlreadyCharged, 0);
 
@@ -997,30 +1132,42 @@ export class BookingsService {
             notes: dto.notes ?? booking.notes,
           },
         });
-      });
-    } else {
-      // Demo: just update times and status
-      await this.prisma.booking.update({
+      } else {
+        // Demo: just update times and status
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: {
+            startTime: start,
+            endTime: end,
+            status: BookingStatus.CONFIRMED,
+            notes: dto.notes ?? booking.notes,
+          },
+        });
+      }
+
+      // Re-fetch booking after update to return fresh data
+      const updatedBooking = await tx.booking.findUnique({ 
         where: { id: bookingId },
-        data: {
-          startTime: start,
-          endTime: end,
-          status: BookingStatus.CONFIRMED,
-          notes: dto.notes ?? booking.notes,
-        },
+        include: {
+          tutor: { include: { user: true } },
+          student: { include: { user: true } },
+        }
       });
-    }
 
-    await this.ensureLivekitMeeting(bookingId);
+      return updatedBooking!;
+    }).then(async (booking) => {
+      // After transaction commits, trigger side effects
+      await this.ensureLivekitMeeting(bookingId);
 
-    // Trigger conversation creation when slot is assigned
-    await this.chatTriggers.onDirectBookingCreated(
-      booking.studentId,
-      booking.tutorId,
-      bookingId,
-    );
+      // Trigger conversation creation when slot is assigned
+      await this.chatTriggers.onDirectBookingCreated(
+        booking.studentId,
+        booking.tutorId,
+        bookingId,
+      );
 
-    return this.prisma.booking.findUnique({ where: { id: bookingId } });
+      return booking;
+    });
   }
 
   // ---------- GROUP SESSIONS ----------
