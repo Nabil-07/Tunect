@@ -5,7 +5,7 @@ import TutorCard from '../components/TutorCard';
 import { searchTutors, listTutors, getFilterOptions } from '../services/tutorService';
 import type { Tutor } from '../services/tutorService';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
-import { getDemoStatusesForTutors } from '../services/bookingsService';
+import { getDemoStatusesForTutors, getDemoStatusForTutor } from '../services/bookingsService';
 
 // simple debounce hook
 function useDebounced<T>(value: T, ms = 350) {
@@ -235,9 +235,9 @@ export default function FindTutors() {
       }
     };
 
-    window.addEventListener('demo-status-changed', handleDemoStatusChange as EventListener);
+    window.addEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
     return () => {
-      window.removeEventListener('demo-status-changed', handleDemoStatusChange as EventListener);
+      window.removeEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
     };
   }, []);
 
