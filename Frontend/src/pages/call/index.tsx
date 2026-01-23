@@ -16,6 +16,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { getTokenPayload } from "../../lib/apiClient";
 import { fetchLivekitToken } from "../../services/livekit";
 import { getBookingPerspective } from "../../utils/bookingPerspective";
+import { useAuth } from "../../contexts/AuthContext";
 import "@livekit/components-styles";
 
 function ParticipantList() {
@@ -70,19 +71,35 @@ export default function CallPage() {
   const { bookingId } = useParams<{ bookingId: string }>();
   const navigate = useNavigate();
   const { showError } = useToast();
+  const { user } = useAuth();
   const [data, setData] = useState<BookingDetailsDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
 
+  // Use auth context user which has student/tutor profile IDs
+  // Fallback to JWT payload if auth context not available
   const me = useMemo(() => {
+    if (user) {
+      // Prefer student/tutor profile IDs from auth context (these match booking IDs)
+      const studentId = user.student?.id;
+      const tutorId = user.tutor?.id;
+      return {
+        id: studentId || tutorId || user.id, // Use profile ID if available, else user ID
+        email: user.email,
+        name: user.name,
+        studentId,
+        tutorId,
+      };
+    }
+    // Fallback to JWT payload
     const p = getTokenPayload();
     const id = (p?.sub as string | undefined) ?? (p?.userId as string | undefined);
     const email = (p?.email as string | undefined) ?? (p?.user?.email as string | undefined);
     const name = (p?.name as string | undefined) ?? (p?.user?.name as string | undefined);
     return { id, email, name };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -101,7 +118,33 @@ export default function CallPage() {
 
   useEffect(() => {
     if (!bookingId || !data || !me.id) return;
-    const perspective = getBookingPerspective({ id: me.id, email: me.email, name: me.name }, data);
+    
+    // Try matching by profile IDs first (most reliable)
+    const studentId = (me as any).studentId;
+    const tutorId = (me as any).tutorId;
+    
+    let perspective = null;
+    if (studentId && data.studentId === studentId) {
+      // User is the student
+      perspective = {
+        isTutor: false,
+        isStudent: true,
+        self: { id: data.studentId, name: data.student?.name || "Student", email: data.student?.email },
+        other: { id: data.tutorId, name: data.tutor?.name || "Tutor", email: data.tutor?.email },
+      };
+    } else if (tutorId && data.tutorId === tutorId) {
+      // User is the tutor
+      perspective = {
+        isTutor: true,
+        isStudent: false,
+        self: { id: data.tutorId, name: data.tutor?.name || "Tutor", email: data.tutor?.email },
+        other: { id: data.studentId, name: data.student?.name || "Student", email: data.student?.email },
+      };
+    } else {
+      // Fallback to original function (handles encrypted emails)
+      perspective = getBookingPerspective({ id: me.id, email: me.email, name: me.name }, data);
+    }
+    
     if (!perspective) {
       setAccessDenied("Access denied");
       return;

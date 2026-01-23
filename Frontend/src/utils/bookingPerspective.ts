@@ -28,6 +28,14 @@ function normName(v: string | null | undefined, fallback: string) {
 }
 
 /**
+ * Check if an email string looks encrypted (long string without @ symbol)
+ */
+function isEmailEncrypted(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return email.length > 50 && !email.toLowerCase().includes('@');
+}
+
+/**
  * Determine which side of a booking the current user is on (tutor vs student)
  * and return a consistent "self/other" view used by UI (Call with X, etc.).
  *
@@ -35,12 +43,15 @@ function normName(v: string | null | undefined, fallback: string) {
  * - If user.id matches tutor.id OR user.email matches tutor.email => user is tutor.
  * - Else if user.id matches student.id OR user.email matches student.email => user is student.
  * - Else return null.
+ * 
+ * Note: Email matching is skipped if emails appear encrypted (to handle PII encryption).
  */
 export function getBookingPerspective(user: BookingPerson | null | undefined, booking: BookingLike | null | undefined): BookingPerspective | null {
   if (!user || !booking) return null;
 
   const userId = user.id || undefined;
   const userEmail = normEmail(user.email);
+  const userEmailEncrypted = isEmailEncrypted(user.email);
 
   const tutor = booking.tutor ?? (booking.tutorId ? { id: booking.tutorId } : null);
   const student = booking.student ?? (booking.studentId ? { id: booking.studentId } : null);
@@ -50,14 +61,24 @@ export function getBookingPerspective(user: BookingPerson | null | undefined, bo
 
   const tutorEmail = normEmail(tutor?.email);
   const studentEmail = normEmail(student?.email);
+  const tutorEmailEncrypted = isEmailEncrypted(tutor?.email);
+  const studentEmailEncrypted = isEmailEncrypted(student?.email);
 
-  const userMatchesTutor =
-    (!!userId && !!tutorId && userId === tutorId) ||
-    (!!userEmail && !!tutorEmail && userEmail === tutorEmail);
+  // Match by ID first (most reliable)
+  const userMatchesTutorById = !!userId && !!tutorId && userId === tutorId;
+  const userMatchesStudentById = !!userId && !!studentId && userId === studentId;
 
-  const userMatchesStudent =
-    (!!userId && !!studentId && userId === studentId) ||
-    (!!userEmail && !!studentEmail && userEmail === studentEmail);
+  // Match by email only if emails are not encrypted
+  const userMatchesTutorByEmail = 
+    !userEmailEncrypted && !tutorEmailEncrypted &&
+    !!userEmail && !!tutorEmail && userEmail === tutorEmail;
+  
+  const userMatchesStudentByEmail = 
+    !userEmailEncrypted && !studentEmailEncrypted &&
+    !!userEmail && !!studentEmail && userEmail === studentEmail;
+
+  const userMatchesTutor = userMatchesTutorById || userMatchesTutorByEmail;
+  const userMatchesStudent = userMatchesStudentById || userMatchesStudentByEmail;
 
   if (userMatchesTutor && tutorId && studentId) {
     return {
