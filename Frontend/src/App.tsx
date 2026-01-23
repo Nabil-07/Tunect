@@ -267,8 +267,21 @@ function App() {
       return <InternalOnly />;
     }
 
-    if (user && !(user.email || '').toLowerCase().endsWith('@tunectnow.com')) {
-      return <InternalOnly />;
+    // Check if user email is internal
+    // Note: Email might be encrypted in API response (for PII protection)
+    // Backend PreprodInternalGuard already validates email access before allowing authentication
+    // So if user exists and is authenticated, they passed backend validation - trust it
+    if (user?.email) {
+      const emailLower = (user.email || '').toLowerCase();
+      const isInternalEmail = emailLower.endsWith('@tunectnow.com');
+      // If email looks encrypted (long base64 string without @), backend already validated - allow access
+      const looksEncrypted = user.email.length > 50 && !emailLower.includes('@');
+      
+      // Only block if email is plain text and not internal domain
+      // If encrypted, trust backend validation (PreprodInternalGuard already checked)
+      if (!isInternalEmail && !looksEncrypted) {
+        return <InternalOnly />;
+      }
     }
   }
 
