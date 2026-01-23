@@ -57,8 +57,23 @@ export class UsersService {
 
     const { password, ...safeUser } = user;
 
+    // Generate a fallback name from email if name is null
+    // This provides a better UX than showing null
+    const displayName = safeUser.name || (() => {
+      if (!safeUser.email) return null;
+      // Extract username part before @ and format it
+      const emailPart = safeUser.email.split('@')[0];
+      // Capitalize first letter of each word (handle dots, underscores, etc.)
+      return emailPart
+        .split(/[._-]/)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+        .trim() || emailPart;
+    })();
+
     return {
       ...safeUser,
+      name: displayName, // Use fallback if original was null
       hasPassword: Boolean(password && password.length > 0),
       piiStrikes,
       piiMaxStrikes,
