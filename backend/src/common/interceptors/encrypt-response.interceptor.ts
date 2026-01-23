@@ -50,6 +50,15 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     'student.email', // Flattened structure (e.g., booking details)
   ];
 
+  // Public endpoints that return PII about other users - always encrypt
+  // These endpoints don't require authentication but may have optional auth
+  private readonly publicPiiEndpoints = [
+    '/tutors',
+    '/tutors/search',
+    '/tutors/trending',
+    '/tutors/filters',
+  ];
+
   constructor(
     private readonly encryptionService: EncryptionService,
     private readonly config: ConfigService,
@@ -66,7 +75,32 @@ export class EncryptResponseInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Check if user is an internal tester
+    // Check if this is a public endpoint that exposes PII about other users
+    // Public endpoints (like /tutors) should ALWAYS encrypt PII, even if a user is authenticated
+    // This protects PII in public listings where authentication is optional
+    // Internal tester exemption only applies to protected endpoints, not public ones
+    const isPublicEndpoint = this.isPublicRoute(request.url);
+
+    // For public endpoints, ALWAYS encrypt PII regardless of user authentication status
+    // This ensures PII is protected in public listings (e.g., /tutors, /tutors/:id)
+    // Internal tester exemption only applies to protected endpoints that require authentication
+    if (isPublicEndpoint) {
+      this.logger.log(
+        `[EncryptResponse] Public endpoint detected - encrypting PII for ${request.url} (user: ${user?.email || 'none'})`
+      );
+      return next.handle().pipe(
+        map((data) => {
+          try {
+            return this.encryptResponse(data);
+          } catch (error) {
+            this.logger.error(`Failed to encrypt response: ${error instanceof Error ? error.message : String(error)}`);
+            return data;
+          }
+        }),
+      );
+    }
+
+    // For protected endpoints, check if user is an internal tester
     // 1. Check INTERNAL_TESTER_EMAILS environment variable (comma-separated list)
     // 2. Fallback to PREPROD_ALLOWED_EMAILS (if configured)
     // Internal testers see plain data (no encryption) for easier testing
@@ -89,8 +123,7 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     }
 
     // Only encrypt for non-admin users and non-internal testers
-    // Admins and internal testers see plain data (no encryption)
-    // IMPORTANT: If no user (public endpoint), we still encrypt to protect PII
+    // Admins and internal testers see plain data (no encryption) on protected endpoints
     const shouldEncrypt = 
       encryptionEnabled && 
       (!user || (user.role !== 'ADMIN' && !isInternalTester));
@@ -152,5 +185,20 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     }
 
     return data;
+  }
+
+  /**
+   * Check if a route is a public endpoint that should always encrypt PII
+   * Public endpoints are those that don't require authentication and expose PII about other users
+   */
+  private isPublicRoute(url: string): boolean {
+    // Normalize URL (remove query params for matching)
+    const path = url.split('?')[0];
+
+    // Check if URL matches any public route pattern
+    return this.publicPiiEndpoints.some(route => {
+      // Exact match or starts with route followed by / (for dynamic routes like /tutors/:id)
+      return path === route || path.startsWith(route + '/');
+    });
   }
 }
