@@ -81,9 +81,33 @@ export default function MyBookings() {
     setCancelling(true);
     try {
       await cancelBooking(confirmBooking.id);
-      await refresh();
+      
+      // Refresh bookings, token balances, and demo statuses
+      await Promise.all([
+        refresh(),
+        // Refresh token balances
+        api.get('/students/me/token-balances').then(res => {
+          const balances = Array.isArray(res.data) ? res.data : [];
+          const balanceMap = new Map<string, number>();
+          balances.forEach((b: any) => {
+            if (b.tutorId) {
+              balanceMap.set(b.tutorId, Number(b.balance || 0));
+            }
+          });
+          setTokenBalances(balanceMap);
+        }).catch(() => {}), // Ignore errors
+      ]);
+      
       showSuccess('Booking cancelled successfully');
       setConfirmOpen(false);
+      
+      // Trigger demo status refresh if this was a demo booking
+      if (confirmBooking.isDemo) {
+        // Dispatch event to refresh demo statuses in other components
+        window.dispatchEvent(new CustomEvent('demo-status-changed', { 
+          detail: { tutorId: confirmBooking.tutorId } 
+        }));
+      }
     } catch (err: any) {
       showError(err.response?.data?.message || 'Failed to cancel booking');
     } finally {
@@ -473,7 +497,29 @@ export default function MyBookings() {
           onClose={closePicker}
           bookingId={pickerBooking.id}
           tutorId={pickerBooking.tutor.id}
-          onAssigned={() => refresh()}
+                      onAssigned={async () => {
+                        await refresh();
+                        // Refresh token balances after slot assignment
+                        try {
+                          const res = await api.get('/students/me/token-balances');
+                          const balances = Array.isArray(res.data) ? res.data : [];
+                          const balanceMap = new Map<string, number>();
+                          balances.forEach((b: any) => {
+                            if (b.tutorId) {
+                              balanceMap.set(b.tutorId, Number(b.balance || 0));
+                            }
+                          });
+                          setTokenBalances(balanceMap);
+                        } catch (e) {
+                          console.error('Failed to refresh token balances:', e);
+                        }
+                        // Refresh demo status if this was a demo booking
+                        if (pickerBooking?.isDemo) {
+                          window.dispatchEvent(new CustomEvent('demo-status-changed', { 
+                            detail: { tutorId: pickerBooking.tutorId } 
+                          }));
+                        }
+                      }}
         />
       )}
 

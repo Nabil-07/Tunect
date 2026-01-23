@@ -22,7 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getRecommendedTutors } from '../../services/tutorService';
 import { getMe, getNextBooking } from '../../services/studentService';
 import { getUnreadCount } from '../../services/messagesService';
-import { getDemoStatusesForTutors } from '../../services/bookingsService';
+import { getDemoStatusesForTutors, getDemoStatusForTutor } from '../../services/bookingsService';
 import { PriceDisplay } from '../../components/PriceDisplay';
 import api from '../../lib/apiClient';
 
@@ -215,6 +215,50 @@ export default function StudentDashboard() {
       isMounted = false;
     };
   }, [authLoading, isAuthenticated, user?.role]);
+
+  // Listen for demo status and token balance changes
+  useEffect(() => {
+    const handleDemoStatusChange = async (event: CustomEvent) => {
+      const tutorId = event.detail?.tutorId;
+      if (!tutorId) return;
+      
+      try {
+        const used = await getDemoStatusForTutor(tutorId);
+        setReco((prev) => prev.map((t: any) => 
+          t.id === tutorId ? { ...t, demoUsed: used } : t
+        ));
+      } catch (e) {
+        console.error('Failed to refresh demo status:', e);
+      }
+    };
+
+    const handleTokenBalanceChange = async () => {
+      try {
+        const balancesRes = await api.get('/students/me/token-balances');
+        const balances = Array.isArray(balancesRes.data) ? balancesRes.data : [];
+        const totalTokens = balances.reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0);
+        
+        const balanceMap = new Map<string, number>();
+        balances.forEach((b: any) => {
+          if (b.tutorId) {
+            balanceMap.set(b.tutorId, Number(b.balance || 0));
+          }
+        });
+        setTokenBalances(balanceMap);
+        setTokens(totalTokens);
+      } catch (e) {
+        console.error('Failed to refresh token balances:', e);
+      }
+    };
+
+    window.addEventListener('demo-status-changed', handleDemoStatusChange as EventListener);
+    window.addEventListener('token-balance-changed', handleTokenBalanceChange);
+    
+    return () => {
+      window.removeEventListener('demo-status-changed', handleDemoStatusChange as EventListener);
+      window.removeEventListener('token-balance-changed', handleTokenBalanceChange);
+    };
+  }, []);
 
   // next session helpers
   const nextStartISO =

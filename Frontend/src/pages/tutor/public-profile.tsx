@@ -172,6 +172,11 @@ export default function TutorPublicProfile() {
           },
           timezone,
         );
+        
+        // Refresh demo status after successful booking
+        window.dispatchEvent(new CustomEvent('demo-status-changed', { 
+          detail: { tutorId: id } 
+        }));
       } else {
         // paid booking flow (requires tokens)
         await api.post(
@@ -179,6 +184,9 @@ export default function TutorPublicProfile() {
           { tutorId: id, startTime: slot.startTime, endTime: slot.endTime, notes: 'Booked from public profile' },
           { params: { tz: timezone } },
         );
+        
+        // Refresh token balances after paid booking
+        window.dispatchEvent(new CustomEvent('token-balance-changed'));
       }
 
       // refresh slots so the taken one disappears for everyone
