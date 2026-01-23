@@ -30,7 +30,17 @@ export class LivekitService {
     return secret;
   }
 
-  async createToken(userId: string, bookingId: string, tutorId?: string, studentId?: string) {
+  async createToken(userId: string, bookingId: string, tutorId?: string, studentId?: string, isAdmin?: boolean) {
+    if (!userId) {
+      this.logger.error('[LiveKit] userId is required but was not provided');
+      throw new ForbiddenException('User authentication required');
+    }
+
+    if (!bookingId) {
+      this.logger.error('[LiveKit] bookingId is required but was not provided');
+      throw new ForbiddenException('Booking ID is required');
+    }
+
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
       select: {
@@ -46,6 +56,7 @@ export class LivekitService {
     });
 
     if (!booking) {
+      this.logger.warn(`[LiveKit] Booking not found: ${bookingId}`);
       throw new ForbiddenException('Booking not found');
     }
 
@@ -67,8 +78,25 @@ export class LivekitService {
     const now = new Date();
     const earliest = addMinutes(booking.startTime, -5);
     const latest = addMinutes(booking.endTime, 10);
-    if (now < earliest || now > latest) {
+    
+    // Log time window check for debugging
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(`[LiveKit] Time window check: now=${now.toISOString()}, earliest=${earliest.toISOString()}, latest=${latest.toISOString()}, startTime=${booking.startTime.toISOString()}, endTime=${booking.endTime.toISOString()}`);
+    }
+    
+    // In development/test environments, allow access if booking is CONFIRMED or demo, regardless of time
+    // In production, enforce strict time window
+    const isDev = process.env.NODE_ENV !== 'production';
+    const isTest = (this.cfg.get<string>('APP_ENV') || '').toLowerCase() === 'test';
+    const allowOutsideWindow = (isDev || isTest) && (booking.status === BookingStatus.CONFIRMED || booking.isDemo);
+    
+    if (!allowOutsideWindow && (now < earliest || now > latest)) {
+      this.logger.warn(`[LiveKit] Call window not active: now=${now.toISOString()}, window=${earliest.toISOString()} to ${latest.toISOString()}`);
       throw new ForbiddenException('Call window not active');
+    }
+    
+    if (allowOutsideWindow && (now < earliest || now > latest)) {
+      this.logger.debug(`[LiveKit] Allowing access outside time window (dev/test mode): now=${now.toISOString()}, window=${earliest.toISOString()} to ${latest.toISOString()}`);
     }
 
     // Check if user is tutor or student by comparing tutorId/studentId from JWT
@@ -76,29 +104,42 @@ export class LivekitService {
     let isTutor = false;
     let isStudent = false;
 
-    if (tutorId) {
-      isTutor = booking.tutorId === tutorId;
+    // First try direct ID matching from JWT payload
+    if (tutorId && booking.tutorId === tutorId) {
+      isTutor = true;
     }
-    if (studentId) {
-      isStudent = booking.studentId === studentId;
+    if (studentId && booking.studentId === studentId) {
+      isStudent = true;
     }
 
-    // Fallback: if tutorId/studentId not provided, look up from userId
-    if (!isTutor && !isStudent) {
+    // Fallback: if tutorId/studentId not provided or didn't match, look up from userId
+    if (!isTutor && !isStudent && userId) {
       const [tutor, student] = await Promise.all([
         this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } }),
         this.prisma.student.findUnique({ where: { userId }, select: { id: true } }),
       ]);
 
-      if (tutor) {
-        isTutor = booking.tutorId === tutor.id;
+      if (tutor && booking.tutorId === tutor.id) {
+        isTutor = true;
       }
-      if (student) {
-        isStudent = booking.studentId === student.id;
+      if (student && booking.studentId === student.id) {
+        isStudent = true;
       }
     }
 
-    if (!isTutor && !isStudent) {
+    // Admins can access any booking
+    if (isAdmin) {
+      this.logger.debug(`[LiveKit] Admin access granted for booking ${bookingId}`);
+      isTutor = true; // Set to true to proceed, admin can join as observer
+    }
+
+    // Log authorization check for debugging
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(`[LiveKit] Authorization check: userId=${userId}, tutorId=${tutorId}, studentId=${studentId}, isAdmin=${isAdmin}, booking.tutorId=${booking.tutorId}, booking.studentId=${booking.studentId}, isTutor=${isTutor}, isStudent=${isStudent}`);
+    }
+
+    if (!isTutor && !isStudent && !isAdmin) {
+      this.logger.warn(`[LiveKit] Access denied: User ${userId} is not authorized for booking ${bookingId}. User tutorId=${tutorId}, studentId=${studentId}, booking tutorId=${booking.tutorId}, studentId=${booking.studentId}`);
       throw new ForbiddenException('You are not part of this booking');
     }
 
