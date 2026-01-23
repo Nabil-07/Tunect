@@ -623,12 +623,6 @@ export class BookingsService {
           }
 
           if (refundAmount > 0) {
-            // Update global student tokens
-            await tx.student.update({
-              where: { id: booking.student.id },
-              data: { tokens: { increment: refundAmount } },
-            });
-
             // Update tutor-specific token balance
             const existingBalance = await tx.tutorTokenBalance.findUnique({
               where: {
@@ -640,6 +634,7 @@ export class BookingsService {
             });
 
             if (existingBalance) {
+              // Refund to tutor-specific balance
               await tx.tutorTokenBalance.update({
                 where: {
                   studentId_tutorId: {
@@ -651,9 +646,22 @@ export class BookingsService {
                   balance: { increment: refundAmount },
                 },
               });
+              
+              // Keep global student tokens in sync (aggregate = sum of all TutorTokenBalance)
+              await tx.student.update({
+                where: { id: booking.student.id },
+                data: { tokens: { increment: refundAmount } },
+              });
+            } else {
+              // Edge case: TutorTokenBalance doesn't exist
+              // Refund to global balance only
+              await tx.student.update({
+                where: { id: booking.student.id },
+                data: { tokens: { increment: refundAmount } },
+              });
             }
 
-            // Create ledger entry
+            // Create ledger entry for audit trail
             await tx.tokenLedger.create({
               data: {
                 studentId: booking.student.id,
