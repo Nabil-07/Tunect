@@ -251,11 +251,11 @@ export default function StudentDashboard() {
       }
     };
 
-    window.addEventListener('demo-status-changed', handleDemoStatusChange as EventListener);
+    window.addEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
     window.addEventListener('token-balance-changed', handleTokenBalanceChange);
     
     return () => {
-      window.removeEventListener('demo-status-changed', handleDemoStatusChange as EventListener);
+      window.removeEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
       window.removeEventListener('token-balance-changed', handleTokenBalanceChange);
     };
   }, []);
