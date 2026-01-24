@@ -53,6 +53,7 @@ export class BookingsService {
       [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELED],
       [BookingStatus.COMPLETED]: [], // Terminal state
       [BookingStatus.CANCELED]: [], // Terminal state
+      [BookingStatus.FAILED_TECHNICAL]: [], // Terminal state
     };
 
     const allowed = validTransitions[currentStatus] || [];
@@ -177,10 +178,99 @@ export class BookingsService {
 
   // ---------- queries ----------
   async nextForStudent(studentId: string) {
-    return this.prisma.booking.findFirst({
-      where: { studentId, status: BookingStatus.CONFIRMED, startTime: { gt: new Date() } },
+    const now = new Date();
+    
+    // Use the same logic as getMyBookings: fetch CONFIRMED bookings and filter in JavaScript
+    // This ensures consistency between dashboard and sessions page
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        studentId,
+        status: BookingStatus.CONFIRMED,
+        startTime: { not: null }, // Ensure startTime exists
+      },
       orderBy: { startTime: 'asc' },
+      include: {
+        tutor: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        student: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
     });
+
+    // Filter to only upcoming sessions (same logic as getMyBookings)
+    // Ensure we compare dates correctly - b.startTime is already a Date object from Prisma
+    const upcomingBookings = bookings.filter((b) => {
+      if (!b.startTime) return false;
+      // b.startTime from Prisma is already a Date object, compare directly
+      // Use getTime() for reliable numeric comparison
+      const startTime = b.startTime instanceof Date ? b.startTime.getTime() : new Date(b.startTime).getTime();
+      const nowTime = now.getTime();
+      return startTime > nowTime;
+    });
+
+    // Debug logging (remove in production if needed)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[nextForStudent] Student ${studentId}: found ${bookings.length} CONFIRMED bookings, ${upcomingBookings.length} upcoming`);
+      console.log(`[nextForStudent] Current time: ${now.toISOString()}`);
+      if (bookings.length > 0) {
+        bookings.slice(0, 3).forEach((b, i) => {
+          console.log(`[nextForStudent] Booking ${i + 1}: id=${b.id}, startTime=${b.startTime?.toISOString()}, isUpcoming=${b.startTime && (b.startTime instanceof Date ? b.startTime : new Date(b.startTime)) > now}`);
+        });
+      }
+      if (upcomingBookings.length > 0) {
+        console.log(`[nextForStudent] Next session: ${upcomingBookings[0].id}, startTime: ${upcomingBookings[0].startTime?.toISOString()}`);
+      } else {
+        console.log(`[nextForStudent] No upcoming sessions found`);
+      }
+    }
+
+    // Return the first upcoming booking (next session)
+    const booking = upcomingBookings[0];
+
+    if (!booking || !booking.startTime) {
+      return null;
+    }
+
+    // Return booking with all necessary fields for frontend display
+    // Ensure startTime is returned as ISO string for consistent frontend parsing
+    return {
+      id: booking.id,
+      startTime: booking.startTime instanceof Date 
+        ? booking.startTime.toISOString() 
+        : booking.startTime,
+      endTime: booking.endTime instanceof Date 
+        ? booking.endTime.toISOString() 
+        : booking.endTime,
+      status: booking.status,
+      tutor: {
+        id: booking.tutor.id,
+        name: booking.tutor.user?.name,
+        email: booking.tutor.user?.email,
+      },
+      student: {
+        id: booking.student.id,
+        name: booking.student.user?.name,
+        email: booking.student.user?.email,
+      },
+    };
   }
 
   async list(q: QueryBookingDto, tz: string = 'UTC') {
@@ -430,7 +520,34 @@ export class BookingsService {
         },
       });
 
+      // Update or create tutorTokenBalance
+      // Tokens are deducted from student.tokens (already done above)
+      // tutorTokenBalance tracks tokens allocated per tutor
+      // When booking, ensure tutorTokenBalance reflects the token allocation and deduction
+      const tutor = await tx.tutor.findUnique({
+        where: { id: dto.tutorId },
+        select: { hourlyRate: true },
+      });
+
       if (tutorBalance) {
+        // TutorTokenBalance exists: check if it has enough tokens
+        const currentBalance = Number(tutorBalance.balance);
+        if (currentBalance < cost) {
+          // Not enough tokens in tutorTokenBalance
+          // This means tokens need to be allocated from student.tokens to this tutor
+          // Since student.tokens was already decremented, we just need to account for it
+          const transferAmount = cost - currentBalance;
+          await tx.tutorTokenBalance.update({
+            where: {
+              studentId_tutorId: {
+                studentId: dto.studentId!,
+                tutorId: dto.tutorId,
+              },
+            },
+            data: { balance: { increment: transferAmount } },
+          });
+        }
+        // Deduct tokens for the booking
         await tx.tutorTokenBalance.update({
           where: {
             studentId_tutorId: {
@@ -441,18 +558,19 @@ export class BookingsService {
           data: { balance: { decrement: cost } },
         });
       } else {
-        const tutor = await tx.tutor.findUnique({
-          where: { id: dto.tutorId },
-          select: { hourlyRate: true },
-        });
+        // TutorTokenBalance doesn't exist: create it
+        // Tokens were already deducted from student.tokens above
+        // Create tutorTokenBalance initialized with cost (tokens allocated from student.tokens)
+        // Then deduct cost, so balance ends at 0 (tokens were used for this booking)
         await tx.tutorTokenBalance.create({
           data: {
             studentId: dto.studentId!,
             tutorId: dto.tutorId,
-            balance: new Prisma.Decimal(0),
+            balance: new Prisma.Decimal(cost), // Allocate tokens from student.tokens
             pricePerToken: new Prisma.Decimal(tutor?.hourlyRate ?? 0),
           },
         });
+        // Deduct tokens for the booking
         await tx.tutorTokenBalance.update({
           where: {
             studentId_tutorId: {
@@ -474,14 +592,30 @@ export class BookingsService {
         },
       });
 
-      await this.ensureLivekitMeeting(booking.id);
+      // Note: ensureLivekitMeeting and chatTriggers are called outside transaction
+      // to avoid long-running operations in transaction
+      return booking;
+    }).then(async (booking) => {
+      // After transaction commits, trigger side effects
+      const logger = new Logger(BookingsService.name);
+      try {
+        await this.ensureLivekitMeeting(booking.id);
+      } catch (error) {
+        // Log but don't fail the booking if meeting URL creation fails
+        logger.error('Failed to ensure LiveKit meeting:', error);
+      }
 
-      // Trigger conversation creation for paid bookings
-      await this.chatTriggers.onDirectBookingCreated(
-        dto.studentId!,
-        dto.tutorId,
-        booking.id,
-      );
+      try {
+        // Trigger conversation creation for paid bookings
+        await this.chatTriggers.onDirectBookingCreated(
+          dto.studentId!,
+          dto.tutorId,
+          booking.id,
+        );
+      } catch (error) {
+        // Log but don't fail the booking if chat creation fails
+        logger.error('Failed to create chat conversation:', error);
+      }
 
       return booking;
     });

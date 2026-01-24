@@ -91,29 +91,69 @@ export class StudentsService {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [completedCount, monthlyBookings] = await Promise.all([
+    // Get COMPLETED bookings for count and hours calculation
+    const [completedCount, monthlyCompletedBookings] = await Promise.all([
       this.prisma.booking.count({
         where: {
           studentId: student.id,
-          endTime: { not: null, lt: now },
-          status: { not: BookingStatus.CANCELED },
+          status: BookingStatus.COMPLETED,
         },
       }),
       this.prisma.booking.findMany({
         where: {
           studentId: student.id,
-          endTime: { not: null, lt: now },
-          status: { not: BookingStatus.CANCELED },
+          status: BookingStatus.COMPLETED,
           startTime: { gte: startOfMonth },
         },
-        select: { startTime: true, endTime: true },
+        select: { id: true, startTime: true, endTime: true },
       }),
     ]);
 
-    const hoursStudied = monthlyBookings.reduce((sum, b) => {
+    // Also get EXPIRED (CONFIRMED past endTime) sessions with attendance for hours calculation
+    // These are sessions that were attended but not yet marked COMPLETED
+    const expiredBookings = await this.prisma.booking.findMany({
+      where: {
+        studentId: student.id,
+        status: BookingStatus.CONFIRMED,
+        startTime: { gte: startOfMonth },
+        endTime: { lt: now }, // Past end time
+      },
+      select: { id: true, startTime: true, endTime: true },
+    });
+
+    // Check which expired bookings have attendance
+    // Note: We use whiteboardSession as a storage mechanism to track LiveKit participation
+    // A whiteboardSession exists when student requested LiveKit token (joined the class)
+    // This is better than tracking whiteboard usage - we're tracking actual class participation
+    const expiredBookingIds = expiredBookings.map((b) => b.id);
+    const allWhiteboardSessions = expiredBookingIds.length > 0
+      ? await this.prisma.whiteboardSession.findMany({
+          where: {
+            bookingId: { in: expiredBookingIds },
+          },
+          select: { bookingId: true, data: true },
+        })
+      : [];
+    
+    // Filter to only sessions with attendance evidence (whiteboardSession exists = student joined LiveKit room)
+    const attendedExpiredBookings = allWhiteboardSessions
+      .filter((ws) => ws.data !== null && ws.data !== undefined)
+      .map((ws) => ws.bookingId);
+
+    const attendedExpiredIds = new Set(attendedExpiredBookings);
+    const expiredWithAttendance = expiredBookings.filter((b) => attendedExpiredIds.has(b.id));
+
+    // Count hours from COMPLETED sessions + EXPIRED sessions with attendance
+    const allSessionsForHours = [...monthlyCompletedBookings, ...expiredWithAttendance];
+    const hoursStudied = allSessionsForHours.reduce((sum, b) => {
       if (!b.startTime || !b.endTime) return sum;
       return sum + (b.endTime.getTime() - b.startTime.getTime()) / 3_600_000;
     }, 0);
+
+    // Debug logging (remove in production if needed)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[getMe] Student ${student.id}: completedCount=${completedCount}, monthlyCompleted=${monthlyCompletedBookings.length}, expiredWithAttendance=${expiredWithAttendance.length}, hoursStudied=${hoursStudied.toFixed(2)}`);
+    }
 
     return {
       ...user,
@@ -182,6 +222,24 @@ export class StudentsService {
       },
     });
 
+    // ✅ Batch check attendance: Get all whiteboard sessions for these bookings in one query
+    const bookingIds = rawBookings.map((b) => b.id);
+    const whiteboardSessions = await this.prisma.whiteboardSession.findMany({
+      where: {
+        bookingId: { in: bookingIds },
+      },
+      select: {
+        bookingId: true,
+        data: true, // Include data to filter in JavaScript
+      },
+    });
+    // Filter to only sessions with actual data (attendance evidence)
+    const attendedBookingIds = new Set(
+      whiteboardSessions
+        .filter((ws) => ws.data !== null && ws.data !== undefined)
+        .map((ws) => ws.bookingId),
+    );
+
     // ✅ Map data (no additional queries needed)
     const enriched = rawBookings.map((b) => {
       const payment = b.tokenLedger[0]?.payment
@@ -191,6 +249,10 @@ export class StudentsService {
           }
         : null;
 
+      // Check if student attended (whiteboardSession exists = student joined LiveKit room)
+      // Note: whiteboardSession is used as attendance tracking mechanism for LiveKit participation
+      const hasAttended = attendedBookingIds.has(b.id);
+
       return {
         id: b.id,
         startTime: b.startTime,
@@ -199,6 +261,7 @@ export class StudentsService {
         isDemo: b.isDemo,
         createdAt: b.createdAt,
         tokensCharged: toNum(b.tokensCharged),
+        hasAttended, // Flag indicating if student joined/attended the session
         tutor: {
           id: b.tutor.id,
           hourlyRate: b.tutor.hourlyRate,
@@ -220,10 +283,10 @@ export class StudentsService {
         new Date(b.startTime) > now,
     );
 
+    // Only include sessions that are actually COMPLETED
+    // Don't include CONFIRMED sessions that just passed endTime (they may not have been attended)
     const completed = enriched.filter(
-      (b) =>
-        b.status === 'COMPLETED' ||
-        (b.endTime && new Date(b.endTime) < now),
+      (b) => b.status === 'COMPLETED',
     );
 
     return { unscheduled, upcoming, completed, all: enriched };
