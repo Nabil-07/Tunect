@@ -1,9 +1,9 @@
-import { IsInt, IsOptional, IsUUID, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class QueryReviewsDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
   tutorId?: string;
 
   @IsOptional()

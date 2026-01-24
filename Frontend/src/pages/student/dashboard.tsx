@@ -109,14 +109,24 @@ export default function StudentDashboard() {
       }
     })();
 
-    // Load next booking
+    // Load next booking - call API directly to bypass getNextBooking() guards
     (async () => {
       try {
-        const nextRes = await getNextBooking();
-        if (isMounted) setNext(nextRes ?? null);
-      } catch (e) {
-        console.error('Failed to load next booking:', e);
-        if (isMounted) setNext(null);
+        // Call API directly instead of using getNextBooking() which has guards that might prevent the call
+        const { data } = await api.get('/bookings/next');
+        if (isMounted) setNext(data ?? null);
+      } catch (e: any) {
+        const status = e?.response?.status;
+        // 404 means no upcoming session found, which is valid
+        if (status === 404) {
+          if (isMounted) setNext(null);
+        } else if (status === 401) {
+          // Unauthorized - user not authenticated
+          if (isMounted) setNext(null);
+        } else {
+          console.error('Failed to load next booking:', e);
+          if (isMounted) setNext(null);
+        }
       } finally {
         if (isMounted) setLoadingNext(false);
       }

@@ -199,6 +199,26 @@ export class MessagesService {
       me.tutor?.id,
     );
 
+    // Get full conversation details to check token balance
+    const fullConvo = await this.prisma.conversation.findUnique({
+      where: { id: convo.id },
+      select: {
+        id: true,
+        studentId: true,
+        tutorId: true,
+        student: { select: { id: true } },
+        tutor: { select: { id: true } },
+      },
+    });
+    if (!fullConvo) throw new NotFoundException('Conversation not found');
+
+    // Validate token balance before allowing message sending
+    await this.validateTokenBalanceForMessaging(
+      fullConvo.studentId,
+      fullConvo.tutorId,
+      me.role as DbRole,
+    );
+
     await this.ensureParticipant(convo.id, me.id);
 
     const participantUserIds = await this.getParticipantUserIds(convo.id);
@@ -356,6 +376,22 @@ export class MessagesService {
       !convo.booking ||
       (convo.booking.status !== 'CANCELED' && convo.booking.status !== 'COMPLETED');
 
+    // Check token balance for this student-tutor pair
+    const tokenBalance = await this.prisma.tutorTokenBalance.findUnique({
+      where: {
+        studentId_tutorId: {
+          studentId: convo.student.id,
+          tutorId: convo.tutor.id,
+        },
+      },
+      select: {
+        balance: true,
+      },
+    });
+
+    const balance = tokenBalance?.balance.toNumber() ?? 0;
+    const hasTokens = balance > 0;
+
     return {
       id: convo.id,
       type: 'DIRECT' as const,
@@ -364,6 +400,11 @@ export class MessagesService {
       isActive,
       createdAt: convo.createdAt.toISOString(),
       members: memberRecords,
+      tokenBalance: {
+        balance,
+        hasTokens,
+      },
+      canPost: hasTokens, // Only allow posting if tokens are available
       messages: messages.reverse().map((msg) => ({
         id: msg.id,
         conversationId: convo.id,
@@ -377,8 +418,6 @@ export class MessagesService {
           email: msg.user.email,
         },
       })),
-      canPost: true,
-      tokenBalance: { balance: 100, hasTokens: true },
       nextCursor,
     };
   }
@@ -766,6 +805,46 @@ export class MessagesService {
   }
 
   // ---------- helpers ----------
+  /**
+   * Validates that the student has available tokens for the tutor before allowing messaging.
+   * Both student and tutor can only send messages if the student has tokens allocated for that tutor.
+   */
+  private async validateTokenBalanceForMessaging(
+    studentId: string,
+    tutorId: string,
+    senderRole: DbRole,
+  ) {
+    // Check if student has tokens available for this tutor
+    const tokenBalance = await this.prisma.tutorTokenBalance.findUnique({
+      where: {
+        studentId_tutorId: {
+          studentId,
+          tutorId,
+        },
+      },
+      select: {
+        balance: true,
+      },
+    });
+
+    // If no token balance record exists OR balance is 0 or negative, block messaging
+    if (!tokenBalance || tokenBalance.balance.toNumber() <= 0) {
+      const tutor = await this.prisma.tutor.findUnique({
+        where: { id: tutorId },
+        include: { user: { select: { name: true } } },
+      });
+      const tutorName = tutor?.user?.name || 'this tutor';
+
+      throw new ForbiddenException({
+        message: `You cannot send messages to ${tutorName} because you don't have any available tokens. Please purchase tokens to continue messaging.`,
+        code: 'INSUFFICIENT_TOKENS',
+        studentId,
+        tutorId,
+        balance: tokenBalance?.balance.toNumber() ?? 0,
+      });
+    }
+  }
+
   private async resolveConversation(
     dto: PostMessageDto,
     userId: string,

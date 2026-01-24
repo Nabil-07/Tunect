@@ -143,6 +143,33 @@ export class LivekitService {
       throw new ForbiddenException('You are not part of this booking');
     }
 
+    // Track attendance: If student is joining, ensure whiteboard session exists (marks attendance)
+    // This is better than relying solely on whiteboard data - token request indicates intent to join
+    if (isStudent && booking.studentId) {
+      try {
+        // Check if whiteboard session exists, if not create one to mark attendance
+        const existingWhiteboard = await this.prisma.whiteboardSession.findUnique({
+          where: { bookingId },
+          select: { id: true },
+        });
+
+        if (!existingWhiteboard) {
+          // Create whiteboard session to mark that student is joining/attending
+          // This serves as attendance tracking for LiveKit participation
+          await this.prisma.whiteboardSession.create({
+            data: {
+              bookingId,
+              data: { joined: true, joinedAt: new Date().toISOString() }, // Mark attendance
+            },
+          });
+          this.logger.debug(`[LiveKit] Created whiteboard session for booking ${bookingId} to track attendance`);
+        }
+      } catch (error) {
+        // Don't fail token generation if attendance tracking fails
+        this.logger.warn(`[LiveKit] Failed to track attendance for booking ${bookingId}:`, error);
+      }
+    }
+
     const apiKey = this.getApiKey();
     const apiSecret = this.getApiSecret();
     if (!apiKey || !apiSecret) {
