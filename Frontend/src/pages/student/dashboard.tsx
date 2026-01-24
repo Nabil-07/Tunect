@@ -20,7 +20,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRecommendedTutors } from '../../services/tutorService';
-import { getMe, getNextBooking } from '../../services/studentService';
+import { getMe } from '../../services/studentService';
 import { getUnreadCount } from '../../services/messagesService';
 import { getDemoStatusesForTutors, getDemoStatusForTutor } from '../../services/bookingsService';
 import { PriceDisplay } from '../../components/PriceDisplay';
