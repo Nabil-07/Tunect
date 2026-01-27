@@ -473,18 +473,40 @@ export class AvailabilityService {
 
   // list slots by tutor (only if tutor is APPROVED)
   async listByTutor(tutorId: string) {
-    const tutor = await this.prisma.tutor.findUnique({
+    // Use same lookup logic as TutorsService.getByIdOrTid
+    // First try exact match by full ID
+    let tutor = await this.prisma.tutor.findUnique({
       where: { id: tutorId },
       select: { id: true, status: true },
     });
+    
+    // Then try by tutorTid
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findUnique({
+        where: { tutorTid: tutorId },
+        select: { id: true, status: true },
+      });
+    }
+    
+    // Finally try finding by ID ending with the provided string (for slug-based lookups)
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findFirst({
+        where: { id: { endsWith: tutorId } },
+        select: { id: true, status: true },
+      });
+    }
+    
     if (!tutor) throw new NotFoundException('Tutor not found');
     if (tutor.status !== TutorStatus.APPROVED) {
       throw new ForbiddenException('Tutor not approved');
     }
+    
+    // Use the resolved tutor ID for subsequent queries
+    const resolvedTutorId = tutor.id;
 
     // Get all slots
     const slots = await this.prisma.availabilitySlot.findMany({
-      where: { tutorId },
+      where: { tutorId: resolvedTutorId },
       orderBy: { startTime: 'asc' },
       select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
     });
@@ -492,7 +514,7 @@ export class AvailabilityService {
     // Get all confirmed/pending bookings for this tutor
     const bookings = await this.prisma.booking.findMany({
       where: {
-        tutorId,
+        tutorId: resolvedTutorId,
         status: { in: ['CONFIRMED', 'PENDING', 'PENDING_SLOT'] },
       },
       select: { startTime: true, endTime: true },
@@ -514,15 +536,36 @@ export class AvailabilityService {
 
   // ready-to-book time slices for a tutor within an optional window
   async listBookable(tutorId: string, q: BookableQueryDto) {
-    // validate tutor
-    const tutor = await this.prisma.tutor.findUnique({
+    // validate tutor - use same lookup logic as TutorsService.getByIdOrTid
+    // First try exact match by full ID
+    let tutor = await this.prisma.tutor.findUnique({
       where: { id: tutorId },
       select: { id: true, status: true },
     });
+    
+    // Then try by tutorTid
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findUnique({
+        where: { tutorTid: tutorId },
+        select: { id: true, status: true },
+      });
+    }
+    
+    // Finally try finding by ID ending with the provided string (for slug-based lookups)
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findFirst({
+        where: { id: { endsWith: tutorId } },
+        select: { id: true, status: true },
+      });
+    }
+    
     if (!tutor) throw new NotFoundException('Tutor not found');
     if (tutor.status !== TutorStatus.APPROVED) {
       throw new ForbiddenException('Tutor not approved');
     }
+    
+    // Use the resolved tutor ID for subsequent queries
+    const resolvedTutorId = tutor.id;
 
     const windowStart = q.from ? new Date(q.from) : new Date(Date.now());
     const windowEnd = q.to ? new Date(q.to) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // default 7 days
@@ -535,7 +578,7 @@ export class AvailabilityService {
     const [slots, bookings] = await this.prisma.$transaction([
       this.prisma.availabilitySlot.findMany({
         where: {
-          tutorId,
+          tutorId: resolvedTutorId,
           AND: [{ startTime: { lt: windowEnd } }, { endTime: { gt: windowStart } }],
         },
         orderBy: { startTime: 'asc' },
@@ -543,7 +586,7 @@ export class AvailabilityService {
       }),
       this.prisma.booking.findMany({
         where: {
-          tutorId,
+          tutorId: resolvedTutorId,
           status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
           AND: [{ startTime: { lt: windowEnd } }, { endTime: { gt: windowStart } }],
         },
@@ -552,7 +595,7 @@ export class AvailabilityService {
       }),
     ]);
 
-    const templateSlots = await this.buildTemplateSlots(tutorId, windowStart, windowEnd);
+    const templateSlots = await this.buildTemplateSlots(resolvedTutorId, windowStart, windowEnd);
     const dedupe = new Set<string>();
     const mergedSlots = [...slots, ...templateSlots]
       .filter((s) => {

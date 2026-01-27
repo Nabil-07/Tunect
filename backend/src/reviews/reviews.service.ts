@@ -98,13 +98,39 @@ export class ReviewsService {
 
   /** Public: reviews for a tutor with stats. */
   async listForTutor(tutorId: string, q: QueryReviewsDto) {
+    // Resolve tutor ID using flexible lookup (for slug-based lookups)
+    // First try exact match by full ID
+    let tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      select: { id: true },
+    });
+    
+    // Then try by tutorTid
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findUnique({
+        where: { tutorTid: tutorId },
+        select: { id: true },
+      });
+    }
+    
+    // Finally try finding by ID ending with the provided string (for slug-based lookups)
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findFirst({
+        where: { id: { endsWith: tutorId } },
+        select: { id: true },
+      });
+    }
+    
+    // Use resolved tutor ID (or original if not found - will return empty results)
+    const resolvedTutorId = tutor?.id || tutorId;
+    
     const page = Math.max(q.page ?? 1, 1);
     const pageSize = Math.max(q.pageSize ?? 20, 1);
     const skip = (page - 1) * pageSize;
 
     const [items, total, agg] = await this.prisma.$transaction([
       this.prisma.review.findMany({
-        where: { tutorId },
+        where: { tutorId: resolvedTutorId },
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
@@ -117,9 +143,9 @@ export class ReviewsService {
           student: { select: { id: true, user: { select: { email: true } } } },
         },
       }),
-      this.prisma.review.count({ where: { tutorId } }),
+      this.prisma.review.count({ where: { tutorId: resolvedTutorId } }),
       this.prisma.review.aggregate({
-        where: { tutorId },
+        where: { tutorId: resolvedTutorId },
         _avg: { rating: true },
       }),
     ]);

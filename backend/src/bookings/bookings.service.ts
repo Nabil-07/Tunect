@@ -307,12 +307,34 @@ export class BookingsService {
     }
     if (!dto.studentId) throw new BadRequestException('studentId is required');
 
-    const tutor = await this.prisma.tutor.findUnique({
+    // Use same lookup logic as TutorsService.getByIdOrTid for flexible ID matching
+    // First try exact match by full ID
+    let tutor = await this.prisma.tutor.findUnique({
       where: { id: dto.tutorId },
-      select: { status: true },
+      select: { id: true, status: true },
     });
+    
+    // Then try by tutorTid
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findUnique({
+        where: { tutorTid: dto.tutorId },
+        select: { id: true, status: true },
+      });
+    }
+    
+    // Finally try finding by ID ending with the provided string (for slug-based lookups)
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findFirst({
+        where: { id: { endsWith: dto.tutorId } },
+        select: { id: true, status: true },
+      });
+    }
+    
     if (!tutor) throw new NotFoundException('Tutor not found');
     if (tutor.status !== 'APPROVED') throw new BadRequestException('Tutor is not approved.');
+    
+    // Use the resolved tutor ID for subsequent queries
+    const resolvedTutorId = tutor.id;
 
     // ---- DEMO booking ----
     if (isDemo) {
@@ -325,7 +347,7 @@ export class BookingsService {
         const existingDemo = await tx.booking.findFirst({
           where: {
             studentId: dto.studentId!,
-            tutorId: dto.tutorId,
+            tutorId: resolvedTutorId,
             isDemo: true,
             status: { 
               in: [
@@ -357,13 +379,13 @@ export class BookingsService {
 
         // If requested window is not within availability or overlaps, add to waitlist
         try {
-          await this.ensureWithinAvailabilitySlot(dto.tutorId, start, end);
-          await this.ensureNoTutorOverlap(dto.tutorId, start, end);
+          await this.ensureWithinAvailabilitySlot(resolvedTutorId, start, end);
+          await this.ensureNoTutorOverlap(resolvedTutorId, start, end);
         } catch (e) {
           // Add to waitlist and create a demo booking awaiting slot selection
           await this.waitlistService.addToWaitlist(
             {
-              tutorId: dto.tutorId,
+              tutorId: resolvedTutorId,
               requestedStartTime: start.toISOString(),
               requestedEndTime: end.toISOString(),
               subject: undefined,
@@ -375,7 +397,7 @@ export class BookingsService {
 
           const booking = await tx.booking.create({
             data: {
-              tutorId: dto.tutorId,
+              tutorId: resolvedTutorId,
               studentId: dto.studentId!,
               isDemo: true,
               status: BookingStatus.PENDING,
@@ -390,7 +412,7 @@ export class BookingsService {
 
         const booking = await tx.booking.create({
           data: {
-            tutorId: dto.tutorId,
+            tutorId: resolvedTutorId,
             studentId: dto.studentId!,
             isDemo: true,
             status: BookingStatus.CONFIRMED,
@@ -409,7 +431,7 @@ export class BookingsService {
         // Note: We already checked for existing demos above in transaction, so this is safe
         const booking = await tx.booking.create({
           data: {
-            tutorId: dto.tutorId,
+            tutorId: resolvedTutorId,
             studentId: dto.studentId!,
             isDemo: true,
             status: BookingStatus.PENDING,
@@ -442,7 +464,7 @@ export class BookingsService {
       const existingPendingSlots = await this.prisma.booking.count({
         where: {
           studentId: dto.studentId!,
-          tutorId: dto.tutorId,
+          tutorId: resolvedTutorId,
           isDemo: false,
           status: BookingStatus.PENDING_SLOT,
         },
@@ -459,7 +481,7 @@ export class BookingsService {
 
       return this.prisma.booking.create({
         data: {
-          tutorId: dto.tutorId,
+          tutorId: resolvedTutorId,
           studentId: dto.studentId!,
           isDemo: false,
           status: BookingStatus.PENDING_SLOT,
@@ -477,8 +499,8 @@ export class BookingsService {
       throw new BadRequestException(`Minimum booking is ${MIN_BLOCK_MINUTES} minutes.`);
     }
 
-    await this.ensureWithinAvailabilitySlot(dto.tutorId, start, end);
-    await this.ensureNoTutorOverlap(dto.tutorId, start, end);
+    await this.ensureWithinAvailabilitySlot(resolvedTutorId, start, end);
+    await this.ensureNoTutorOverlap(resolvedTutorId, start, end);
     await this.ensureNoStudentOverlap(dto.studentId!, start, end);
 
     const cost = this.requiredTokens(start, end, TOKENS_PER_HOUR);
@@ -495,7 +517,7 @@ export class BookingsService {
 
       const booking = await tx.booking.create({
         data: {
-          tutorId: dto.tutorId,
+          tutorId: resolvedTutorId,
           studentId: dto.studentId!,
           isDemo: false,
           status: BookingStatus.CONFIRMED,
@@ -515,7 +537,7 @@ export class BookingsService {
         where: {
           studentId_tutorId: {
             studentId: dto.studentId!,
-            tutorId: dto.tutorId,
+            tutorId: resolvedTutorId,
           },
         },
       });
@@ -525,7 +547,7 @@ export class BookingsService {
       // tutorTokenBalance tracks tokens allocated per tutor
       // When booking, ensure tutorTokenBalance reflects the token allocation and deduction
       const tutor = await tx.tutor.findUnique({
-        where: { id: dto.tutorId },
+        where: { id: resolvedTutorId },
         select: { hourlyRate: true },
       });
 
@@ -541,7 +563,7 @@ export class BookingsService {
             where: {
               studentId_tutorId: {
                 studentId: dto.studentId!,
-                tutorId: dto.tutorId,
+                tutorId: resolvedTutorId,
               },
             },
             data: { balance: { increment: transferAmount } },
@@ -552,7 +574,7 @@ export class BookingsService {
           where: {
             studentId_tutorId: {
               studentId: dto.studentId!,
-              tutorId: dto.tutorId,
+              tutorId: resolvedTutorId,
             },
           },
           data: { balance: { decrement: cost } },
@@ -565,7 +587,7 @@ export class BookingsService {
         await tx.tutorTokenBalance.create({
           data: {
             studentId: dto.studentId!,
-            tutorId: dto.tutorId,
+            tutorId: resolvedTutorId,
             balance: new Prisma.Decimal(cost), // Allocate tokens from student.tokens
             pricePerToken: new Prisma.Decimal(tutor?.hourlyRate ?? 0),
           },
@@ -575,7 +597,7 @@ export class BookingsService {
           where: {
             studentId_tutorId: {
               studentId: dto.studentId!,
-              tutorId: dto.tutorId,
+              tutorId: resolvedTutorId,
             },
           },
           data: { balance: { decrement: cost } },
@@ -585,7 +607,7 @@ export class BookingsService {
       await tx.tokenLedger.create({
         data: {
           studentId: dto.studentId!,
-          tutorId: dto.tutorId,
+          tutorId: resolvedTutorId,
           bookingId: booking.id,
           delta: new Prisma.Decimal(-cost),
           reason: TokenReason.BOOKING,
@@ -609,7 +631,7 @@ export class BookingsService {
         // Trigger conversation creation for paid bookings
         await this.chatTriggers.onDirectBookingCreated(
           dto.studentId!,
-          dto.tutorId,
+          resolvedTutorId,
           booking.id,
         );
       } catch (error) {
