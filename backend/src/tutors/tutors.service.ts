@@ -296,10 +296,18 @@ export class TutorsService {
 
       const pageSize = Math.min(20, Math.max(1, Number(params?.pageSize ?? 6)));
 
-      const student = await this.prisma.student.findUnique({
-        where: { userId },
-        select: { id: true, grade: true },
-      });
+      let student;
+      try {
+        student = await this.prisma.student.findUnique({
+          where: { userId },
+          select: { id: true, grade: true },
+        });
+      } catch (dbError: any) {
+        this.logger.error(`[getRecommendedForStudent] Database error fetching student:`, dbError?.message);
+        this.logger.error(`[getRecommendedForStudent] userId:`, userId);
+        // Continue with student as null - this is valid if student doesn't exist yet
+        student = null;
+      }
 
     const searches = this.parseSearches(params?.searches);
 
@@ -464,9 +472,16 @@ export class TutorsService {
       return { items, total: items.length, page: 1, pageSize };
     } catch (error: any) {
       this.logger.error(`[getRecommendedForStudent] Error:`, error?.message);
-      this.logger.error(`[getRecommendedForStudent] Stack:`, error?.stack);
+      this.logger.error(`[getRecommendedForStudent] Error details:`, {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+        code: error?.code,
+      });
       this.logger.error(`[getRecommendedForStudent] userId:`, userId);
+      this.logger.error(`[getRecommendedForStudent] params:`, params);
       // Return empty list on error instead of throwing to prevent 500
+      // This allows the endpoint to return gracefully even if there's an issue
       return { items: [], total: 0, page: 1, pageSize: params?.pageSize ?? 6 };
     }
   }
