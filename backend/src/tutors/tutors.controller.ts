@@ -72,7 +72,7 @@ export class TutorsController {
 
   @ApiOperation({ summary: 'Search tutors' })
   @Get('search')
-  search(
+  async search(
     @Query('q') q?: string,
     @Query('subject') subject?: string,
     @Query('class') classTeach?: string,
@@ -84,18 +84,29 @@ export class TutorsController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.svc.search({
-      q: q || undefined,
-      subject: subject || undefined,
-      classTeach: classTeach || undefined,
-      language: language || undefined,
-      minRating: minRating ? Number(minRating) : undefined,
-      priceMin: priceMin ? Number(priceMin) : undefined,
-      priceMax: priceMax ? Number(priceMax) : undefined,
-      sort,
-      page: page ? Number(page) : undefined,
-      pageSize: pageSize ? Number(pageSize) : undefined,
-    });
+    try {
+      return await this.svc.search({
+        q: q || undefined,
+        subject: subject || undefined,
+        classTeach: classTeach || undefined,
+        language: language || undefined,
+        minRating: minRating ? Number(minRating) : undefined,
+        priceMin: priceMin ? Number(priceMin) : undefined,
+        priceMax: priceMax ? Number(priceMax) : undefined,
+        sort,
+        page: page ? Number(page) : undefined,
+        pageSize: pageSize ? Number(pageSize) : undefined,
+      });
+    } catch (error: any) {
+      // Log the error with full details for debugging
+      console.error('[TutorsController.search] Error:', {
+        message: error?.message,
+        stack: error?.stack,
+        params: { q, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize },
+      });
+      // Re-throw to let NestJS handle it (will return 500 with error details)
+      throw error;
+    }
   }
 
   @ApiOperation({ summary: 'Trending tutors (homepage carousel)' })
