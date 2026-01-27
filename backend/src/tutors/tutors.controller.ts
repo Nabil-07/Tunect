@@ -56,8 +56,8 @@ export class TutorsController {
   @ApiOperation({ summary: 'Recommended tutors for student dashboard' })
   @ApiQuery({ name: 'pageSize', required: false, example: 6 })
   @ApiQuery({ name: 'searches', required: false, description: 'JSON string of recent searches' })
-  @UseGuards(JwtAuthGuard)
   @Get('recommended')
+  @UseGuards(JwtAuthGuard)
   async recommended(
     @Req() req: any,
     @Query('pageSize') pageSize?: string,
@@ -158,6 +158,17 @@ export class TutorsController {
   @Get('filters/options')
   getFilterOptions() {
     return this.svc.getFilterOptions();
+  }
+
+  // Diagnostic endpoint to verify route registration
+  @ApiOperation({ summary: 'Health check for recommended endpoint' })
+  @Get('recommended/health')
+  recommendedHealth() {
+    return { 
+      status: 'ok', 
+      message: 'Recommended endpoint is registered',
+      timestamp: new Date().toISOString(),
+    };
   }
 
   @ApiOperation({ summary: 'Get logged-in tutor sessions' })
