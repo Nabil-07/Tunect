@@ -560,23 +560,14 @@ export class MessagesService {
 
     if (!bookings.length) return;
 
-    for (const booking of bookings) {
-      await this.prisma.conversation.upsert({
-        where: {
-          studentId_tutorId_bookingId: {
-            studentId: booking.studentId,
-            tutorId: booking.tutorId,
-            bookingId: booking.id,
-          },
-        },
-        create: {
-          studentId: booking.studentId,
-          tutorId: booking.tutorId,
-          bookingId: booking.id,
-        },
-        update: {},
-      });
-    }
+    await this.prisma.conversation.createMany({
+      data: bookings.map((booking) => ({
+        studentId: booking.studentId,
+        tutorId: booking.tutorId,
+        bookingId: booking.id,
+      })),
+      skipDuplicates: true,
+    });
   }
 
   /**

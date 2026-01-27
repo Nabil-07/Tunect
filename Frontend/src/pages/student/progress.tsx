@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Trophy, TrendingUp, Target, Award, BookOpen, Clock, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import apiClient from '../../services/apiClient';
+import { getMe } from '../../services/studentService';
 
 interface Progress {
   id: string;
@@ -45,9 +46,12 @@ export default function StudentProgress() {
       .catch(err => console.error('Failed to load certificates:', err))
       .finally(() => setLoadingCerts(false));
     
-    // ✅ Load hours independently
-    apiClient.get('/student-progress/me/total-hours')
-      .then(res => setTotalHours(res.data?.totalHours || 0))
+    // ✅ Load hours independently (from /students/me to reflect actual sessions)
+    getMe()
+      .then((me) => {
+        const hours = me?.student?.hoursStudied;
+        setTotalHours(typeof hours === 'number' ? hours : 0);
+      })
       .catch(err => console.error('Failed to load hours:', err))
       .finally(() => setLoadingHours(false));
   };

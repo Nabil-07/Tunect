@@ -509,9 +509,31 @@ export class BookingsService {
       const student = await tx.student.findUnique({ where: { id: dto.studentId } });
       if (!student) throw new NotFoundException('Student not found');
 
+      const tutorBalance = await tx.tutorTokenBalance.findUnique({
+        where: {
+          studentId_tutorId: {
+            studentId: dto.studentId!,
+            tutorId: resolvedTutorId,
+          },
+        },
+        select: { balance: true },
+      });
+
+      const availableTutorTokens = Number(tutorBalance?.balance ?? 0);
+      if (!tutorBalance || availableTutorTokens < cost) {
+        throw new HttpException(
+          {
+            message: `Insufficient tutor tokens. Required: ${cost}, Available: ${availableTutorTokens}`,
+            error: 'INSUFFICIENT_TOKENS',
+            code: 'INSUFFICIENT_TOKENS',
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
       if (student.tokens < cost) {
         throw new BadRequestException(
-          `Insufficient tokens. Required: ${cost}, Available: ${student.tokens}`,
+          'You don\'t have enough tokens to book this session. Please purchase more tokens before booking.',
         );
       }
 
@@ -533,76 +555,15 @@ export class BookingsService {
         data: { tokens: { decrement: cost } },
       });
 
-      const tutorBalance = await tx.tutorTokenBalance.findUnique({
+      await tx.tutorTokenBalance.update({
         where: {
           studentId_tutorId: {
             studentId: dto.studentId!,
             tutorId: resolvedTutorId,
           },
         },
+        data: { balance: { decrement: cost } },
       });
-
-      // Update or create tutorTokenBalance
-      // Tokens are deducted from student.tokens (already done above)
-      // tutorTokenBalance tracks tokens allocated per tutor
-      // When booking, ensure tutorTokenBalance reflects the token allocation and deduction
-      const tutor = await tx.tutor.findUnique({
-        where: { id: resolvedTutorId },
-        select: { hourlyRate: true },
-      });
-
-      if (tutorBalance) {
-        // TutorTokenBalance exists: check if it has enough tokens
-        const currentBalance = Number(tutorBalance.balance);
-        if (currentBalance < cost) {
-          // Not enough tokens in tutorTokenBalance
-          // This means tokens need to be allocated from student.tokens to this tutor
-          // Since student.tokens was already decremented, we just need to account for it
-          const transferAmount = cost - currentBalance;
-          await tx.tutorTokenBalance.update({
-            where: {
-              studentId_tutorId: {
-                studentId: dto.studentId!,
-                tutorId: resolvedTutorId,
-              },
-            },
-            data: { balance: { increment: transferAmount } },
-          });
-        }
-        // Deduct tokens for the booking
-        await tx.tutorTokenBalance.update({
-          where: {
-            studentId_tutorId: {
-              studentId: dto.studentId!,
-              tutorId: resolvedTutorId,
-            },
-          },
-          data: { balance: { decrement: cost } },
-        });
-      } else {
-        // TutorTokenBalance doesn't exist: create it
-        // Tokens were already deducted from student.tokens above
-        // Create tutorTokenBalance initialized with cost (tokens allocated from student.tokens)
-        // Then deduct cost, so balance ends at 0 (tokens were used for this booking)
-        await tx.tutorTokenBalance.create({
-          data: {
-            studentId: dto.studentId!,
-            tutorId: resolvedTutorId,
-            balance: new Prisma.Decimal(cost), // Allocate tokens from student.tokens
-            pricePerToken: new Prisma.Decimal(tutor?.hourlyRate ?? 0),
-          },
-        });
-        // Deduct tokens for the booking
-        await tx.tutorTokenBalance.update({
-          where: {
-            studentId_tutorId: {
-              studentId: dto.studentId!,
-              tutorId: resolvedTutorId,
-            },
-          },
-          data: { balance: { decrement: cost } },
-        });
-      }
 
       await tx.tokenLedger.create({
         data: {
@@ -1440,7 +1401,7 @@ export class BookingsService {
 
       if (student.tokens < tokensRequired) {
         throw new BadRequestException(
-          `Insufficient tokens. Required: ${tokensRequired}, Available: ${student.tokens}`,
+          'You don\'t have enough tokens to join this group session. Please purchase more tokens before booking.',
         );
       }
 
@@ -1613,6 +1574,21 @@ export class BookingsService {
     const student = await this.prisma.student.findUnique({ where: { userId } });
     if (!student) throw new NotFoundException('Student profile not found');
 
+    const tutorBalance = await this.prisma.tutorTokenBalance.findUnique({
+      where: {
+        studentId_tutorId: {
+          studentId: student.id,
+          tutorId,
+        },
+      },
+      select: { balance: true },
+    });
+
+    const available = Number(tutorBalance?.balance ?? 0);
+    if (!tutorBalance || available <= 0) {
+      throw new BadRequestException('No available tokens for this tutor. Please purchase tokens first.');
+    }
+
     return this.prisma.booking.create({
       data: {
         tutorId,
@@ -1627,6 +1603,21 @@ export class BookingsService {
   async bulkReserveTokens(tutorId: string, userId: string, count: number) {
     const student = await this.prisma.student.findUnique({ where: { userId } });
     if (!student) throw new NotFoundException('Student profile not found');
+
+    const tutorBalance = await this.prisma.tutorTokenBalance.findUnique({
+      where: {
+        studentId_tutorId: {
+          studentId: student.id,
+          tutorId,
+        },
+      },
+      select: { balance: true },
+    });
+
+    const available = Number(tutorBalance?.balance ?? 0);
+    if (!tutorBalance || available < Math.max(1, Number(count || 0))) {
+      throw new BadRequestException('Not enough tokens to reserve multiple sessions.');
+    }
 
     const bookings = [];
     for (let i = 0; i < count; i++) {

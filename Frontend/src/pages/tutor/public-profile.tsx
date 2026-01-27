@@ -48,12 +48,26 @@ export default function TutorPublicProfile() {
   // Parse ID from slug if needed (backward compatibility)
   const id = useMemo(() => {
     if (!idOrSlug) return null;
+    
+    // If it's already a full CUID (25 chars, starts with 'c'), use it directly
+    if (idOrSlug.length === 25 && /^c[a-z0-9]{24}$/.test(idOrSlug)) {
+      return idOrSlug;
+    }
+    
     // If it looks like a slug (has dashes), try to parse ID
     if (idOrSlug.includes('-')) {
       const parsed = parseTutorIdFromSlug(idOrSlug);
-      return parsed || idOrSlug; // Fallback to original if parsing fails
+      if (parsed) return parsed;
+      // If parsing fails, try extracting the last part (might be partial ID)
+      const parts = idOrSlug.split('-');
+      const lastPart = parts[parts.length - 1];
+      if (lastPart && lastPart.length >= 8) {
+        return lastPart; // Backend will handle lookup with endsWith
+      }
     }
-    return idOrSlug; // Already an ID
+    
+    // Already an ID (might be partial)
+    return idOrSlug;
   }, [idOrSlug]);
   const isDemoIntent = useMemo(
     () => new URLSearchParams(location.search).get('demo') === '1',
@@ -76,6 +90,8 @@ export default function TutorPublicProfile() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<string | null>(null);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
+  const [tokenBalanceLoading, setTokenBalanceLoading] = useState(false);
   
   // Reviews state
   const [reviews, setReviews] = useState<Array<{
@@ -162,6 +178,26 @@ export default function TutorPublicProfile() {
     }
   }, []);
 
+  // Fetch token balance for this tutor (for students only)
+  const fetchTokenBalance = useCallback(async (tutorId: string) => {
+    if (!tutorId || user?.role !== 'STUDENT') {
+      setTokenBalance(null);
+      return;
+    }
+    try {
+      setTokenBalanceLoading(true);
+      const { data } = await api.get('/students/me/token-balances');
+      const balances = Array.isArray(data) ? data : [];
+      const balance = balances.find((b: any) => b.tutorId === tutorId);
+      setTokenBalance(balance ? Number(balance.balance || 0) : 0);
+    } catch (error) {
+      console.error('Failed to fetch token balance:', error);
+      setTokenBalance(null);
+    } finally {
+      setTokenBalanceLoading(false);
+    }
+  }, [user?.role]);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -176,6 +212,8 @@ export default function TutorPublicProfile() {
         // Fetch reviews after tutor is loaded (use full tutor ID from response)
         if (t?.id) {
           fetchReviews(t.id);
+          // Fetch token balance for students
+          fetchTokenBalance(t.id);
         }
 
         // Redirect to slug-based URL if not already using slug
@@ -219,6 +257,27 @@ export default function TutorPublicProfile() {
       return;
     }
 
+    // For paid bookings, check token balance before proceeding
+    if (!isDemoIntent && user?.role === 'STUDENT') {
+      if (tokenBalanceLoading) {
+        setErrorModal('Please wait while we check your token balance...');
+        return;
+      }
+      
+      // Calculate required tokens (assuming 1 token per hour, minimum 1 hour)
+      const start = new Date(slot.startTime);
+      const end = new Date(slot.endTime);
+      const hours = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60));
+      const requiredTokens = Math.ceil(hours * (tutor?.hourlyRate || 0));
+      
+      if (tokenBalance === null || tokenBalance < requiredTokens) {
+        setErrorModal(
+          'You don\'t have enough tokens to book this session. Please purchase more tokens before booking.'
+        );
+        return;
+      }
+    }
+
     try {
       setBusy(true);
 
@@ -248,6 +307,10 @@ export default function TutorPublicProfile() {
         
         // Refresh token balances after paid booking
         window.dispatchEvent(new CustomEvent('token-balance-changed'));
+        // Refresh token balance for this tutor
+        if (tutor?.id) {
+          fetchTokenBalance(tutor.id);
+        }
       }
 
       // refresh slots so the taken one disappears for everyone

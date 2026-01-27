@@ -520,15 +520,30 @@ export class AvailabilityService {
       select: { startTime: true, endTime: true },
     });
 
-    // Filter out slots that have bookings
-    const availableSlots = slots.filter(slot => {
-      // Check if any booking overlaps with this slot
-      const hasBooking = bookings.some(booking => {
-        if (!booking.startTime || !booking.endTime) return false;
-        // Check for overlap: booking starts before slot ends AND booking ends after slot starts
-        return booking.startTime < slot.endTime && booking.endTime > slot.startTime;
-      });
-      return !hasBooking; // Only include slots without bookings
+    const blocked = bookings
+      .filter((b) => b.startTime && b.endTime)
+      .map((b) => [b.startTime as Date, b.endTime as Date] as [Date, Date]);
+
+    const availableSlots = slots.flatMap((slot) => {
+      const base: [Date, Date] = [slot.startTime, slot.endTime];
+      const overlaps = blocked.filter(([bStart, bEnd]) => bEnd > base[0] && bStart < base[1]);
+      if (!overlaps.length) {
+        return [{ 
+          id: slot.id as string | undefined, 
+          tutorId: slot.tutorId, 
+          startTime: slot.startTime, 
+          endTime: slot.endTime, 
+          createdAt: slot.createdAt 
+        }];
+      }
+      const freeParts = this.subtractIntervals(base, overlaps);
+      return freeParts.map(([s, e]) => ({
+        id: undefined as string | undefined,
+        tutorId: slot.tutorId,
+        startTime: s,
+        endTime: e,
+        createdAt: slot.createdAt,
+      }));
     });
 
     return availableSlots;

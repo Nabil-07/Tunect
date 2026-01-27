@@ -154,6 +154,7 @@ const SessionNotes = lazy(() => import('./pages/student/session-notes'));
 const StudentCertificates = lazy(() => import('./pages/student/certificates'));
 const ReviewSession = lazy(() => import('./pages/student/review-session'));
 const Cart = lazy(() => import('./pages/student/cart'));
+const StudentWaitlist = lazy(() => import('./pages/student/waitlist'));
 const DemoCheckout = lazy(() => import('./pages/student/checkout')); // FREE demo checkout (existing)
 const StudentCheckoutPaid = lazy(() => import('./pages/student/checkout-paid')); // NEW paid checkout
 const PaymentSuccess = lazy(() => import('./pages/student/payment-success'));    // NEW
@@ -360,6 +361,7 @@ function App() {
           <Route path="/student/certificates" element={<StudentCertificates />} />
           <Route path="/student/review-session" element={<ReviewSession />} />
           <Route path="/student/cart" element={<Cart />} />
+          <Route path="/student/waitlist" element={<StudentWaitlist />} />
 
           {/* Free DEMO checkout (existing) */}
           <Route path="/student/demo-checkout" element={<DemoCheckout />} />
