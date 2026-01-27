@@ -1,7 +1,9 @@
 // src/auth/auth.service.ts
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
   BadRequestException,
@@ -13,6 +15,11 @@ import { Role, Prisma, OtpPurpose, OtpChannel } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { NotificationsService } from '../notifications/notifications.service';
 import { isPreprodAllowedEmail } from './preprod-allowlist';
+
+/** Brute-force protection: lock duration in minutes after max failed attempts. */
+const LOGIN_LOCK_MINUTES = 15;
+/** Max failed login attempts per user before temporary lock. */
+const MAX_FAILED_LOGIN_ATTEMPTS = 10;
 
 export type GoogleOAuthPayload = {
   provider: 'google';
@@ -36,6 +43,8 @@ type ForgotVerifyInput = {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -93,30 +102,82 @@ export class AuthService {
     return ok ? user : null;
   }
 
+  /**
+   * Login with brute-force protection:
+   * - 403 if account locked (≥10 failed attempts, 15‑min lock).
+   * - Reset failed attempts and lock on success.
+   * - Increment failed attempts on failure; lock when ≥10.
+   * IP rate limit (5/min) is enforced by ThrottlerGuard on POST /auth/login.
+   */
   async login(email: string, password: string) {
     this.ensureInternal(email);
-    const user = await this.validateUser(email, password);
-    if (!user) throw new UnauthorizedException('Invalid credentials');
-
-    const payload = { sub: user.id, email: user.email, role: user.role };
-    const access_token = await this.jwt.signAsync(payload, {
-      secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
-      expiresIn: this.cfg.get<string>('JWT_ACCESS_TTL') ?? '900s',
-      issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
-      audience: this.cfg.get<string>('JWT_AUD') || undefined,
-    });
-    const refresh_token = await this.jwt.signAsync({ sub: user.id, type: 'refresh' }, {
-      secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
-      expiresIn: this.cfg.get<string>('JWT_REFRESH_TTL') ?? '7d',
-      issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
-      audience: this.cfg.get<string>('JWT_AUD') || undefined,
+    const emailNorm = email.toLowerCase().trim();
+    const user = await this.prisma.user.findUnique({
+      where: { email: emailNorm },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isDirector: true,
+        password: true,
+        failedLoginAttempts: true,
+        lockUntil: true,
+      },
     });
 
-    return {
-      access_token,
-      refresh_token,
-      user: { id: user.id, email: user.email, role: user.role, isDirector: user.isDirector },
-    };
+    const now = new Date();
+    if (user?.lockUntil && user.lockUntil > now) {
+      const retryAt = user.lockUntil.toISOString();
+      this.logger.warn(`Login blocked: account locked (email=${emailNorm}, retryAfter=${retryAt})`);
+      throw new ForbiddenException(
+        'Account temporarily locked due to too many failed login attempts. Try again in 15 minutes.',
+      );
+    }
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const ok = await bcrypt.compare(password, user.password);
+    if (ok) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockUntil: null },
+      });
+      const payload = { sub: user.id, email: user.email, role: user.role };
+      const access_token = await this.jwt.signAsync(payload, {
+        secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
+        expiresIn: this.cfg.get<string>('JWT_ACCESS_TTL') ?? '900s',
+        issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
+        audience: this.cfg.get<string>('JWT_AUD') || undefined,
+      });
+      const refresh_token = await this.jwt.signAsync({ sub: user.id, type: 'refresh' }, {
+        secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
+        expiresIn: this.cfg.get<string>('JWT_REFRESH_TTL') ?? '7d',
+        issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
+        audience: this.cfg.get<string>('JWT_AUD') || undefined,
+      });
+      return {
+        access_token,
+        refresh_token,
+        user: { id: user.id, email: user.email, role: user.role, isDirector: user.isDirector },
+      };
+    }
+
+    const attempts = (user.failedLoginAttempts ?? 0) + 1;
+    const lockUntil = attempts >= MAX_FAILED_LOGIN_ATTEMPTS
+      ? new Date(now.getTime() + LOGIN_LOCK_MINUTES * 60 * 1000)
+      : null;
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: attempts, lockUntil },
+    });
+    if (lockUntil) {
+      this.logger.warn(
+        `Account locked after ${attempts} failed logins (email=${emailNorm}, lockUntil=${lockUntil.toISOString()})`,
+      );
+    }
+    throw new UnauthorizedException('Invalid credentials');
   }
 
   async logout(_userId: string) {

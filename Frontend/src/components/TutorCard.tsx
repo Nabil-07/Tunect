@@ -208,7 +208,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
         ) : tutor.avatarUrl ? (
           <img
             src={tutor.avatarUrl}
-            alt={displayName}
+            alt={`${displayName} - ${sortedSubjects[0] || 'Online Tutor'} on Tunect`}
             className="h-full w-full object-cover"
             loading="lazy"
           />

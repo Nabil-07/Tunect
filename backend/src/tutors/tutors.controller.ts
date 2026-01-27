@@ -53,6 +53,23 @@ export class TutorsController {
     });
   }
 
+  @ApiOperation({ summary: 'Recommended tutors for student dashboard' })
+  @ApiQuery({ name: 'pageSize', required: false, example: 6 })
+  @ApiQuery({ name: 'searches', required: false, description: 'JSON string of recent searches' })
+  @UseGuards(JwtAuthGuard)
+  @Get('recommended')
+  recommended(
+    @Req() req: any,
+    @Query('pageSize') pageSize?: string,
+    @Query('searches') searches?: string,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    return this.svc.getRecommendedForStudent(userId, {
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      searches,
+    });
+  }
+
   @ApiOperation({ summary: 'Search tutors' })
   @Get('search')
   search(

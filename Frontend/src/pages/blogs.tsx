@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import SEO from "../components/SEO";
 import api from "../lib/apiClient";
 
 type BlogPost = {
@@ -38,6 +39,12 @@ export default function Blogs() {
 
   return (
     <main className="container mx-auto px-4 py-12 max-w-6xl">
+      <SEO
+        title="Tunect Blog | Online Tutoring Tips & Stories | Tunect"
+        description="Read the latest articles, tips, and stories about online tutoring, learning strategies, and success stories from Tunect's community of students and tutors."
+        url="/blogs"
+        type="website"
+      />
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Tunect Blog</h1>
         <p className="mt-2 text-slate-600">Updates, tips, and stories from our learning community.</p>
@@ -60,8 +67,9 @@ export default function Blogs() {
               {post.coverImageUrl ? (
                 <img
                   src={post.coverImageUrl}
-                  alt={post.title}
+                  alt={`${post.title} - Tunect Blog`}
                   className="h-48 w-full object-cover"
+                  loading="lazy"
                 />
               ) : (
                 <div className="h-48 w-full bg-slate-100" />

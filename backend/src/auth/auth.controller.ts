@@ -56,6 +56,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Login and receive JWT' })
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60, limit: 5 } })
   @Post('login')
   async login(@Body() dto: LoginDto) {
     const email = dto.email?.toLowerCase().trim();

@@ -278,7 +278,6 @@ async function main() {
           conversationId: conversation.id,
           senderId: isFromStudent ? studentUser.id : tutorUser.id,
           text: messageText,
-          content: messageText,
         },
       });
       messageCount++;

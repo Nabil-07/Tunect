@@ -24,6 +24,7 @@ import compression from 'compression';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import type { ServerOptions } from 'socket.io';
 import { PreprodInternalGuard } from './auth/preprod-internal.guard';
+import { buildCspDirectives } from './common/csp.config';
 
 class CorsSocketIoAdapter extends IoAdapter {
   constructor(private readonly appRef: any, private readonly origins: string[]) {
@@ -148,9 +149,14 @@ async function bootstrap() {
     prefix: '/uploads',
   });
 
-  app.use(helmet({ 
+  const isProd = process.env.NODE_ENV === 'production';
+  const cspDirectives = buildCspDirectives({ config: cfg, isProd });
+  app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
-    contentSecurityPolicy: false // Disable CSP to allow video playback
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: cspDirectives,
+    },
   }));
 
   // Parse the short-lived "remember_oauth" cookie during Google OAuth callback
@@ -174,7 +180,6 @@ async function bootstrap() {
     app.useGlobalGuards(app.get(PreprodInternalGuard));
   }
 
-  const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
     const { SwaggerModule, DocumentBuilder } = await import('@nestjs/swagger');
     const config = new DocumentBuilder()
@@ -196,6 +201,7 @@ async function bootstrap() {
   const base = `http://localhost:${port}`;
   console.log(`\n🚀 Server running at: ${base}`);
   console.log(`💓 Health:          ${base}/health`);
+  console.log(`📊 Metrics:         ${base}/admin/metrics (ADMIN only, in-memory)`);
   if (!isProd) console.log(`📘 Swagger:         ${base}/docs`);
 }
 

@@ -15,6 +15,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import SEO from "../components/SEO";
 import { http } from "../api/http";
 import { getAccessToken, setTokens } from "../lib/auth";
 import Loader from "../components/common/Loader";
@@ -90,6 +91,11 @@ export default function BecomeTutor() {
 
   return (
     <div className="bg-white text-slate-800 relative">
+      <SEO
+        title="Become a Tutor Online in India | Teach & Earn | Tunect"
+        description="Join Tunect as an online tutor and teach students 1-on-1. Set your own rates, flexible schedule, verified platform. Start teaching today and earn from home."
+        url="/become-tutor"
+      />
       {/* Full-screen loader overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/90 backdrop-blur-sm">

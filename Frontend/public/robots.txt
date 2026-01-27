@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+
+# Block sensitive or account-specific paths from crawlers
+Disallow: /admin/
+Disallow: /tutor/
+Disallow: /student/
+Disallow: /account/
+Disallow: /class/
+Disallow: /call/
+Disallow: /whiteboard/
+Disallow: /auth/
+
+# Sitemap location
+Sitemap: https://tunectnow.com/sitemap.xml
+
+# Crawl-delay (optional)
+Crawl-delay: 1

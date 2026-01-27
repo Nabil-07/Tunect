@@ -1,9 +1,11 @@
 // src/pages/find-tutors.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import SEO from '../components/SEO';
 import TutorCard from '../components/TutorCard';
+import { TutorCardSkeleton } from '../components/skeletons';
 import { searchTutors, listTutors, getFilterOptions } from '../services/tutorService';
-import type { Tutor } from '../services/tutorService';
+import type { Tutor, TutorSearchHistoryEntry } from '../services/tutorService';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
 import { getDemoStatusesForTutors, getDemoStatusForTutor } from '../services/bookingsService';
 
@@ -19,6 +21,49 @@ function useDebounced<T>(value: T, ms = 350) {
 
 // extend Tutor with our UI-only flag
 type TutorWithDemo = Tutor & { demoUsed?: boolean };
+
+const SEARCH_HISTORY_KEY = 'tn_find_tutors_recent_searches';
+const SEARCH_HISTORY_LIMIT = 10;
+
+function readSearchHistory(): TutorSearchHistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(SEARCH_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSearchHistory(entry: TutorSearchHistoryEntry) {
+  try {
+    const existing = readSearchHistory();
+    const normalized = {
+      term: entry.term?.trim() || undefined,
+      subject: entry.subject?.trim() || undefined,
+      classTeach: entry.classTeach?.trim() || undefined,
+      language: entry.language?.trim() || undefined,
+      ts: entry.ts ?? Date.now(),
+    };
+
+    const isEmpty = !normalized.term && !normalized.subject && !normalized.classTeach && !normalized.language;
+    if (isEmpty) return;
+
+    const last = existing[0];
+    const isDuplicate =
+      last &&
+      last.term === normalized.term &&
+      last.subject === normalized.subject &&
+      last.classTeach === normalized.classTeach &&
+      last.language === normalized.language;
+
+    const next = isDuplicate ? existing : [normalized, ...existing];
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next.slice(0, SEARCH_HISTORY_LIMIT)));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export default function FindTutors() {
   const [sp, setSp] = useSearchParams();
@@ -105,97 +150,24 @@ export default function FindTutors() {
 
         if (!mounted) return;
 
+        // Use backend results directly - backend handles all filtering and pagination
+        // Store backend total for pagination BEFORE any client-side modifications
+        const backendTotal = res.total ?? 0;
         let list: TutorWithDemo[] = (res.items ?? []) as TutorWithDemo[];
 
-        // 2) Client-side filtering for additional safety (ensures proper segregation)
-        // This is CRITICAL - filters out any tutors that don't match the selected criteria
+        // Note: Backend already handles filtering (subject, language, classTeach, price, etc.)
+        // Client-side filtering after pagination breaks pagination, so we trust the backend
         
-        // Text search filter (q) - STRICT: ensure tutor matches the search query
-        // Search should match tutor name OR any subject OR bio
-        if (q && q.trim()) {
-          const searchLower = q.trim().toLowerCase();
-          const beforeFilter = list.length;
-          list = list.filter((t) => {
-            // Check tutor name
-            const nameMatch = (t.name || '').toLowerCase().includes(searchLower);
-            
-            // Check subjects (any subject should contain the search term)
-            const subjectsMatch = (t.subjects || []).some((s: string) => 
-              s.toLowerCase().includes(searchLower)
-            );
-            
-            // Check bio if available
-            const bioMatch = (t as any).bio ? 
-              (t as any).bio.toLowerCase().includes(searchLower) : false;
-            
-            const matches = nameMatch || subjectsMatch || bioMatch;
-            
-            if (!matches) {
-              console.warn(
-                `[find-tutors] Filtered out tutor ${t.id} (${t.name}) - ` +
-                `search query: "${q}", tutor subjects: [${(t.subjects || []).join(', ')}]`
-              );
-            }
-            return matches;
-          });
-          console.log(
-            `[find-tutors] Text search filter "${q}": ${beforeFilter} → ${list.length} tutors ` +
-            `(${beforeFilter - list.length} filtered out)`
-          );
-        }
-        
-        // Subject filter - STRICT: ensure tutor actually teaches the selected subject
-        if (subject && subject.trim()) {
-          const subjectLower = subject.trim().toLowerCase();
-          const beforeFilter = list.length;
-          list = list.filter((t) => {
-            const tutorSubjects = (t.subjects || []).map((s: string) => s.toLowerCase());
-            const matches = tutorSubjects.includes(subjectLower);
-            if (!matches && tutorSubjects.length > 0) {
-              console.warn(
-                `[find-tutors] Filtered out tutor ${t.id} (${t.name}) - ` +
-                `selected subject: "${subject}", tutor subjects: [${tutorSubjects.join(', ')}]`
-              );
-            }
-            return matches;
-          });
-          console.log(
-            `[find-tutors] Subject filter "${subject}": ${beforeFilter} → ${list.length} tutors ` +
-            `(${beforeFilter - list.length} filtered out)`
-          );
-        }
-
-        // Language filter - ensure tutor teaches the selected language
-        if (language && language.trim()) {
-          const langLower = language.trim().toLowerCase();
-          list = list.filter((t) => {
-            const tutorLanguages = (t.languages || []).map((l: string) => l.toLowerCase());
-            return tutorLanguages.includes(langLower);
-          });
-        }
-
-        // Class filter - ensure tutor teaches the selected class
-        if (classTeach && classTeach.trim()) {
-          const classLower = classTeach.trim().toLowerCase();
-          list = list.filter((t) => {
-            const tutorClasses = (t.classesTeach || []).map((c: string) => c.toLowerCase());
-            return tutorClasses.includes(classLower);
-          });
-        }
-
-        // Price filters
-        if (priceMin != null) list = list.filter((t) => (t.hourlyRate ?? 0) >= priceMin);
-        if (priceMax != null) list = list.filter((t) => (t.hourlyRate ?? 0) <= priceMax);
-        
-        // Sorting
+        // Only apply client-side sorting if backend doesn't handle it
+        // (Backend should handle sorting, but keeping this as fallback)
         if (sort === 'price_asc') list = [...list].sort((a, b) => (a.hourlyRate ?? 0) - (b.hourlyRate ?? 0));
         if (sort === 'price_desc') list = [...list].sort((a, b) => (b.hourlyRate ?? 0) - (a.hourlyRate ?? 0));
         if (sort === 'rating_desc') list = [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
 
         // 3) render immediately without demo flags (avoids flicker)
-        // Update total to reflect filtered count
         setItems(list);
-        setTotal(list.length); // Use filtered count, not backend total
+        // Use backend total for pagination (not filtered count)
+        setTotal(backendTotal);
 
         // 4) fetch demo-used statuses in parallel and merge into items
         const ids = list.map((t) => t.id).filter(Boolean);
@@ -217,6 +189,17 @@ export default function FindTutors() {
     };
     // Depend on debounced q and shouldUseSearch (which includes q in its calculation)
   }, [q, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize, shouldUseSearch]);
+
+  // Track recent searches and filters for recommendations
+  useEffect(() => {
+    writeSearchHistory({
+      term: q || undefined,
+      subject: subject || undefined,
+      classTeach: classTeach || undefined,
+      language: language || undefined,
+      ts: Date.now(),
+    });
+  }, [q, subject, classTeach, language]);
 
   // Listen for demo status changes and refresh
   useEffect(() => {
@@ -251,8 +234,34 @@ export default function FindTutors() {
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
 
+  // Dynamic SEO based on search params
+  const seoTitle = useMemo(() => {
+    if (subject) {
+      return `Best ${subject} Tutors Online in India | Free Demo | Tunect`;
+    }
+    if (q) {
+      return `Find ${q} Tutors Online in India | Free Demo | Tunect`;
+    }
+    return 'Find Online Tutors in India | 1-on-1 Tutoring | Free Demo | Tunect';
+  }, [subject, q]);
+
+  const seoDescription = useMemo(() => {
+    if (subject) {
+      return `Find expert ${subject} tutors for 1-on-1 online tutoring in India. Book your first session free! Verified tutors, personalized learning, flexible scheduling.`;
+    }
+    if (q) {
+      return `Search for ${q} tutors online. Book 1-on-1 sessions with verified tutors in India. First session free!`;
+    }
+    return 'Search and find verified online tutors in India. Book 1-on-1 personalized tutoring sessions. First session is free! Learn Mathematics, Physics, Chemistry, English, and more.';
+  }, [subject, q]);
+
   return (
     <main className="container-px mx-auto py-8">
+      <SEO
+        title={seoTitle}
+        description={seoDescription}
+        url={`/find-tutors${sp.toString() ? `?${sp.toString()}` : ''}`}
+      />
       <h1 className="text-2xl font-bold">Find Tutors</h1>
 
       {/* Filters */}
@@ -355,11 +364,15 @@ export default function FindTutors() {
           </div>
         )}
 
-        {/* Search Results Header with Segregation Info */}
-        {!loading && items.length > 0 && (
+        {/* Search Results Header */}
+        {!loading && (
           <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
             <span className="font-semibold text-slate-700">
-              Found {total} {total === 1 ? 'tutor' : 'tutors'}
+              {total > 0 ? (
+                <>Found {total} {total === 1 ? 'tutor' : 'tutors'}</>
+              ) : (
+                <>No tutors found</>
+              )}
             </span>
             {(q || subject || classTeach || language) && (
               <div className="flex flex-wrap gap-2">
@@ -390,7 +403,11 @@ export default function FindTutors() {
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {loading
-            ? Array.from({ length: pageSize }).map((_, i) => <div key={i} className="card h-28 animate-pulse" />)
+            ? Array.from({ length: Math.min(pageSize, 12) }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <TutorCardSkeleton />
+                </div>
+              ))
             : items.length > 0
             ? items.map((t) => (
                 <div key={t.id} className="space-y-2">

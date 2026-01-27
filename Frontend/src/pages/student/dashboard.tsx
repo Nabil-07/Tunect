@@ -20,10 +20,16 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRecommendedTutors } from '../../services/tutorService';
+import type { TutorSearchHistoryEntry } from '../../services/tutorService';
 import { getMe } from '../../services/studentService';
 import { getUnreadCount } from '../../services/messagesService';
 import { getDemoStatusesForTutors, getDemoStatusForTutor } from '../../services/bookingsService';
 import { PriceDisplay } from '../../components/PriceDisplay';
+import {
+  DashboardStatSkeleton,
+  TutorCardSkeleton,
+  Skeleton,
+} from '../../components/skeletons';
 import api from '../../lib/apiClient';
 
 type SubjectStat = { name: string; progress: number }; // 0..100
@@ -57,6 +63,17 @@ export default function StudentDashboard() {
   
   const [subjectStats, setSubjectStats] = useState<SubjectStat[]>([]);
   const [showSubjects, setShowSubjects] = useState(false);
+
+  const readSearchHistory = (): TutorSearchHistoryEntry[] => {
+    try {
+      const raw = localStorage.getItem('tn_find_tutors_recent_searches');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
 
 
   const dtf = useMemo(
@@ -148,7 +165,8 @@ export default function StudentDashboard() {
     // Load recommended tutors
     (async () => {
       try {
-        const recoRes = await getRecommendedTutors(6);
+        const searches = readSearchHistory();
+        const recoRes = await getRecommendedTutors({ limit: 6, searches });
         const baseReco = Array.isArray(recoRes) ? recoRes : [];
         if (isMounted) setReco(baseReco);
 
@@ -329,7 +347,9 @@ export default function StudentDashboard() {
         {(loadingStats || hasSubjects) && (
           <section className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-5 lg:p-6 shadow-sm">
             {loadingStats ? (
-              <div className="h-32 animate-pulse bg-slate-50 rounded" />
+              <div className="h-32 rounded-xl overflow-hidden">
+                <Skeleton className="h-full w-full rounded-xl" />
+              </div>
             ) : (
               <>
                 <button
@@ -367,7 +387,7 @@ export default function StudentDashboard() {
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 lg:gap-6">
           {/* Token Balance Card */}
           {loadingTokens ? (
-            <div className="h-36 sm:h-40 rounded-xl sm:rounded-2xl border p-4 shadow-sm animate-pulse bg-slate-50" />
+            <DashboardStatSkeleton />
           ) : (
             <StatCard
               title="Token Balance"
@@ -394,7 +414,7 @@ export default function StudentDashboard() {
           
           {/* Next Session Card */}
           {loadingNext ? (
-            <div className="h-36 sm:h-40 rounded-xl sm:rounded-2xl border p-4 shadow-sm animate-pulse bg-slate-50" />
+            <DashboardStatSkeleton />
           ) : (
             <StatCard
               title="Next Session"
@@ -412,7 +432,7 @@ export default function StudentDashboard() {
           
           {/* Messages Card */}
           {loadingUnread ? (
-            <div className="h-36 sm:h-40 rounded-xl sm:rounded-2xl border p-4 shadow-sm animate-pulse bg-slate-50" />
+            <DashboardStatSkeleton />
           ) : (
             <StatCard
               title="Messages"
@@ -533,7 +553,7 @@ export default function StudentDashboard() {
           {loadingReco ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 lg:gap-6">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-44 sm:h-48 rounded-xl sm:rounded-2xl border p-4 sm:p-5 shadow-sm animate-pulse bg-slate-50" />
+                <TutorCardSkeleton key={i} />
               ))}
             </div>
           ) : reco.length === 0 ? (

@@ -7,16 +7,18 @@ import { useToast } from '../../contexts/ToastContext';
 type StudentProfile = {
   id: string;
   userId: string;
-  bio?: string;
-  timezone?: string;
-  preferredLanguage?: string;
+  bio?: string | null;
+  timezone?: string | null;
+  preferredLanguage?: string | null;
   user: {
     id: string;
-    name: string;
+    name: string | null;
     email: string;
-    phone?: string;
-    avatarUrl?: string;
+    phone?: string | null;
+    avatarUrl?: string | null;
+    createdAt?: string;
   };
+  student?: { createdAt?: string };
 };
 
 export default function StudentProfile() {
@@ -43,15 +45,14 @@ export default function StudentProfile() {
       setLoading(true);
       const { data } = await api.get<StudentProfile>('/students/me');
       setProfile(data);
-      
-      // Defensive: ensure user object exists
+
       if (data?.user) {
         setFormData({
-          name: data.user.name || '',
-          phone: data.user.phone || '',
-          bio: data.bio || '',
-          timezone: data.timezone || '',
-          preferredLanguage: data.preferredLanguage || '',
+          name: data.user.name ?? authUser?.name ?? '',
+          phone: data.user.phone ?? '',
+          bio: data.bio ?? '',
+          timezone: data.timezone ?? '',
+          preferredLanguage: data.preferredLanguage ?? '',
         });
       }
     } catch (err: any) {
@@ -78,11 +79,11 @@ export default function StudentProfile() {
   function handleCancel() {
     if (profile?.user) {
       setFormData({
-        name: profile.user.name || '',
-        phone: profile.user.phone || '',
-        bio: profile.bio || '',
-        timezone: profile.timezone || '',
-        preferredLanguage: profile.preferredLanguage || '',
+        name: profile.user.name ?? authUser?.name ?? '',
+        phone: profile.user.phone ?? '',
+        bio: profile.bio ?? '',
+        timezone: profile.timezone ?? '',
+        preferredLanguage: profile.preferredLanguage ?? '',
       });
     }
     setEditing(false);
@@ -153,11 +154,17 @@ export default function StudentProfile() {
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-8 py-12">
           <div className="flex items-center gap-6">
             <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center text-blue-600 font-bold text-3xl shadow-lg">
-              {formData.name?.charAt(0)?.toUpperCase() || authUser?.email?.charAt(0)?.toUpperCase() || 'S'}
+              {(formData.name || authUser?.name)?.charAt(0)?.toUpperCase() ||
+                authUser?.email?.charAt(0)?.toUpperCase() ||
+                'S'}
             </div>
             <div className="text-white">
-              <h2 className="text-2xl font-bold mb-1">{formData.name || 'Student'}</h2>
-              <p className="text-blue-100">{profile.user?.email || authUser?.email || 'No email'}</p>
+              <h2 className="text-2xl font-bold mb-1">
+                {formData.name || authUser?.name || 'Student'}
+              </h2>
+              <p className="text-blue-100">
+                {profile.user?.email || authUser?.email || 'No email'}
+              </p>
             </div>
           </div>
         </div>
@@ -180,7 +187,7 @@ export default function StudentProfile() {
               />
             ) : (
               <p className="text-slate-800 px-4 py-2 bg-slate-50 rounded-lg">
-                {formData.name || 'Not set'}
+                {formData.name || authUser?.name || 'Not set'}
               </p>
             )}
           </div>
@@ -192,7 +199,7 @@ export default function StudentProfile() {
               Email Address
             </label>
             <p className="text-slate-800 px-4 py-2 bg-slate-50 rounded-lg">
-              {profile.user?.email || authUser?.email || 'No email'}
+              {profile.user?.email ?? authUser?.email ?? 'No email'}
             </p>
             <p className="text-xs text-slate-500 mt-1">Email cannot be changed</p>
           </div>
@@ -310,8 +317,10 @@ export default function StudentProfile() {
             <Calendar className="h-5 w-5 text-blue-600" />
           </div>
           <p className="text-2xl font-bold text-blue-900">
-            {profile.user?.id
-              ? new Date(profile.user.id.slice(0, 8)).toLocaleDateString('en-IN', {
+            {profile.user?.createdAt || profile.student?.createdAt
+              ? new Date(
+                  (profile.user?.createdAt || profile.student?.createdAt) as string,
+                ).toLocaleDateString('en-IN', {
                   month: 'short',
                   year: 'numeric',
                 })

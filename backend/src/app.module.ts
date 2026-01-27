@@ -43,6 +43,7 @@ import { BlogsModule } from './blogs/blogs.module';
 
 import { AppController } from './app.controller';
 import { ReadyController } from './health/ready.controller';
+import { HealthModule } from './health/health.module';
 
 import { ProfilesModule } from './profiles/profiles.module';
 
@@ -53,8 +54,10 @@ import { TutorBalancesModule } from './finance/balances/tutor-balances.module';
 import { TaxModule } from './finance/tax/tax.module';
 import { ReconModule } from './finance/recon/recon.module';
 import { LivekitModule } from './livekit/livekit.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 import { EncryptResponseInterceptor } from './common/interceptors/encrypt-response.interceptor';
+import { MetricsInterceptor } from './metrics/metrics.interceptor';
 
 @Module({
   imports: [
@@ -63,6 +66,8 @@ import { EncryptResponseInterceptor } from './common/interceptors/encrypt-respon
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60, limit: 120 }]),
     PrismaModule,
     CommonModule,
+    HealthModule,
+    MetricsModule,
 
     AuthModule,
     UsersModule,
@@ -110,6 +115,7 @@ import { EncryptResponseInterceptor } from './common/interceptors/encrypt-respon
   controllers: [AppController, ReadyController],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_INTERCEPTOR, useClass: EncryptResponseInterceptor },
     PreprodInternalGuard,
   ],

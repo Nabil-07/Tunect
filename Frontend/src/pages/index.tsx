@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import SEO from '../components/SEO';
 import HeroTrending from '../components/HeroTrending';
 import SubjectsGrid from '../components/SubjectsGrid';
 import TrustSection from '../components/TrustSection';
@@ -67,8 +68,75 @@ export default function Home() {
     if (e.key === 'Enter') onSearch();
   };
 
+  // Structured data for Organization
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Tunect',
+    url: 'https://tunectnow.com',
+    logo: 'https://tunectnow.com/tunect_logo_hd.png',
+    description: 'Online 1-on-1 tutoring platform connecting students with verified tutors in India. Book free demo sessions and learn from expert tutors.',
+    sameAs: [
+      'https://www.linkedin.com/company/tunect',
+      'https://twitter.com/tunect',
+      'https://www.instagram.com/tunect',
+    ],
+    contactPoint: {
+      '@type': 'ContactPoint',
+      contactType: 'Customer Service',
+      availableLanguage: ['English', 'Hindi'],
+    },
+  };
+
+  // FAQ Schema
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: 'What is Tunect?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Tunect is an online 1-on-1 tutoring platform that connects students with verified tutors across India. Students can book personalized sessions and get their first session free as a demo.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'How much does tutoring cost on Tunect?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Each tutor sets their own hourly rate. The first session is always free as a demo. After that, pricing varies by tutor and subject. You purchase tokens to book sessions.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Are tutors verified on Tunect?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Yes, all tutors on Tunect go through a verification process including KYC checks and skill assessments to ensure quality teaching.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'What subjects can I learn on Tunect?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Tunect offers tutoring in a wide range of subjects including Mathematics, Physics, Chemistry, Biology, Computer Science, English, Arabic, French, and many more. You can search by subject to find the right tutor.',
+        },
+      },
+    ],
+  };
+
   return (
     <main>
+      <SEO
+        title="Online 1-on-1 Tutors in India | Free Demo | Tunect"
+        description="Find verified tutors for 1-on-1 online tutoring in India. Book your first session free! Learn Mathematics, Physics, Chemistry, English, and more from expert tutors. Personalized learning at your pace."
+        url="/"
+        structuredData={[organizationSchema, faqSchema]}
+        preloadImages={["/tunect_logo_hd.png"]}
+      />
       {/* Hero – premium subtle background */}
       <section
         className={[

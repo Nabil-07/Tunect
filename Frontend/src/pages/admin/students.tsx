@@ -1,6 +1,7 @@
 // Enhanced Students Page with Filtering & Sorting
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
+import { TableRowSkeleton } from '../../components/skeletons';
 import { fetchStudents, unbanUser, type StudentSummary, type PaginationMeta } from '../../services/adminService';
 
 type SortField = 'email' | 'grade' | 'tokens' | 'accountStatus' | 'createdAt';
@@ -137,14 +138,34 @@ export default function AdminStudents() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Students</h2>
-          <p className="text-slate-600 text-sm">Track tokens and recent activity. {filtered.length} of {students.length} shown.</p>
+          <p className="text-slate-600 text-sm">
+            {loading ? 'Loading…' : `Track tokens and recent activity. ${filtered.length} of ${students.length} shown.`}
+          </p>
         </div>
       </div>
 
       {error && <div className="text-sm text-rose-600">{error}</div>}
 
       {loading ? (
-        <div className="text-slate-600">Loading students...</div>
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>
+                <th className="px-4 py-3 text-left">Student</th>
+                <th className="px-4 py-3 text-left">Grade</th>
+                <th className="px-4 py-3 text-left">Tokens</th>
+                <th className="px-4 py-3 text-left">Account Status</th>
+                <th className="px-4 py-3 text-left">Created</th>
+                <th className="px-4 py-3 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <TableRowSkeleton key={i} columns={6} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-sm">

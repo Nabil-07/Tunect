@@ -191,9 +191,26 @@ export const getTutorById = getTutor;
 // Re-export getTutorAvailability from bookingsService for convenience
 export { getTutorAvailability };
 
-export async function getRecommendedTutors(limit = 6) {
-  const { data } = await api.get<ListResponse<any> | any[]>('/tutors', {
-    params: { sortBy: 'updatedAt', sortOrder: 'desc', page: 1, pageSize: limit },
+export type TutorSearchHistoryEntry = {
+  term?: string;
+  subject?: string;
+  classTeach?: string;
+  language?: string;
+  ts?: number;
+};
+
+export async function getRecommendedTutors(params?: {
+  limit?: number;
+  searches?: TutorSearchHistoryEntry[];
+}) {
+  const limit = Math.min(20, Math.max(1, Number(params?.limit ?? 6)));
+  const searches = Array.isArray(params?.searches) ? params?.searches : [];
+
+  const { data } = await api.get<ListResponse<any> | any[]>('/tutors/recommended', {
+    params: {
+      pageSize: limit,
+      searches: searches.length ? JSON.stringify(searches) : undefined,
+    },
   });
   const list = normalizeList(data);
   return list.items;
