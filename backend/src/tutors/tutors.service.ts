@@ -287,12 +287,19 @@ export class TutorsService {
     userId: string,
     params?: { pageSize?: number; searches?: string },
   ) {
-    const pageSize = Math.min(20, Math.max(1, Number(params?.pageSize ?? 6)));
+    try {
+      if (!userId) {
+        this.logger.warn('[getRecommendedForStudent] No userId provided');
+        // Return empty list if no userId
+        return { items: [], total: 0, page: 1, pageSize: 6 };
+      }
 
-    const student = await this.prisma.student.findUnique({
-      where: { userId },
-      select: { id: true, grade: true },
-    });
+      const pageSize = Math.min(20, Math.max(1, Number(params?.pageSize ?? 6)));
+
+      const student = await this.prisma.student.findUnique({
+        where: { userId },
+        select: { id: true, grade: true },
+      });
 
     const searches = this.parseSearches(params?.searches);
 
@@ -451,10 +458,17 @@ export class TutorsService {
       };
     });
 
-    scored.sort((a, b) => b.score - a.score);
+      scored.sort((a, b) => b.score - a.score);
 
-    const items = scored.slice(0, pageSize).map((s) => normalizeTutor(s.tutor));
-    return { items, total: items.length, page: 1, pageSize };
+      const items = scored.slice(0, pageSize).map((s) => normalizeTutor(s.tutor));
+      return { items, total: items.length, page: 1, pageSize };
+    } catch (error: any) {
+      this.logger.error(`[getRecommendedForStudent] Error:`, error?.message);
+      this.logger.error(`[getRecommendedForStudent] Stack:`, error?.stack);
+      this.logger.error(`[getRecommendedForStudent] userId:`, userId);
+      // Return empty list on error instead of throwing to prevent 500
+      return { items: [], total: 0, page: 1, pageSize: params?.pageSize ?? 6 };
+    }
   }
 
   // ---------- SEARCH ----------
