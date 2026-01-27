@@ -58,16 +58,33 @@ export class TutorsController {
   @ApiQuery({ name: 'searches', required: false, description: 'JSON string of recent searches' })
   @UseGuards(JwtAuthGuard)
   @Get('recommended')
-  recommended(
+  async recommended(
     @Req() req: any,
     @Query('pageSize') pageSize?: string,
     @Query('searches') searches?: string,
   ) {
-    const userId = req.user?.userId || req.user?.sub || req.user?.id;
-    return this.svc.getRecommendedForStudent(userId, {
-      pageSize: pageSize ? Number(pageSize) : undefined,
-      searches,
-    });
+    try {
+      const userId = req.user?.userId || req.user?.sub || req.user?.id;
+      if (!userId) {
+        console.error('[TutorsController.recommended] No userId found in request:', {
+          user: req.user,
+          headers: req.headers,
+        });
+        throw new Error('User ID not found in authenticated request');
+      }
+      return await this.svc.getRecommendedForStudent(userId, {
+        pageSize: pageSize ? Number(pageSize) : undefined,
+        searches,
+      });
+    } catch (error: any) {
+      console.error('[TutorsController.recommended] Error:', {
+        message: error?.message,
+        stack: error?.stack,
+        user: req.user,
+        params: { pageSize, searches },
+      });
+      throw error;
+    }
   }
 
   @ApiOperation({ summary: 'Search tutors' })
