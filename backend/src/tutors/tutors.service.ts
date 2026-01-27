@@ -491,13 +491,21 @@ export class TutorsService {
         this.logger.log(`[search] Filtering by subject: "${s}"`);
         // Prisma's 'has' operator checks if array contains the exact value (case-sensitive)
         // Check multiple case variants to handle different storage formats
+        // Also handle URL-encoded spaces (e.g., "Applied+Mathematics" -> "Applied Mathematics")
+        const subjectVariants = [
+          s,
+          s.toUpperCase(),
+          s.toLowerCase(),
+          s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(), // Capitalized (e.g., "Jee")
+          // Handle spaces: both with and without spaces
+          s.replace(/\s+/g, ' '), // Normalize multiple spaces
+          s.replace(/\s+/g, ''), // Remove spaces entirely
+        ];
+        // Remove duplicates
+        const uniqueVariants = [...new Set(subjectVariants)];
+        this.logger.debug(`[search] Subject variants to check:`, uniqueVariants);
         AND.push({
-          OR: [
-            { subjects: { has: s } },
-            { subjects: { has: s.toUpperCase() } },
-            { subjects: { has: s.toLowerCase() } },
-            { subjects: { has: s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() } }, // Capitalized (e.g., "Jee")
-          ],
+          OR: uniqueVariants.map(variant => ({ subjects: { has: variant } })),
         });
       }
 
@@ -556,20 +564,30 @@ export class TutorsService {
       
       this.logger.log(`[search] Executing query - Skip: ${needsAppPagination ? 0 : skip}, Take: ${needsAppPagination ? 1000 : pageSize}, SortByRating: ${shouldSortByRating}`);
       
-      const [rows, total] = await Promise.all([
-        this.prisma.tutor.findMany({
-          where,
-          orderBy,
-          // When doing text search, fetch more records to filter from (skip pagination at DB level)
-          skip: needsAppPagination ? 0 : skip,
-          take: needsAppPagination ? 1000 : pageSize, // Fetch up to 1000 for app-side filtering/sorting
-          include: {
-            user: { select: { name: true, email: true, avatarUrl: true } },
-            reviews: { select: { rating: true } },
-          },
-        }),
-        this.prisma.tutor.count({ where }),
-      ]);
+      let rows: any[] = [];
+      let total = 0;
+      
+      try {
+        [rows, total] = await Promise.all([
+          this.prisma.tutor.findMany({
+            where,
+            orderBy,
+            // When doing text search, fetch more records to filter from (skip pagination at DB level)
+            skip: needsAppPagination ? 0 : skip,
+            take: needsAppPagination ? 1000 : pageSize, // Fetch up to 1000 for app-side filtering/sorting
+            include: {
+              user: { select: { name: true, email: true, avatarUrl: true } },
+              reviews: { select: { rating: true } },
+            },
+          }),
+          this.prisma.tutor.count({ where }),
+        ]);
+      } catch (dbError: any) {
+        this.logger.error(`[search] Database query failed:`, dbError?.message);
+        this.logger.error(`[search] Database error stack:`, dbError?.stack);
+        this.logger.error(`[search] Query where clause:`, JSON.stringify(where, null, 2));
+        throw new Error(`Database query failed: ${dbError?.message || 'Unknown database error'}`);
+      }
       
       this.logger.log(`[search] Fetched ${rows.length} tutors, total: ${total}`);
 
@@ -637,17 +655,17 @@ export class TutorsService {
         const beforeFilter = filteredRows.length;
         filteredRows = filteredRows.filter((tutor) => {
           // Check bio and name
-          const bioMatch = tutor.bio?.toLowerCase().includes(qLower);
-          const nameMatch = tutor.user?.name?.toLowerCase().includes(qLower);
+          const bioMatch = tutor.bio?.toLowerCase()?.includes(qLower) ?? false;
+          const nameMatch = tutor.user?.name?.toLowerCase()?.includes(qLower) ?? false;
           
           if (bioMatch || nameMatch) {
             return true;
           }
           
           // Check partial matches in subjects, classes, or languages
-          const subjects = (tutor.subjects || []).map((s: string) => s.toLowerCase());
-          const classes = (tutor.classesTeach || []).map((c: string) => c.toLowerCase());
-          const languages = (tutor.languages || []).map((l: string) => l.toLowerCase());
+          const subjects = (tutor.subjects || []).map((s: string) => String(s || '').toLowerCase()).filter(Boolean);
+          const classes = (tutor.classesTeach || []).map((c: string) => String(c || '').toLowerCase()).filter(Boolean);
+          const languages = (tutor.languages || []).map((l: string) => String(l || '').toLowerCase()).filter(Boolean);
           
           const subjectMatch = subjects.some((s: string) => s.includes(qLower));
           const classMatch = classes.some((c: string) => c.includes(qLower));
@@ -701,8 +719,15 @@ export class TutorsService {
       return { items: pagedRows.map(normalizeTutor), total: finalTotal, page, pageSize };
     } catch (error: any) {
       this.logger.error(`[search] Error in search method:`, error);
-      this.logger.error(`[search] Stack:`, error?.stack);
-      throw error;
+      this.logger.error(`[search] Error message:`, error?.message);
+      this.logger.error(`[search] Error stack:`, error?.stack);
+      this.logger.error(`[search] Search params:`, JSON.stringify(params, null, 2));
+      // Re-throw with more context
+      const enhancedError = new Error(
+        `Tutor search failed: ${error?.message || 'Unknown error'}. Params: ${JSON.stringify(params)}`
+      );
+      (enhancedError as any).originalError = error;
+      throw enhancedError;
     }
   }
 
