@@ -1,7 +1,10 @@
-import { IsString, IsInt, Min, Max, IsOptional } from 'class-validator';
+import { IsString, IsInt, Min, Max, IsOptional, Matches } from 'class-validator';
 
 export class CreateReviewDto {
   @IsString()
+  @Matches(/^[a-z0-9]{10,}$/i, {
+    message: 'bookingId must be a valid ID format (CUID)',
+  })
   bookingId!: string;
 
   @IsInt()

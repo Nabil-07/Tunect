@@ -145,7 +145,7 @@ export default function FindTutors() {
 
         // 1) fetch tutors - use search API if there are any filters, otherwise use list API
         const res = shouldUseSearch
-          ? await searchTutors({ q, subject, classTeach, language, minRating, priceMin, priceMax, page, pageSize })
+          ? await searchTutors({ q, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize })
           : await listTutors({ page, pageSize, subject: subject || undefined, classTeach: classTeach || undefined, language: language || undefined });
 
         if (!mounted) return;
@@ -230,6 +230,12 @@ export default function FindTutors() {
     else nxt.delete(k);
     if (k !== 'page') nxt.set('page', '1');
     setSp(nxt);
+  };
+
+  const clearFilters = () => {
+    setPriceMinStr('');
+    setPriceMaxStr('');
+    setSp(new URLSearchParams());
   };
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
@@ -334,6 +340,18 @@ export default function FindTutors() {
           <option value="price_asc">Price: Low to High</option>
           <option value="price_desc">Price: High to Low</option>
         </select>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs text-slate-500">
+          Tip: pick a subject from the dropdown or type one above.
+        </div>
+        <button
+          onClick={clearFilters}
+          className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Clear filters
+        </button>
       </div>
 
       {/* Price range in your display currency (converted to INR internally) */}

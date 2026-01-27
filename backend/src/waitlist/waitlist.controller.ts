@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   NotFoundException,
   Param,
   Post,
@@ -25,13 +26,29 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 @Controller('waitlist')
 @UseGuards(JwtAuthGuard)
 export class WaitlistController {
+  private readonly logger = new Logger(WaitlistController.name);
+
   constructor(private readonly service: WaitlistService) {}
 
   private ensureWaitlistEnabled() {
-    const enabled = (process.env.ENABLE_WAITLIST ?? '').toLowerCase() === 'true';
-    if (!enabled) {
+    // Default to ENABLED unless explicitly disabled with 'false'
+    const enableWaitlist = process.env.ENABLE_WAITLIST;
+    
+    // Log the environment variable value for debugging
+    this.logger.debug(
+      `[ensureWaitlistEnabled] ENABLE_WAITLIST="${enableWaitlist}" (type: ${typeof enableWaitlist})`,
+    );
+    
+    // Only disable if explicitly set to 'false' (case-insensitive, trimmed)
+    // Handles: "false", "FALSE", "False", " false ", etc.
+    const normalizedValue = enableWaitlist?.trim().toLowerCase();
+    const isExplicitlyDisabled = normalizedValue === 'false';
+    
+    if (isExplicitlyDisabled) {
+      this.logger.warn('[ensureWaitlistEnabled] Waitlist is disabled via ENABLE_WAITLIST=false');
       throw new ServiceUnavailableException('Waitlist is temporarily disabled');
     }
+    // Otherwise, waitlist is enabled (default behavior)
   }
 
   @ApiOperation({ summary: 'Add student to waitlist' })

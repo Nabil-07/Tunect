@@ -157,14 +157,17 @@ export async function searchTutors(params: {
   to?: string | Date;
   page?: number;
   pageSize?: number;
+  sort?: 'rating_desc' | 'price_asc' | 'price_desc';
 }) {
   const qp: Record<string, any> = {};
   if (params.q && params.q.trim()) qp.q = params.q.trim();
   if (params.subject && params.subject.trim()) qp.subject = params.subject.trim();
   if (params.classTeach && params.classTeach.trim()) qp.class = params.classTeach.trim();
   if (params.language && params.language.trim()) qp.language = params.language.trim();
-  if (Number.isFinite(params.priceMin as any)) qp.minRate = Number(params.priceMin);
-  if (Number.isFinite(params.priceMax as any)) qp.maxRate = Number(params.priceMax);
+  if (Number.isFinite(params.minRating as any)) qp.minRating = Number(params.minRating);
+  if (Number.isFinite(params.priceMin as any)) qp.priceMin = Number(params.priceMin);
+  if (Number.isFinite(params.priceMax as any)) qp.priceMax = Number(params.priceMax);
+  if (params.sort) qp.sort = params.sort;
 
   const toIso = (v?: string | Date) =>
     v instanceof Date ? v.toISOString() : (v && String(v)) || undefined;

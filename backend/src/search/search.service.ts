@@ -13,15 +13,20 @@ export class SearchService {
    * - Applies only valid filters (never passes bad shapes to Prisma)
    * - Uses an availability pre-query to avoid guessing the relation name in Tutor.where
    * - Orders by `id desc` (always present) to avoid schema mismatch crashes
+   * - Text search (q) uses post-query partial matching for reliable results
    */
   async searchTutors(q: SearchTutorsDto) {
     const page = Math.max(q.page ?? 1, 1);
     const pageSize = Math.min(100, Math.max(q.pageSize ?? 20, 1));
-    const skip = (page - 1) * pageSize;
 
     // Base filter: only approved tutors
     const whereTutor: any = { status: TutorStatus.APPROVED };
     const AND: any[] = [];
+
+    // Text search (q) - handled in post-query filter for reliable partial matching
+    // Prisma's 'has' only does exact array matches; it cannot do partial matching
+    // e.g., "Math" will NOT match "Mathematics" with 'has'
+    const qSearchTerm = q.q?.trim() || null;
 
     // Subject filter (assuming Tutor.subjects: string[]) - MUST match exactly
     if (q.subject && q.subject.trim()) {
@@ -45,16 +50,8 @@ export class SearchService {
       whereTutor.hourlyRate = rate;
     }
 
-    // Simple text search against bio or tutor name (OR condition within AND)
-    if (q.q && q.q.trim()) {
-      const searchText = q.q.trim();
-      AND.push({
-        OR: [
-          { bio: { contains: searchText, mode: 'insensitive' } },
-          { user: { name: { contains: searchText, mode: 'insensitive' } } },
-        ],
-      });
-    }
+    // NOTE: Text search (q) is NOT added to Prisma query here
+    // It's handled in post-query filter below for partial matching support
 
     // Apply AND conditions if any
     if (AND.length > 0) {
@@ -89,18 +86,25 @@ export class SearchService {
       }
     }
 
-    // Fetch tutors page (safe orderBy)
-    const [tutors, total] = await this.prisma.$transaction([
+    // When text search (q) is used, fetch more records to filter in application code
+    // because Prisma's 'has' operator only supports exact matches, not partial matching
+    const needsTextSearchFilter = !!qSearchTerm;
+
+    // Fetch tutors (safe orderBy)
+    const [tutors, dbTotal] = await this.prisma.$transaction([
       this.prisma.tutor.findMany({
         where: whereTutor,
-        skip,
-        take: pageSize,
+        // When doing text search, skip pagination at DB level - apply it after filtering
+        skip: needsTextSearchFilter ? 0 : (page - 1) * pageSize,
+        take: needsTextSearchFilter ? 1000 : pageSize, // Fetch up to 1000 for text search filtering
         orderBy: { id: 'desc' }, // safe fallback for all schemas
         select: {
           id: true,
           bio: true,
           hourlyRate: true,
           subjects: true,
+          classesTeach: true,
+          languages: true,
           user: { select: { id: true, email: true, name: true, avatarUrl: true } },
           // If you do have updatedAt/createdAt and want it in UI, add them here
         },
@@ -110,7 +114,7 @@ export class SearchService {
 
     const tutorIds = tutors.map((t) => t.id);
     if (tutorIds.length === 0) {
-      return { items: [], meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+      return { items: [], meta: { page, pageSize, total: dbTotal, totalPages: Math.ceil(dbTotal / pageSize) } };
     }
 
     // Ratings (avg + count) — if you have Review model
@@ -159,7 +163,41 @@ export class SearchService {
       }
     }
 
-    const items = tutors.map((t) => {
+    // Apply partial matching for text search (q parameter) on subjects/classes/languages
+    // This handles cases where user searches "Math" and tutor has "Mathematics" or "Applied Mathematics"
+    let filteredTutors = tutors;
+    let finalTotal = dbTotal;
+
+    if (needsTextSearchFilter && qSearchTerm) {
+      const qLower = qSearchTerm.toLowerCase();
+      filteredTutors = tutors.filter((tutor) => {
+        // Check bio and name for partial matches
+        const bioMatch = tutor.bio?.toLowerCase().includes(qLower);
+        const nameMatch = tutor.user?.name?.toLowerCase().includes(qLower);
+        
+        if (bioMatch || nameMatch) {
+          return true;
+        }
+        
+        // Check for partial matches in subjects, classes, or languages
+        const subjects = (tutor.subjects || []).map((s: string) => s.toLowerCase());
+        const classes = (tutor.classesTeach || []).map((c: string) => c.toLowerCase());
+        const languages = (tutor.languages || []).map((l: string) => l.toLowerCase());
+        
+        const subjectMatch = subjects.some((s: string) => s.includes(qLower));
+        const classMatch = classes.some((c: string) => c.includes(qLower));
+        const languageMatch = languages.some((l: string) => l.includes(qLower));
+        
+        return subjectMatch || classMatch || languageMatch;
+      });
+
+      // Update total count and apply pagination AFTER filtering
+      finalTotal = filteredTutors.length;
+      const skip = (page - 1) * pageSize;
+      filteredTutors = filteredTutors.slice(skip, skip + pageSize);
+    }
+
+    const items = filteredTutors.map((t) => {
       const r = ratingMap.get(t.id);
       return {
         id: t.id,
@@ -173,7 +211,7 @@ export class SearchService {
       };
     });
 
-    return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    return { items, meta: { page, pageSize, total: finalTotal, totalPages: Math.ceil(finalTotal / pageSize) } };
   }
 
   /** Popular subjects for filter chips (optimized with raw SQL) */

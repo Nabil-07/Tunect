@@ -42,8 +42,29 @@ function normalizeTutor(row: any): TutorPublic {
   const name = row?.user?.name ?? row?.name ?? fallbackName;
 
   const hourlyRate = toNum(row?.hourlyRate ?? row?.pricePerSessionTokens, null as any);
-  const rating = toNum(row?.rating ?? row?.avgRating, null as any);
-  const reviews = toNum(row?.reviews ?? row?.reviewCount ?? row?.reviewsCount, null as any);
+
+  // Check if reviewCount was explicitly provided (from aggregation)
+  const explicitReviewCount = row?.reviewCount;
+  const reviewsArray = Array.isArray(row?.reviews) ? row.reviews : null;
+  
+  // Calculate review count: prefer explicit reviewCount, then array length, then fallback
+  let reviewsCount: number;
+  if (Number.isFinite(explicitReviewCount)) {
+    reviewsCount = explicitReviewCount;
+  } else if (reviewsArray && reviewsArray.length > 0) {
+    reviewsCount = reviewsArray.length;
+  } else {
+    reviewsCount = toNum(row?.reviewsCount, 0);
+  }
+  
+  // Calculate rating: prefer explicit rating, then avgRating, then calculate from reviews array
+  const avgRatingFromReviews = reviewsArray && reviewsArray.length
+    ? reviewsArray.reduce((sum: number, r: any) => sum + Number(r?.rating ?? 0), 0) / reviewsArray.length
+    : null;
+  const rating = toNum(row?.rating ?? row?.avgRating ?? avgRatingFromReviews, null as any);
+  
+  // Final reviews count - default to 0 if no reviews
+  const reviews = Number.isFinite(reviewsCount) ? reviewsCount : 0;
 
   return {
     id: row.id,
@@ -55,7 +76,7 @@ function normalizeTutor(row: any): TutorPublic {
     languages: languagesArr.length ? languagesArr : null,
     hourlyRate: Number.isFinite(hourlyRate) ? hourlyRate : null,
     rating: Number.isFinite(rating) ? rating : null,
-    reviews: Number.isFinite(reviews) ? reviews : null,
+    reviews: Number.isFinite(reviews as any) ? reviews : null,
     avatarUrl: row?.avatarUrl ?? row?.user?.avatarUrl ?? null,
     country: row?.country ?? null,
   };
@@ -236,12 +257,30 @@ export class TutorsService {
         orderBy,
         skip,
         take: pageSize,
-        include: { user: { select: { name: true, email: true, avatarUrl: true } } },
+        include: {
+          user: { select: { name: true, email: true, avatarUrl: true } },
+          reviews: { select: { rating: true } },
+        },
       }),
       this.prisma.tutor.count({ where }),
     ]);
 
-    return { items: rows.map(normalizeTutor), total, page, pageSize };
+    // Aggregate reviews for each tutor
+    const rowsWithReviews = rows.map((row) => {
+      const reviewsArray = Array.isArray(row?.reviews) ? row.reviews : [];
+      const ratings = reviewsArray.map((r: any) => r?.rating ?? 0).filter((r: number) => r > 0);
+      const avgRating = ratings.length > 0 
+        ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
+        : null;
+      const reviewCount = ratings.length;
+      return {
+        ...row,
+        rating: avgRating,
+        reviewCount,
+      };
+    });
+
+    return { items: rowsWithReviews.map(normalizeTutor), total, page, pageSize };
   }
 
   async getRecommendedForStudent(
@@ -337,9 +376,21 @@ export class TutorsService {
       take: 200,
       include: {
         user: { select: { name: true, email: true, avatarUrl: true } },
-        reviews: { select: { rating: true } },
       },
     });
+
+    const candidateIds = candidates.map((c) => c.id);
+    const reviewStats = candidateIds.length
+      ? await this.prisma.review.groupBy({
+          by: ['tutorId'],
+          _avg: { rating: true },
+          _count: { _all: true },
+          where: { tutorId: { in: candidateIds } },
+        })
+      : [];
+    const reviewStatsMap = new Map(
+      reviewStats.map((r) => [r.tutorId, { avg: r._avg.rating ?? null, count: r._count._all }]),
+    );
 
     const now = Date.now();
 
@@ -376,9 +427,9 @@ export class TutorsService {
       if (bookedTutorIds.has(t.id)) score += 6;
 
       // Rating weight
-      const ratings = t.reviews?.map((r) => r.rating ?? 0) || [];
-      const avgRating =
-        ratings.length > 0 ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length : 0;
+      const stats = reviewStatsMap.get(t.id);
+      const avgRating = Number(stats?.avg ?? 0);
+      const reviewCount = Number(stats?.count ?? 0);
       score += Math.max(0, avgRating);
 
       // Recency weight (updatedAt)
@@ -388,9 +439,16 @@ export class TutorsService {
       score += recencyScore;
 
       // Small bonus for review volume
-      score += Math.min(2, ratings.length / 10);
+      score += Math.min(2, reviewCount / 10);
 
-      return { tutor: t, score };
+      return { 
+        tutor: {
+          ...t,
+          rating: Number.isFinite(avgRating) ? avgRating : null,
+          reviewCount,
+        }, 
+        score 
+      };
     });
 
     scored.sort((a, b) => b.score - a.score);
@@ -412,126 +470,240 @@ export class TutorsService {
     page?: number;
     pageSize?: number;
   }) {
-    const page = Math.max(1, Number(params?.page ?? 1));
-    const pageSize = Math.min(50, Math.max(1, Number(params?.pageSize ?? 8)));
-    const skip = (page - 1) * pageSize;
+    try {
+      const page = Math.max(1, Number(params?.page ?? 1));
+      const pageSize = Math.min(50, Math.max(1, Number(params?.pageSize ?? 8)));
+      const skip = (page - 1) * pageSize;
 
-    // ✅ Only tutors with APPROVED status
-    const where: any = { status: TutorStatus.APPROVED };
-    const AND: any[] = [];
+      // ✅ Only tutors with APPROVED status
+      const where: any = { status: TutorStatus.APPROVED };
+      const AND: any[] = [];
 
-    // Text search (q) - can match bio OR tutor name (OR condition)
-    if (params?.q && params.q.trim()) {
-      const q = params.q.trim();
-      AND.push({
-        OR: [
-          { bio: { contains: q, mode: Prisma.QueryMode.insensitive } },
-          { user: { is: { name: { contains: q, mode: Prisma.QueryMode.insensitive } } } },
-        ],
-      });
-    }
+      // Text search (q) - handled in post-query filter for reliable partial matching
+      // We don't add q filter to Prisma query since 'has' only does exact array matches
+      // and doesn't support partial matching (e.g., "Math" matching "Mathematics")
+      const qSearchTerm = params?.q?.trim() || null;
 
-    // Subject filter - MUST match (AND condition) - STRICT filtering
-    // Tutor MUST have this subject in their subjects array
-    if (params?.subject && params.subject.trim()) {
-      const s = params.subject.trim();
-      this.logger.log(`[search] Filtering by subject: "${s}"`);
-      // Prisma's 'has' operator checks if array contains the exact value (case-sensitive)
-      // Check multiple case variants to handle different storage formats
-      AND.push({
-        OR: [
-          { subjects: { has: s } },
-          { subjects: { has: s.toUpperCase() } },
-          { subjects: { has: s.toLowerCase() } },
-          { subjects: { has: s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() } }, // Capitalized (e.g., "Jee")
-        ],
-      });
-    }
+      // Subject filter - MUST match (AND condition) - STRICT filtering
+      // Tutor MUST have this subject in their subjects array
+      if (params?.subject && params.subject.trim()) {
+        const s = params.subject.trim();
+        this.logger.log(`[search] Filtering by subject: "${s}"`);
+        // Prisma's 'has' operator checks if array contains the exact value (case-sensitive)
+        // Check multiple case variants to handle different storage formats
+        AND.push({
+          OR: [
+            { subjects: { has: s } },
+            { subjects: { has: s.toUpperCase() } },
+            { subjects: { has: s.toLowerCase() } },
+            { subjects: { has: s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() } }, // Capitalized (e.g., "Jee")
+          ],
+        });
+      }
 
-    // Language filter - MUST match (AND condition)
-    if (params?.language && params.language.trim()) {
-      const lang = params.language.trim();
-      AND.push({
-        OR: [
-          { languages: { has: lang } },
-          { languages: { has: lang.toUpperCase() } },
-          { languages: { has: lang.toLowerCase() } },
-        ],
-      });
-    }
+      // Language filter - MUST match (AND condition)
+      if (params?.language && params.language.trim()) {
+        const lang = params.language.trim();
+        AND.push({
+          OR: [
+            { languages: { has: lang } },
+            { languages: { has: lang.toUpperCase() } },
+            { languages: { has: lang.toLowerCase() } },
+          ],
+        });
+      }
 
-    // Class filter - MUST match (AND condition)
-    if (params?.classTeach && params.classTeach.trim()) {
-      const cls = params.classTeach.trim();
-      AND.push({
-        OR: [
-          { classesTeach: { has: cls } },
-          { classesTeach: { has: cls.toUpperCase() } },
-          { classesTeach: { has: cls.toLowerCase() } },
-        ],
-      });
-    }
+      // Class filter - MUST match (AND condition)
+      if (params?.classTeach && params.classTeach.trim()) {
+        const cls = params.classTeach.trim();
+        AND.push({
+          OR: [
+            { classesTeach: { has: cls } },
+            { classesTeach: { has: cls.toUpperCase() } },
+            { classesTeach: { has: cls.toLowerCase() } },
+          ],
+        });
+      }
 
-    if (Number.isFinite(params?.priceMin) || Number.isFinite(params?.priceMax)) {
-      const hr: any = {};
-      if (Number.isFinite(params?.priceMin)) hr.gte = Number(params!.priceMin);
-      if (Number.isFinite(params?.priceMax)) hr.lte = Number(params!.priceMax);
-      AND.push({ hourlyRate: hr });
-    }
+      if (Number.isFinite(params?.priceMin) || Number.isFinite(params?.priceMax)) {
+        const hr: any = {};
+        if (Number.isFinite(params?.priceMin)) hr.gte = Number(params!.priceMin);
+        if (Number.isFinite(params?.priceMax)) hr.lte = Number(params!.priceMax);
+        AND.push({ hourlyRate: hr });
+      }
 
-    if (Number.isFinite(params?.minRating)) {
-      AND.push({ reviews: { some: { rating: { gte: Number(params!.minRating) } } } });
-    }
+      if (Number.isFinite(params?.minRating) && Number(params!.minRating) > 0) {
+        AND.push({ reviews: { some: { rating: { gte: Number(params!.minRating) } } } });
+      }
 
-    if (AND.length) {
-      where.AND = AND;
-      this.logger.debug(`[search] Applied ${AND.length} AND conditions:`, JSON.stringify(AND, null, 2));
-    }
+      if (AND.length) {
+        where.AND = AND;
+        this.logger.debug(`[search] Applied ${AND.length} AND conditions:`, JSON.stringify(AND, null, 2));
+      }
 
-    let orderBy: any = { id: 'desc' as const };
-    if (params?.sort === 'price_asc') orderBy = { hourlyRate: 'asc' as const };
-    if (params?.sort === 'price_desc') orderBy = { hourlyRate: 'desc' as const };
-    if (params?.sort === 'rating_desc') {
-      orderBy = { reviews: { _avg: { rating: 'desc' } } };
-    }
+      let orderBy: any = { id: 'desc' as const };
+      if (params?.sort === 'price_asc') orderBy = { hourlyRate: 'asc' as const };
+      if (params?.sort === 'price_desc') orderBy = { hourlyRate: 'desc' as const };
+      const shouldSortByRating = params?.sort === 'rating_desc';
 
-    const [rows, total] = await Promise.all([
-      this.prisma.tutor.findMany({
-        where,
-        orderBy,
-        skip,
-        take: pageSize,
-        include: { user: { select: { name: true, email: true, avatarUrl: true } } },
-      }),
-      this.prisma.tutor.count({ where }),
-    ]);
+      // When text search (q) is used, we need to fetch all tutors and filter in application code
+      // because Prisma's 'has' operator only supports exact matches, not partial matching.
+      // Always apply text search when q is provided (even if subject filter is set).
+      const needsTextSearchFilter = !!qSearchTerm;
+      const needsAppPagination = needsTextSearchFilter || shouldSortByRating;
+      
+      this.logger.log(`[search] Params: q="${qSearchTerm}", subject="${params?.subject}", needsTextSearchFilter=${needsTextSearchFilter}`);
+      
+      this.logger.log(`[search] Executing query - Skip: ${needsAppPagination ? 0 : skip}, Take: ${needsAppPagination ? 1000 : pageSize}, SortByRating: ${shouldSortByRating}`);
+      
+      const [rows, total] = await Promise.all([
+        this.prisma.tutor.findMany({
+          where,
+          orderBy,
+          // When doing text search, fetch more records to filter from (skip pagination at DB level)
+          skip: needsAppPagination ? 0 : skip,
+          take: needsAppPagination ? 1000 : pageSize, // Fetch up to 1000 for app-side filtering/sorting
+          include: {
+            user: { select: { name: true, email: true, avatarUrl: true } },
+            reviews: { select: { rating: true } },
+          },
+        }),
+        this.prisma.tutor.count({ where }),
+      ]);
+      
+      this.logger.log(`[search] Fetched ${rows.length} tutors, total: ${total}`);
 
-    // Post-query validation: Double-check subject filter matches (safety net)
-    // This ensures that even if Prisma query has issues, we filter correctly
-    let filteredRows = rows;
-    if (params?.subject && params.subject.trim()) {
-      const subjectLower = params.subject.trim().toLowerCase();
-      const beforeFilter = filteredRows.length;
-      filteredRows = filteredRows.filter((tutor) => {
-        const tutorSubjects = (tutor.subjects || []).map((s: string) => s.toLowerCase());
-        const matches = tutorSubjects.includes(subjectLower);
-        if (!matches) {
+      // Post-query validation: Double-check subject filter matches (safety net)
+      // Also apply partial matching for text search (q parameter) on subjects/classes/languages
+      let filteredRows = rows;
+      let finalTotal = total; // Track total count, may be updated for partial matching
+      
+      // Apply subject filter validation
+      if (params?.subject && params.subject.trim()) {
+        const subjectLower = params.subject.trim().toLowerCase();
+        const beforeFilter = filteredRows.length;
+        filteredRows = filteredRows.filter((tutor) => {
+          const tutorSubjects = (tutor.subjects || []).map((s: string) => s.toLowerCase());
+          const matches = tutorSubjects.includes(subjectLower);
+          if (!matches) {
+            this.logger.warn(
+              `[search] Backend filter failed: Tutor ${tutor.id} (${tutor.user?.name || 'Unknown'}) ` +
+              `does NOT teach "${params.subject}" but was returned by Prisma query. ` +
+              `Tutor subjects: [${(tutor.subjects || []).join(', ')}]`
+            );
+          }
+          return matches;
+        });
+        if (filteredRows.length < beforeFilter) {
+          finalTotal = filteredRows.length; // Update total after subject filter
           this.logger.warn(
-            `[search] Backend filter failed: Tutor ${tutor.id} (${tutor.user?.name || 'Unknown'}) ` +
-            `does NOT teach "${params.subject}" but was returned by Prisma query. ` +
-            `Tutor subjects: [${(tutor.subjects || []).join(', ')}]`
+            `[search] Filtered out ${beforeFilter - filteredRows.length} tutors that didn't match subject "${params.subject}"`
           );
         }
-        return matches;
-      });
-      if (filteredRows.length < beforeFilter) {
-        this.logger.warn(
-          `[search] Filtered out ${beforeFilter - filteredRows.length} tutors that didn't match subject "${params.subject}"`
-        );
       }
-    }
 
-    return { items: filteredRows.map(normalizeTutor), total: filteredRows.length, page, pageSize };
+      // Apply class filter validation
+      if (params?.classTeach && params.classTeach.trim()) {
+        const classLower = params.classTeach.trim().toLowerCase();
+        const beforeFilter = filteredRows.length;
+        filteredRows = filteredRows.filter((tutor) => {
+          const tutorClasses = (tutor.classesTeach || []).map((c: string) => c.toLowerCase());
+          const matches = tutorClasses.includes(classLower);
+          if (!matches) {
+            this.logger.warn(
+              `[search] Backend filter failed: Tutor ${tutor.id} (${tutor.user?.name || 'Unknown'}) ` +
+              `does NOT teach class "${params.classTeach}" but was returned by Prisma query. ` +
+              `Tutor classes: [${(tutor.classesTeach || []).join(', ')}]`
+            );
+          }
+          return matches;
+        });
+        if (filteredRows.length < beforeFilter) {
+          finalTotal = filteredRows.length; // Update total after class filter
+          this.logger.warn(
+            `[search] Filtered out ${beforeFilter - filteredRows.length} tutors that didn't match class "${params.classTeach}"`
+          );
+        }
+      }
+
+      // Apply text search (q parameter) filtering for partial matches on bio, name, subjects, classes, languages
+      // This handles cases where user searches "Math" and tutor has "Mathematics" or "Applied Mathematics"
+      if (needsTextSearchFilter) {
+        const qLower = qSearchTerm!.toLowerCase();
+        this.logger.log(`[search] Applying text search filter for: "${qSearchTerm}" (lowercase: "${qLower}")`);
+        this.logger.log(`[search] Filtering ${filteredRows.length} tutors...`);
+        
+        // Filter current results by partial match
+        const beforeFilter = filteredRows.length;
+        filteredRows = filteredRows.filter((tutor) => {
+          // Check bio and name
+          const bioMatch = tutor.bio?.toLowerCase().includes(qLower);
+          const nameMatch = tutor.user?.name?.toLowerCase().includes(qLower);
+          
+          if (bioMatch || nameMatch) {
+            return true;
+          }
+          
+          // Check partial matches in subjects, classes, or languages
+          const subjects = (tutor.subjects || []).map((s: string) => s.toLowerCase());
+          const classes = (tutor.classesTeach || []).map((c: string) => c.toLowerCase());
+          const languages = (tutor.languages || []).map((l: string) => l.toLowerCase());
+          
+          const subjectMatch = subjects.some((s: string) => s.includes(qLower));
+          const classMatch = classes.some((c: string) => c.includes(qLower));
+          const languageMatch = languages.some((l: string) => l.includes(qLower));
+          
+          const matches = subjectMatch || classMatch || languageMatch;
+          
+          // Log matches for debugging
+          if (matches) {
+            this.logger.debug(`[search] Match found: Tutor ${tutor.id} (subjects: [${subjects.join(', ')}])`);
+          }
+          
+          return matches;
+        });
+        
+        // Update total and apply pagination after filtering
+        finalTotal = filteredRows.length;
+        this.logger.log(`[search] Text search: ${beforeFilter} → ${finalTotal} tutors after filter`);
+        if (!shouldSortByRating) {
+          filteredRows = filteredRows.slice(skip, skip + pageSize);
+          this.logger.log(`[search] Returning ${filteredRows.length} tutors for page ${page}`);
+        }
+      }
+
+      // Aggregate reviews for each tutor
+      const rowsWithReviews = filteredRows.map((row) => {
+        const reviewsArray = Array.isArray(row?.reviews) ? row.reviews : [];
+        const ratings = reviewsArray.map((r: any) => r?.rating ?? 0).filter((r: number) => r > 0);
+        const avgRating = ratings.length > 0 
+          ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
+          : null;
+        const reviewCount = ratings.length;
+        return {
+          ...row,
+          rating: avgRating,
+          reviewCount,
+        };
+      });
+
+      const sortedRows = shouldSortByRating
+        ? [...rowsWithReviews].sort((a, b) => {
+            const ar = a.rating ?? -1;
+            const br = b.rating ?? -1;
+            if (br !== ar) return br - ar;
+            return (b.reviewCount ?? 0) - (a.reviewCount ?? 0);
+          })
+        : rowsWithReviews;
+
+      const pagedRows = shouldSortByRating ? sortedRows.slice(skip, skip + pageSize) : sortedRows;
+
+      return { items: pagedRows.map(normalizeTutor), total: finalTotal, page, pageSize };
+    } catch (error: any) {
+      this.logger.error(`[search] Error in search method:`, error);
+      this.logger.error(`[search] Stack:`, error?.stack);
+      throw error;
+    }
   }
 
   // ---------- DETAIL ----------
@@ -541,27 +713,86 @@ export class TutorsService {
       where: { id: idOrTid },
       include: {
         user: { select: { name: true, email: true, avatarUrl: true } },
+        reviews: { select: { rating: true } },
       },
     });
-    if (byId) return normalizeTutor(byId);
+    if (byId) {
+      const reviewsArray = Array.isArray(byId?.reviews) ? byId.reviews : [];
+      const ratings = reviewsArray.map((r: any) => r?.rating ?? 0).filter((r: number) => r > 0);
+      const avgRating = ratings.length > 0 
+        ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
+        : null;
+      const reviewCount = ratings.length;
+      return normalizeTutor({ ...byId, rating: avgRating, reviewCount });
+    }
 
     // Then try by tutorTid
     const byTid = await this.prisma.tutor.findUnique({
       where: { tutorTid: idOrTid },
       include: {
         user: { select: { name: true, email: true, avatarUrl: true } },
+        reviews: { select: { rating: true } },
       },
     });
-    if (byTid) return normalizeTutor(byTid);
+    if (byTid) {
+      const reviewsArray = Array.isArray(byTid?.reviews) ? byTid.reviews : [];
+      const ratings = reviewsArray.map((r: any) => r?.rating ?? 0).filter((r: number) => r > 0);
+      const avgRating = ratings.length > 0 
+        ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
+        : null;
+      const reviewCount = ratings.length;
+      return normalizeTutor({ ...byTid, rating: avgRating, reviewCount });
+    }
 
     // Finally try finding by ID ending with the provided string (for slug-based lookups)
+    // CUIDs are lowercase, but normalize input to lowercase for matching
+    const idLower = idOrTid.toLowerCase();
     const byIdEnding = await this.prisma.tutor.findFirst({
-      where: { id: { endsWith: idOrTid } },
+      where: { 
+        OR: [
+          { id: { endsWith: idOrTid } },
+          { id: { endsWith: idLower } },
+        ]
+      },
       include: {
         user: { select: { name: true, email: true, avatarUrl: true } },
+        reviews: { select: { rating: true } },
       },
     });
-    if (byIdEnding) return normalizeTutor(byIdEnding);
+    if (byIdEnding) {
+      const reviewsArray = Array.isArray(byIdEnding?.reviews) ? byIdEnding.reviews : [];
+      const ratings = reviewsArray.map((r: any) => r?.rating ?? 0).filter((r: number) => r > 0);
+      const avgRating = ratings.length > 0 
+        ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
+        : null;
+      const reviewCount = ratings.length;
+      return normalizeTutor({ ...byIdEnding, rating: avgRating, reviewCount });
+    }
+
+    // Last resort: try finding by tutorTid if the input looks like it might be a TID
+    if (idOrTid.length <= 10) {
+      const byTidFallback = await this.prisma.tutor.findFirst({
+        where: { 
+          OR: [
+            { tutorTid: idOrTid },
+            { tutorTid: idLower },
+          ]
+        },
+        include: {
+          user: { select: { name: true, email: true, avatarUrl: true } },
+          reviews: { select: { rating: true } },
+        },
+      });
+      if (byTidFallback) {
+        const reviewsArray = Array.isArray(byTidFallback?.reviews) ? byTidFallback.reviews : [];
+        const ratings = reviewsArray.map((r: any) => r?.rating ?? 0).filter((r: number) => r > 0);
+        const avgRating = ratings.length > 0 
+          ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
+          : null;
+        const reviewCount = ratings.length;
+        return normalizeTutor({ ...byTidFallback, rating: avgRating, reviewCount });
+      }
+    }
 
     throw new NotFoundException('Tutor not found');
   }

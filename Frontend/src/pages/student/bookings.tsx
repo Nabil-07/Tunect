@@ -281,12 +281,20 @@ export default function MyBookings() {
       showError("Please select a rating.");
       return;
     }
-    // Ensure bookingId is a valid UUID string
+    // Ensure bookingId is a valid CUID string (not UUID - Prisma uses CUID)
     const bookingId = String(reviewBooking.id).trim();
     if (!bookingId || bookingId.length < 10) {
       showError("Invalid booking ID.");
       return;
     }
+    
+    // Validate bookingId format (CUID format: starts with 'c' and is 25 chars, or at least 10 chars)
+    if (!/^[a-z0-9]{10,}$/i.test(bookingId)) {
+      console.error("Invalid booking ID format:", bookingId);
+      showError("Invalid booking ID format.");
+      return;
+    }
+    
     try {
       setReviewSubmitting(true);
       await createReview({
@@ -301,7 +309,13 @@ export default function MyBookings() {
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.message || "Failed to submit review";
       console.error("Review submission error:", err);
-      showError(errorMsg);
+      // Check if it's a validation error about bookingId
+      if (errorMsg.includes("bookingId") || errorMsg.includes("UUID")) {
+        console.error("Booking ID validation failed. Booking ID:", bookingId, "Type:", typeof bookingId);
+        showError("Invalid booking ID. Please refresh the page and try again.");
+      } else {
+        showError(errorMsg);
+      }
     } finally {
       setReviewSubmitting(false);
     }

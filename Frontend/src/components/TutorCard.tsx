@@ -7,6 +7,7 @@ import { useDisplayCurrency } from "../hooks/useDisplayCurrency";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../lib/apiClient";
 import TutorVideoHover from "./TutorVideoHover";
+import { generateTutorSlug } from "../utils/seo";
 
 export type TutorCardProps = {
   tutor: {
@@ -187,7 +188,9 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
   };
 
   const viewProfile = () => {
-    nav(`/tutor/${tutor.id}`);
+    // Generate slug for SEO-friendly URL
+    const slug = generateTutorSlug(tutor);
+    nav(`/tutors/${slug}`);
   };
 
   return (

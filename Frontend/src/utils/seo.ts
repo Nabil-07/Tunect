@@ -63,17 +63,22 @@ export function generateTutorSlug(tutor: {
  * Parse tutor ID from slug (backward compatibility)
  */
 export function parseTutorIdFromSlug(slug: string): string | null {
-  // If it's already an ID (cuid format), return as-is
+  // If it's already an ID (cuid format, typically 25 chars), return as-is
   if (slug.length > 20 && /^[a-z0-9]+$/.test(slug)) {
     return slug;
   }
 
-  // Extract ID from slug (last 8 chars after last dash)
+  // Extract ID from slug (last part after last dash)
   const parts = slug.split('-');
   const lastPart = parts[parts.length - 1];
+  
+  // If last part looks like a CUID (starts with 'c' and is 25 chars), return it
+  if (lastPart && lastPart.length === 25 && /^c[a-z0-9]{24}$/.test(lastPart)) {
+    return lastPart;
+  }
+  
+  // Otherwise, return the last part (backend will handle lookup with endsWith)
   if (lastPart && lastPart.length >= 8) {
-    // Try to find full ID by checking if we have a valid cuid pattern
-    // For now, return the last part - the backend will handle lookup
     return lastPart;
   }
 
