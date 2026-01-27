@@ -68,22 +68,42 @@ export class TutorsController {
       if (!userId) {
         console.error('[TutorsController.recommended] No userId found in request:', {
           user: req.user,
-          headers: req.headers,
+          userKeys: req.user ? Object.keys(req.user) : 'no user object',
+          headers: Object.keys(req.headers || {}),
         });
-        throw new Error('User ID not found in authenticated request');
+        // Return empty list instead of throwing to prevent 500/404
+        return { items: [], total: 0, page: 1, pageSize: pageSize ? Number(pageSize) : 6 };
       }
-      return await this.svc.getRecommendedForStudent(userId, {
+      
+      console.log('[TutorsController.recommended] Processing request:', {
+        userId,
+        pageSize,
+        searchesLength: searches?.length,
+      });
+      
+      const result = await this.svc.getRecommendedForStudent(userId, {
         pageSize: pageSize ? Number(pageSize) : undefined,
         searches,
       });
+      
+      console.log('[TutorsController.recommended] Success:', {
+        itemsCount: result?.items?.length || 0,
+        total: result?.total || 0,
+      });
+      
+      return result;
     } catch (error: any) {
       console.error('[TutorsController.recommended] Error:', {
         message: error?.message,
         stack: error?.stack,
-        user: req.user,
+        name: error?.name,
+        code: error?.code,
+        user: req.user ? { id: req.user.id, email: req.user.email, role: req.user.role } : 'no user',
         params: { pageSize, searches },
       });
-      throw error;
+      // Return empty list instead of throwing to prevent 500/404
+      // This ensures the endpoint always returns a valid response
+      return { items: [], total: 0, page: 1, pageSize: pageSize ? Number(pageSize) : 6 };
     }
   }
 
