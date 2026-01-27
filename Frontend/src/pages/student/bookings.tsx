@@ -730,8 +730,8 @@ function BookingCard({
             </div>
           )}
           
-          {/* Join link */}
-          {joinUrl && status === "CONFIRMED" && (
+          {/* Join link - only show for confirmed sessions that haven't ended yet */}
+          {joinUrl && status === "CONFIRMED" && endTime && new Date(endTime) > new Date() && (
             <div className="mt-2">
               <a
                 href={joinUrl}

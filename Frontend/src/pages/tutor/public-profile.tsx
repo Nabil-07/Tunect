@@ -76,6 +76,17 @@ export default function TutorPublicProfile() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<string | null>(null);
+  
+  // Reviews state
+  const [reviews, setReviews] = useState<Array<{
+    id: string;
+    rating: number;
+    comment: string | null;
+    createdAt: string;
+    student?: { id: string; user?: { email?: string } };
+  }>>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsStats, setReviewsStats] = useState<{ avgRating?: number } | null>(null);
 
   const days = useMemo(() => {
     const start = startOfMonth(month);
@@ -129,6 +140,28 @@ export default function TutorPublicProfile() {
     }
   }, [id]);
 
+  // Fetch reviews for tutor
+  const fetchReviews = useCallback(async (tutorId: string) => {
+    if (!tutorId) return;
+    try {
+      setReviewsLoading(true);
+      const { data } = await api.get(`/reviews/tutor/${tutorId}`, {
+        params: { page: 1, pageSize: 10 },
+      });
+      if (data?.items) {
+        setReviews(data.items);
+      }
+      if (data?.stats) {
+        setReviewsStats(data.stats);
+      }
+    } catch (error) {
+      console.error('Failed to fetch reviews:', error);
+      // Don't show error to user - just leave reviews empty
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -139,6 +172,11 @@ export default function TutorPublicProfile() {
         const t = await getTutor(id!);
         if (!mounted) return;
         setTutor(t as TutorPublic);
+        
+        // Fetch reviews after tutor is loaded (use full tutor ID from response)
+        if (t?.id) {
+          fetchReviews(t.id);
+        }
 
         // Redirect to slug-based URL if not already using slug
         if (idOrSlug && !idOrSlug.includes('-')) {
@@ -623,13 +661,96 @@ export default function TutorPublicProfile() {
 
           {/* Reviews Section */}
           <div className="card p-6 rounded-xl border bg-white shadow-sm">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <svg className="h-6 w-6 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-              Reviews
-            </h2>
-            <p className="text-sm text-slate-600">This section will be wired soon with live reviews.</p>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <svg className="h-6 w-6 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                Reviews
+                {reviewsStats?.avgRating && (
+                  <span className="text-sm font-normal text-slate-600">
+                    ({reviewsStats.avgRating.toFixed(1)} avg)
+                  </span>
+                )}
+              </h2>
+              {reviews.length > 0 && (
+                <span className="text-sm text-slate-600">
+                  {reviews.length} {reviews.length === 1 ? 'review' : 'reviews'}
+                </span>
+              )}
+            </div>
+            
+            {reviewsLoading ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+                <p className="text-sm text-slate-600 mt-2">Loading reviews...</p>
+              </div>
+            ) : reviews.length === 0 ? (
+              <div className="text-center py-8">
+                <svg className="mx-auto h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <p className="text-sm text-slate-600 mt-2">No reviews yet. Be the first to review this tutor!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reviews.map((review) => {
+                  const reviewDate = new Date(review.createdAt);
+                  const studentEmail = review.student?.user?.email || 'Anonymous';
+                  const studentInitials = studentEmail.split('@')[0].substring(0, 2).toUpperCase();
+                  
+                  return (
+                    <div key={review.id} className="border-t pt-4 first:border-t-0 first:pt-0">
+                      <div className="flex items-start gap-4">
+                        {/* Student Avatar */}
+                        <div className="flex-shrink-0">
+                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
+                            {studentInitials}
+                          </div>
+                        </div>
+                        
+                        {/* Review Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <svg
+                                  key={star}
+                                  className={`h-4 w-4 ${
+                                    star <= review.rating
+                                      ? 'text-amber-400 fill-current'
+                                      : 'text-slate-300'
+                                  }`}
+                                  fill="currentColor"
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                </svg>
+                              ))}
+                            </div>
+                            <span className="text-sm font-medium text-slate-900">
+                              {studentEmail.split('@')[0]}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              {reviewDate.toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </span>
+                          </div>
+                          {review.comment && (
+                            <p className="text-sm text-slate-700 leading-relaxed mt-2">
+                              {review.comment}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
