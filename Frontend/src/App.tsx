@@ -1,6 +1,7 @@
 // src/App.tsx
 import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { HelmetProvider } from 'react-helmet-async';
 
 import MainLayout from './layouts/MainLayout';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -125,6 +126,7 @@ const HowItWorks = lazy(() => import('./pages/how-it-works'));
 const FindTutors = lazy(() => import('./pages/find-tutors'));
 const BecomeTutor = lazy(() => import('./pages/become-tutor'));
 const TutorPublicProfile = lazy(() => import('./pages/tutor/public-profile'));
+const TutorRedirect = lazy(() => import('./components/TutorRedirect'));
 
 const About = lazy(() => import('./pages/about'));
 const Privacy = lazy(() => import('./pages/privacy'));
@@ -301,7 +303,10 @@ function App() {
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/find-tutors" element={<FindTutors />} />
           <Route path="/become-tutor" element={<BecomeTutor />} />
-          <Route path="/tutor/:id" element={<TutorPublicProfile />} />
+          <Route path="/tutors/:slug" element={<TutorPublicProfile />} />
+          {/* Backward compatibility: redirect old /tutor/:id and /tutor?id=123 to /tutors/:slug */}
+          <Route path="/tutor/:id" element={<TutorRedirect />} />
+          <Route path="/tutor" element={<TutorRedirect />} />
           <Route path="/support" element={<SupportPage />} />
           <Route path="/about" element={<About />} />
           <Route path="/privacy" element={<Privacy />} />
@@ -432,8 +437,10 @@ function App() {
 
 export default function AppWithProviders() {
   return (
-    <ToastProvider>
-      <App />
-    </ToastProvider>
+    <HelmetProvider>
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    </HelmetProvider>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import SEO from "../components/SEO";
 import api from "../lib/apiClient";
 
 type BlogPost = {
@@ -60,15 +61,54 @@ export default function BlogPost() {
     );
   }
 
+  // Article Schema for blog post
+  const articleSchema = post
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        headline: post.title,
+        description: post.summary || post.content.substring(0, 200),
+        image: post.coverImageUrl || undefined,
+        datePublished: post.publishedAt || undefined,
+        author: {
+          '@type': 'Person',
+          name: post.authorName || 'Tunect Team',
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'Tunect',
+          logo: {
+            '@type': 'ImageObject',
+            url: 'https://tunectnow.com/tunect_logo_hd.png',
+          },
+        },
+      }
+    : null;
+
   return (
     <main className="container mx-auto px-4 py-12 max-w-3xl">
+      {post && (
+        <SEO
+          title={`${post.title} | Tunect Blog`}
+          description={post.summary || post.content.substring(0, 160) || 'Read this article on Tunect Blog'}
+          url={`/blogs/${post.slug}`}
+          image={post.coverImageUrl}
+          type="article"
+          structuredData={articleSchema || undefined}
+        />
+      )}
       <Link to="/blogs" className="text-sm text-ocean-700 hover:underline">
         ← Back to all posts
       </Link>
 
       <div className="mt-6 rounded-2xl border bg-white shadow-sm overflow-hidden">
         {post.coverImageUrl ? (
-          <img src={post.coverImageUrl} alt={post.title} className="h-64 w-full object-cover" />
+          <img
+            src={post.coverImageUrl}
+            alt={post.title}
+            className="h-64 w-full object-cover"
+            loading="lazy"
+          />
         ) : null}
         <div className="p-6 sm:p-8">
           <div className="text-xs text-slate-500">

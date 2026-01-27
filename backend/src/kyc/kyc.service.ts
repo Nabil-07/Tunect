@@ -4,10 +4,15 @@ import { CreateKycDto } from './dto/create-kyc.dto';
 import { QueryKycDto } from './dto/query-kyc.dto';
 import { ReviewKycDto } from './dto/review-kyc.dto';
 import { KycStatus, KycAppStatus, TutorStatus } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
+import { AuditEntityType } from '@prisma/client';
 
 @Injectable()
 export class KycService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService,
+  ) {}
 
   // tutor must be approved/pending; upload KYC doc
   async createMine(userId: string, dto: CreateKycDto) {
@@ -53,12 +58,13 @@ export class KycService {
     return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
   }
 
-  async review(id: string, dto: ReviewKycDto) {
-    // ensure document exists
-    const doc = await this.prisma.kycDocument.findUnique({ where: { id }, select: { id: true, tutorId: true } });
-    if (!doc) throw new NotFoundException('KYC document not found');
+  async review(id: string, dto: ReviewKycDto, adminId: string) {
+    const before = await this.prisma.kycDocument.findUnique({
+      where: { id },
+      select: { id: true, tutorId: true, status: true, notes: true },
+    });
+    if (!before) throw new NotFoundException('KYC document not found');
 
-    // update document
     const updated = await this.prisma.kycDocument.update({
       where: { id },
       data: { status: dto.status, notes: dto.notes },
@@ -67,7 +73,7 @@ export class KycService {
 
     // Update latest application + tutor status to reflect review outcome
     const latestApp = await this.prisma.tutorKycApplication.findFirst({
-      where: { tutorId: doc.tutorId },
+      where: { tutorId: before.tutorId },
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     });
@@ -92,8 +98,17 @@ export class KycService {
     }
 
     if (tutorStatus) {
-      await this.prisma.tutor.update({ where: { id: doc.tutorId }, data: { status: tutorStatus } });
+      await this.prisma.tutor.update({ where: { id: before.tutorId }, data: { status: tutorStatus } });
     }
+
+    this.audit.log({
+      adminId,
+      action: dto.status === KycStatus.APPROVED ? 'KYC_APPROVED' : 'KYC_REJECTED',
+      entityType: AuditEntityType.KYC,
+      entityId: id,
+      beforeData: { status: before.status, notes: before.notes, tutorId: before.tutorId },
+      afterData: { status: dto.status, notes: dto.notes, tutorId: before.tutorId },
+    });
 
     return updated;
   }

@@ -1,14 +1,16 @@
-import { Controller, Get, Query, UseGuards, Param, Patch, Body, Post } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, Param, Patch, Body, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { AuditService } from '../audit/audit.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PaginationDto } from './dto/pagination.dto';
+import { AuditListDto } from './dto/audit-list.dto';
 import { TutorStatus, BookingStatus, PaymentStatus } from '@prisma/client';
 import { SetTutorStatusDto } from './dto/set-tutor-status.dto';
 import { AdjustTokensDto } from './dto/adjust-tokens.dto';
-import { ParseUUIDPipe } from '@nestjs/common';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -16,7 +18,11 @@ import { ParseUUIDPipe } from '@nestjs/common';
 @Roles('ADMIN')
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly svc: AdminService) {}
+  constructor(
+    private readonly svc: AdminService,
+    private readonly audit: AuditService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   @Get('dashboard')
   dashboard() {
@@ -34,8 +40,8 @@ export class AdminController {
   }
 
   @Patch('tutors/:id/status')
-  setTutorStatus(@Param('id') id: string, @Body() dto: SetTutorStatusDto) {
-    return this.svc.setTutorStatus(id, dto);
+  setTutorStatus(@Param('id') id: string, @Body() dto: SetTutorStatusDto, @Req() req: { user?: { id: string } }) {
+    return this.svc.setTutorStatus(id, dto, req.user!.id);
   }
 
   @Get('students')
@@ -54,8 +60,28 @@ export class AdminController {
   }
 
   @Post('users/:id/unban')
-  unbanUser(@Param('id') id: string) {
-    return this.svc.unbanUser(id);
+  unbanUser(@Param('id') id: string, @Req() req: { user?: { id: string } }) {
+    return this.svc.unbanUser(id, req.user!.id);
   }
 
+  @Post('students/tokens/adjust')
+  adjustTokens(@Body() dto: AdjustTokensDto, @Req() req: { user?: { id: string } }) {
+    return this.svc.adjustTokens(dto, req.user!.id);
+  }
+
+  @Get('audit')
+  listAudit(@Query() q: AuditListDto) {
+    return this.audit.list({
+      page: q.page,
+      pageSize: q.pageSize,
+      entityType: q.entityType,
+      from: q.from,
+      to: q.to,
+    });
+  }
+
+  @Get('metrics')
+  getMetrics() {
+    return this.metrics.getSummary();
+  }
 }

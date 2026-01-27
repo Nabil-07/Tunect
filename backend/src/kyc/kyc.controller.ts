@@ -69,7 +69,7 @@ export class KycController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Patch('doc/:docId')
-  review(@Param('docId') docId: string, @Body() dto: ReviewKycDto) {
-    return this.svc.review(docId, dto);
+  review(@Param('docId') docId: string, @Body() dto: ReviewKycDto, @CurrentUser('id') adminId: string) {
+    return this.svc.review(docId, dto, adminId);
   }
 }

@@ -24,6 +24,11 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 class UpdateMeDto {
   grade?: string;
+  name?: string;
+  phone?: string;
+  bio?: string;
+  timezone?: string;
+  preferredLanguage?: string;
 }
 
 function toPage(v?: string, def = 1) {

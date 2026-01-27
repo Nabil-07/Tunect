@@ -1,10 +1,11 @@
-import { Prisma, PrismaPromise, BookingStatus, PaymentStatus, TutorStatus, TokenReason, KycStatus } from '@prisma/client';
+import { Prisma, PrismaPromise, AuditEntityType, BookingStatus, PaymentStatus, TutorStatus, TokenReason, KycStatus } from '@prisma/client';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto } from './dto/pagination.dto';
 import { SetTutorStatusDto } from './dto/set-tutor-status.dto';
 import { AdjustTokensDto } from './dto/adjust-tokens.dto';
 import { TokenLedgerService } from '../tokens/token-ledger.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class AdminService {
@@ -15,6 +16,7 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private ledger: TokenLedgerService,
+    private audit: AuditService,
   ) {}
 
   private getFromCache<T>(key: string): T | undefined {
@@ -153,14 +155,23 @@ export class AdminService {
     return result;
   }
 
-  async setTutorStatus(tutorId: string, dto: SetTutorStatusDto) {
-    const t = await this.prisma.tutor.findUnique({ where: { id: tutorId }, select: { id: true } });
-    if (!t) throw new NotFoundException('Tutor not found');
-    return this.prisma.tutor.update({
+  async setTutorStatus(tutorId: string, dto: SetTutorStatusDto, adminId: string) {
+    const before = await this.prisma.tutor.findUnique({ where: { id: tutorId }, select: { id: true, status: true } });
+    if (!before) throw new NotFoundException('Tutor not found');
+    const updated = await this.prisma.tutor.update({
       where: { id: tutorId },
       data: { status: dto.status },
       select: { id: true, status: true, updatedAt: true },
     });
+    this.audit.log({
+      adminId,
+      action: 'TUTOR_STATUS_UPDATE',
+      entityType: AuditEntityType.TUTOR,
+      entityId: tutorId,
+      beforeData: { status: before.status },
+      afterData: { status: dto.status },
+    });
+    return updated;
   }
 
   async listStudents(q: PaginationDto) {
@@ -270,13 +281,15 @@ export class AdminService {
   }
 
   // ---------- Manual token adjustment ----------
-  async adjustTokens(dto: AdjustTokensDto) {
+  async adjustTokens(dto: AdjustTokensDto, adminId: string) {
     const student = await this.prisma.student.findUnique({
       where: { id: dto.studentId },
       select: { id: true, tokens: true },
     });
     if (!student) throw new NotFoundException('Student not found');
     if (dto.amount === 0) throw new BadRequestException('Amount cannot be zero');
+
+    const beforeTokens = Number(student.tokens);
 
     // Update student balance
     await this.prisma.student.update({
@@ -295,15 +308,25 @@ export class AdminService {
       },
     });
 
+    const afterTokens = beforeTokens + dto.amount;
+    this.audit.log({
+      adminId,
+      action: 'TOKEN_ADJUSTMENT',
+      entityType: AuditEntityType.TOKEN,
+      entityId: student.id,
+      beforeData: { tokens: beforeTokens, studentId: student.id },
+      afterData: { tokens: afterTokens, delta: dto.amount, reason: dto.reason },
+    });
+
     return { ok: true };
   }
 
-  async unbanUser(userId: string) {
-    const user = await this.prisma.user.findUnique({
+  async unbanUser(userId: string, adminId: string) {
+    const before = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, isBanned: true },
+      select: { id: true, isBanned: true, bannedScope: true, bannedAt: true },
     });
-    if (!user) throw new NotFoundException('User not found');
+    if (!before) throw new NotFoundException('User not found');
 
     // Reduce strikes by one (if any) so the user has room for another warning
     const latestViolation = await this.prisma.piiViolationLog.findFirst({
@@ -341,6 +364,15 @@ export class AdminService {
     }
 
     await this.prisma.$transaction(operations);
+
+    this.audit.log({
+      adminId,
+      action: 'USER_UNBAN',
+      entityType: AuditEntityType.USER,
+      entityId: userId,
+      beforeData: { isBanned: before.isBanned, bannedScope: before.bannedScope, bannedAt: before.bannedAt },
+      afterData: { isBanned: false, bannedScope: null, bannedAt: null },
+    });
 
     return { ok: true, message: 'User has been unbanned successfully', strikesCleared: latestViolation ? 1 : 0 };
   }

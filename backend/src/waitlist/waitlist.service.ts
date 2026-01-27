@@ -82,7 +82,7 @@ export class WaitlistService {
       userId: tutor.userId,
       type: NotificationType.SYSTEM,
       title: 'New Waitlist Request',
-      message: `${student.user.name} has joined your waitlist for ${new Date(requestedStartTime).toLocaleString()}`,
+      message: `${waitlistEntry.student?.user?.name || 'Student'} has joined your waitlist for ${new Date(waitlistEntry.requestedStartTime).toLocaleString()}`,
     });
 
     // Send confirmation email to student

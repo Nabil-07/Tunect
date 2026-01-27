@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsUUID, Min } from 'class-validator';
+import { IsInt, IsString, IsUUID, Min } from 'class-validator';
 
 export class AdjustTokensDto {
   @ApiProperty({ example: 'student-uuid' })
@@ -12,5 +12,6 @@ export class AdjustTokensDto {
   amount!: number;
 
   @ApiProperty({ example: 'Manual adjustment for test credits' })
+  @IsString()
   reason!: string;
 }

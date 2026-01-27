@@ -67,6 +67,27 @@ export class TutorsService {
   
   constructor(private readonly prisma: PrismaService) {}
 
+  private normalizeValue(value?: string | null): string {
+    return (value || '').trim().toLowerCase();
+  }
+
+  private parseSearches(raw?: string): Array<{
+    term?: string;
+    subject?: string;
+    classTeach?: string;
+    language?: string;
+    ts?: number;
+  }> {
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
   // ---------- FILTER OPTIONS ----------
   @Cacheable('filter-options', 300) // Cache for 5 minutes
   async getFilterOptions() {
@@ -223,6 +244,161 @@ export class TutorsService {
     return { items: rows.map(normalizeTutor), total, page, pageSize };
   }
 
+  async getRecommendedForStudent(
+    userId: string,
+    params?: { pageSize?: number; searches?: string },
+  ) {
+    const pageSize = Math.min(20, Math.max(1, Number(params?.pageSize ?? 6)));
+
+    const student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true, grade: true },
+    });
+
+    const searches = this.parseSearches(params?.searches);
+
+    const interestSubjects = new Set<string>();
+    const interestClasses = new Set<string>();
+    const interestLanguages = new Set<string>();
+    const searchTerms = new Set<string>();
+    const bookedTutorIds = new Set<string>();
+
+    // Extract interests from recent searches
+    searches.slice(0, 10).forEach((s) => {
+      const term = this.normalizeValue(s?.term);
+      const subject = this.normalizeValue(s?.subject);
+      const classTeach = this.normalizeValue(s?.classTeach);
+      const language = this.normalizeValue(s?.language);
+      if (term) searchTerms.add(term);
+      if (subject) interestSubjects.add(subject);
+      if (classTeach) interestClasses.add(classTeach);
+      if (language) interestLanguages.add(language);
+    });
+
+    // Use student grade as a weak hint for classTeach
+    const studentGrade = this.normalizeValue(student?.grade);
+    if (studentGrade) interestClasses.add(studentGrade);
+
+    // Extract interests from recent bookings
+    if (student?.id) {
+      const recentBookings = await this.prisma.booking.findMany({
+        where: { studentId: student.id },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          tutorId: true,
+          tutor: {
+            select: {
+              subjects: true,
+              classesTeach: true,
+              languages: true,
+            },
+          },
+        },
+      });
+
+      recentBookings.forEach((b) => {
+        if (b.tutorId) bookedTutorIds.add(b.tutorId);
+        (b.tutor?.subjects || []).forEach((s) => {
+          const v = this.normalizeValue(s);
+          if (v) interestSubjects.add(v);
+        });
+        (b.tutor?.classesTeach || []).forEach((c) => {
+          const v = this.normalizeValue(c);
+          if (v) interestClasses.add(v);
+        });
+        (b.tutor?.languages || []).forEach((l) => {
+          const v = this.normalizeValue(l);
+          if (v) interestLanguages.add(v);
+        });
+      });
+    }
+
+    const hasSignals =
+      interestSubjects.size > 0 ||
+      interestClasses.size > 0 ||
+      interestLanguages.size > 0 ||
+      searchTerms.size > 0 ||
+      bookedTutorIds.size > 0;
+
+    // Fallback to default list if we have no signals
+    if (!hasSignals) {
+      return this.list({
+        page: 1,
+        pageSize,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      });
+    }
+
+    const candidates = await this.prisma.tutor.findMany({
+      where: { status: TutorStatus.APPROVED },
+      orderBy: { updatedAt: 'desc' },
+      take: 200,
+      include: {
+        user: { select: { name: true, email: true, avatarUrl: true } },
+        reviews: { select: { rating: true } },
+      },
+    });
+
+    const now = Date.now();
+
+    const scored = candidates.map((t) => {
+      const tutorSubjects = (t.subjects || []).map((s) => this.normalizeValue(s));
+      const tutorClasses = (t.classesTeach || []).map((c) => this.normalizeValue(c));
+      const tutorLanguages = (t.languages || []).map((l) => this.normalizeValue(l));
+
+      let score = 0;
+
+      // Subject match weight
+      const subjectMatches = tutorSubjects.filter((s) => interestSubjects.has(s)).length;
+      score += Math.min(subjectMatches, 3) * 5;
+
+      // Class match weight
+      const classMatches = tutorClasses.filter((c) => interestClasses.has(c)).length;
+      score += Math.min(classMatches, 3) * 2;
+
+      // Language match weight
+      const languageMatches = tutorLanguages.filter((l) => interestLanguages.has(l)).length;
+      score += Math.min(languageMatches, 3) * 1;
+
+      // Search term match (subject or tutor name)
+      const nameLower = this.normalizeValue(t.user?.name ?? '');
+      const termMatches = Array.from(searchTerms).some((term) => {
+        return (
+          nameLower.includes(term) ||
+          tutorSubjects.some((s) => s.includes(term))
+        );
+      });
+      if (termMatches) score += 3;
+
+      // Previously booked tutor bonus
+      if (bookedTutorIds.has(t.id)) score += 6;
+
+      // Rating weight
+      const ratings = t.reviews?.map((r) => r.rating ?? 0) || [];
+      const avgRating =
+        ratings.length > 0 ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length : 0;
+      score += Math.max(0, avgRating);
+
+      // Recency weight (updatedAt)
+      const updatedAt = t.updatedAt ? new Date(t.updatedAt).getTime() : now;
+      const daysSinceUpdate = Math.max(0, (now - updatedAt) / 86_400_000);
+      const recencyScore = Math.max(0, 5 - daysSinceUpdate / 7);
+      score += recencyScore;
+
+      // Small bonus for review volume
+      score += Math.min(2, ratings.length / 10);
+
+      return { tutor: t, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+
+    const items = scored.slice(0, pageSize).map((s) => normalizeTutor(s.tutor));
+    return { items, total: items.length, page: 1, pageSize };
+  }
+
   // ---------- SEARCH ----------
   async search(params?: {
     q?: string;
@@ -360,6 +536,7 @@ export class TutorsService {
 
   // ---------- DETAIL ----------
   async getByIdOrTid(idOrTid: string) {
+    // First try exact match by full ID
     const byId = await this.prisma.tutor.findUnique({
       where: { id: idOrTid },
       include: {
@@ -368,6 +545,7 @@ export class TutorsService {
     });
     if (byId) return normalizeTutor(byId);
 
+    // Then try by tutorTid
     const byTid = await this.prisma.tutor.findUnique({
       where: { tutorTid: idOrTid },
       include: {
@@ -375,6 +553,15 @@ export class TutorsService {
       },
     });
     if (byTid) return normalizeTutor(byTid);
+
+    // Finally try finding by ID ending with the provided string (for slug-based lookups)
+    const byIdEnding = await this.prisma.tutor.findFirst({
+      where: { id: { endsWith: idOrTid } },
+      include: {
+        user: { select: { name: true, email: true, avatarUrl: true } },
+      },
+    });
+    if (byIdEnding) return normalizeTutor(byIdEnding);
 
     throw new NotFoundException('Tutor not found');
   }

@@ -1,6 +1,7 @@
 // src/pages/tutor/public-profile.tsx
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import SEO from '../../components/SEO';
 import { getTutor } from '../../services/tutorService';            // ⬅️ no named `Tutor` import
 import { api } from '../../lib/apiClient';
 import { useDisplayCurrency } from '../../hooks/useDisplayCurrency';
@@ -9,6 +10,7 @@ import BuyTokensButton from '../../components/BuyTokensButton';
 import { createDemoBooking } from '../../services/bookingsService';
 import { useAuth } from '../../contexts/AuthContext';
 import NotificationModal from '../../components/common/NotificationModal';
+import { generateTutorSlug, parseTutorIdFromSlug } from '../../utils/seo';
 
 type BookableSlot = { startTime: string; endTime: string };
 
@@ -38,9 +40,21 @@ function endOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() + 1
 function sameDay(a: Date, b: Date) { return a.toDateString() === b.toDateString(); }
 
 export default function TutorPublicProfile() {
-  const { id } = useParams<{ id: string }>();
+  const { slug: idOrSlug } = useParams<{ slug: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
+  
+  // Parse ID from slug if needed (backward compatibility)
+  const id = useMemo(() => {
+    if (!idOrSlug) return null;
+    // If it looks like a slug (has dashes), try to parse ID
+    if (idOrSlug.includes('-')) {
+      const parsed = parseTutorIdFromSlug(idOrSlug);
+      return parsed || idOrSlug; // Fallback to original if parsing fails
+    }
+    return idOrSlug; // Already an ID
+  }, [idOrSlug]);
   const isDemoIntent = useMemo(
     () => new URLSearchParams(location.search).get('demo') === '1',
     [location.search],
@@ -126,6 +140,15 @@ export default function TutorPublicProfile() {
         if (!mounted) return;
         setTutor(t as TutorPublic);
 
+        // Redirect to slug-based URL if not already using slug
+        if (idOrSlug && !idOrSlug.includes('-')) {
+          const slug = generateTutorSlug(t as TutorPublic);
+          const newPath = `/tutors/${slug}`;
+          if (location.pathname !== newPath) {
+            navigate(newPath, { replace: true });
+          }
+        }
+
         const slots = await fetchSlots(month);
         if (!mounted) return;
         setBookable(slots);
@@ -140,7 +163,7 @@ export default function TutorPublicProfile() {
       }
     })();
     return () => { mounted = false; };
-  }, [id, month, fetchSlots]);
+  }, [id, idOrSlug, month, fetchSlots, navigate, location.pathname]);
 
   useEffect(() => {
     if (location.hash === '#slots') {
@@ -234,8 +257,54 @@ export default function TutorPublicProfile() {
     ? Math.round((tutor.hourlyRate * (r(currency) / Math.max(r('INR'), 1e-9)) + Number.EPSILON) * 100) / 100
     : undefined;
 
+  // SEO and Structured Data
+  const seoTitle = tutor
+    ? `${tutor.name} - ${tutor.subject || tutor.subjects?.[0] || 'Online Tutor'} | Tunect`
+    : 'Tutor Profile | Tunect';
+  const seoDescription = tutor
+    ? `Book 1-on-1 online tutoring sessions with ${tutor.name}, expert ${tutor.subject || tutor.subjects?.[0] || 'tutor'}. ${tutor.bio ? tutor.bio.substring(0, 120) : 'Verified tutor on Tunect.'} First session free!`
+    : 'View tutor profile and book 1-on-1 online tutoring sessions. First session free!';
+
+  // Person + Review Schema for tutor
+  const tutorSchema = tutor
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        name: tutor.name,
+        jobTitle: 'Online Tutor',
+        description: tutor.bio || tutor.summary,
+        image: tutor.avatarUrl || undefined,
+        ...(tutor.rating && tutor.reviews
+          ? {
+              aggregateRating: {
+                '@type': 'AggregateRating',
+                ratingValue: tutor.rating,
+                reviewCount: tutor.reviews,
+                bestRating: 5,
+                worstRating: 1,
+              },
+            }
+          : {}),
+        ...(tutor.subjects && tutor.subjects.length > 0
+          ? {
+              knowsAbout: tutor.subjects,
+            }
+          : {}),
+      }
+    : null;
+
   return (
     <main className="container mx-auto py-10 px-4 max-w-7xl">
+      {tutor && (
+        <SEO
+          title={seoTitle}
+          description={seoDescription}
+          url={`/tutors/${generateTutorSlug(tutor)}`}
+          image={tutor.avatarUrl || undefined}
+          type="profile"
+          structuredData={tutorSchema || undefined}
+        />
+      )}
       {toast && <div className="mb-4 p-3 rounded bg-black text-white inline-block">{toast}</div>}
       <NotificationModal
         open={!!errorModal}
@@ -256,8 +325,9 @@ export default function TutorPublicProfile() {
                   tutor.avatarUrl ||
                   `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(tutor.name || 'Tutor')}`
                 }
-                alt={tutor.name || 'Tutor'}
+                alt={`${tutor.name || 'Tutor'} - ${tutor.subject || tutor.subjects?.[0] || 'Online Tutor'} on Tunect`}
                 className="w-full rounded-2xl object-cover aspect-square"
+                loading="lazy"
               />
               {tutor.verified && (
                 <div className="absolute top-3 right-3 bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1">

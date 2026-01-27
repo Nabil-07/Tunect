@@ -53,14 +53,21 @@ export class StudentsService {
         id: true,
         email: true,
         role: true,
+        name: true,
+        phone: true,
+        avatarUrl: true,
+        createdAt: true,
         student: {
           select: {
             id: true,
             grade: true,
             tokens: true,
+            bio: true,
+            timezone: true,
+            preferredLanguage: true,
             createdAt: true,
             updatedAt: true,
-          },
+          } as any,
         },
       },
     });
@@ -82,26 +89,31 @@ export class StudentsService {
           id: true,
           grade: true,
           tokens: true,
+          bio: true,
+          timezone: true,
+          preferredLanguage: true,
           createdAt: true,
           updatedAt: true,
-        },
+        } as any,
       });
     }
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const studentId = student.id as unknown as string;
+
     // Get COMPLETED bookings for count and hours calculation
     const [completedCount, monthlyCompletedBookings] = await Promise.all([
       this.prisma.booking.count({
         where: {
-          studentId: student.id,
+          studentId,
           status: BookingStatus.COMPLETED,
         },
       }),
       this.prisma.booking.findMany({
         where: {
-          studentId: student.id,
+          studentId,
           status: BookingStatus.COMPLETED,
           startTime: { gte: startOfMonth },
         },
@@ -110,13 +122,12 @@ export class StudentsService {
     ]);
 
     // Also get EXPIRED (CONFIRMED past endTime) sessions with attendance for hours calculation
-    // These are sessions that were attended but not yet marked COMPLETED
     const expiredBookings = await this.prisma.booking.findMany({
       where: {
-        studentId: student.id,
+        studentId,
         status: BookingStatus.CONFIRMED,
         startTime: { gte: startOfMonth },
-        endTime: { lt: now }, // Past end time
+        endTime: { lt: now },
       },
       select: { id: true, startTime: true, endTime: true },
     });
@@ -155,27 +166,78 @@ export class StudentsService {
       console.log(`[getMe] Student ${student.id}: completedCount=${completedCount}, monthlyCompleted=${monthlyCompletedBookings.length}, expiredWithAttendance=${expiredWithAttendance.length}, hoursStudied=${hoursStudied.toFixed(2)}`);
     }
 
+    const studentPayload = {
+      ...student,
+      tokens: toNum(student.tokens),
+      hoursStudied: Math.round(hoursStudied * 10) / 10,
+      sessionsCompleted: completedCount,
+    };
+
     return {
-      ...user,
-      student: {
-        ...student,
-        tokens: toNum(student.tokens),
-        hoursStudied: Math.round(hoursStudied * 10) / 10,
-        sessionsCompleted: completedCount,
+      id: student.id,
+      userId: user.id,
+      bio: student.bio ?? null,
+      timezone: student.timezone ?? null,
+      preferredLanguage: student.preferredLanguage ?? null,
+      user: {
+        id: user.id,
+        name: user.name ?? null,
+        email: user.email,
+        phone: user.phone ?? null,
+        avatarUrl: user.avatarUrl ?? null,
+        createdAt: user.createdAt,
       },
+      student: studentPayload,
     };
   }
 
-  async patchMe(userId: string, data: { grade?: string }) {
+  async patchMe(
+    userId: string,
+    data: {
+      grade?: string;
+      name?: string;
+      phone?: string;
+      bio?: string;
+      timezone?: string;
+      preferredLanguage?: string;
+    },
+  ) {
     const studentId = await this.ensureStudentProfile(userId);
 
-    const updated = await this.prisma.student.update({
+    const userUpdates: { name?: string; phone?: string | null } = {};
+    if (typeof data.name === 'string') userUpdates.name = data.name;
+    if (data.phone !== undefined) userUpdates.phone = data.phone || null;
+
+    const studentUpdates: {
+      grade?: string;
+      bio?: string;
+      timezone?: string | null;
+      preferredLanguage?: string | null;
+    } = {};
+    if (data.grade !== undefined) studentUpdates.grade = data.grade;
+    if (typeof data.bio === 'string') studentUpdates.bio = data.bio;
+    if (data.timezone !== undefined) studentUpdates.timezone = data.timezone || null;
+    if (data.preferredLanguage !== undefined)
+      studentUpdates.preferredLanguage = data.preferredLanguage || null;
+
+    if (Object.keys(userUpdates).length > 0) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: userUpdates,
+      });
+    }
+    if (Object.keys(studentUpdates).length > 0) {
+      await this.prisma.student.update({
+        where: { id: studentId },
+        data: studentUpdates,
+      });
+    }
+
+    const updated = await this.prisma.student.findUnique({
       where: { id: studentId },
-      data: { grade: data.grade },
       select: { id: true, grade: true, tokens: true, updatedAt: true },
     });
-
-    return { ...updated, tokens: toNum(updated.tokens) };
+    return { ...updated, tokens: toNum(updated!.tokens) };
   }
 
   // -------- Bookings with payment enrichment + unscheduled grouping --------
