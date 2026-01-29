@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle, XCircle, Clock, DollarSign, ArrowRight } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, ArrowRight } from 'lucide-react';
 import { http as api } from '../../api/http';
 import { useToast } from '../../contexts/ToastContext';
 
