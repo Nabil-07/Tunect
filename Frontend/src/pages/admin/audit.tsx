@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar, User, FileText, Search } from 'lucide-react';
+import { Calendar, Search } from 'lucide-react';
 import { http as api } from '../../api/http';
 
 interface AuditLog {

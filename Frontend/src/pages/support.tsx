@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Send, User, Users, RefreshCw, ArrowRight } from 'lucide-react';
+import { Bot, Send, User, Users, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   addSupportMessage,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock, Users, FileText } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock } from 'lucide-react';
 import { fetchTutorDetail } from '../../services/adminService';
 
 interface TutorDetail {

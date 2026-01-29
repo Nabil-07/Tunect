@@ -15,7 +15,6 @@ export default function AdminStudents() {
   const [unbanError, setUnbanError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [meta, setMeta] = useState<PaginationMeta | null>(null);
 
   // Filters
   const [nameFilter, setNameFilter] = useState('');

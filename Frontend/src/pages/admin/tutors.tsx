@@ -21,7 +21,6 @@ export default function AdminTutors() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | TutorStatus>('ALL');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [meta, setMeta] = useState<{ page?: number; totalPages?: number; total?: number } | null>(null);
 
   // Filters
   const [nameFilter, setNameFilter] = useState('');
@@ -37,7 +36,6 @@ export default function AdminTutors() {
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
-  const [allTutorsLoaded, setAllTutorsLoaded] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   // Only load data once on mount, not on page/pageSize changes
