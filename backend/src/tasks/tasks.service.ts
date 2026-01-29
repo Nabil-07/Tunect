@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression, Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotifierService } from './notifier.service';
+import { AvailabilityTrackingService } from '../availability/availability-tracking.service';
 import { fromUtc } from '../common/time.util';
 import { addMinutes } from 'date-fns';
 import { BookingStatus } from '@prisma/client';
@@ -16,15 +17,16 @@ export class TasksService {
   constructor(
     private prisma: PrismaService,
     private notifier: NotifierService,
+    private availabilityTracking: AvailabilityTrackingService,
   ) {}
 
   private platformFeePercent(hourlyRate?: number | null): number {
-    const defaultFee = Number(process.env.FEE_PERCENT ?? 20);
     const rate = Number(hourlyRate ?? 0);
-    if (!Number.isFinite(rate) || rate <= 0) return defaultFee;
+    if (!Number.isFinite(rate) || rate <= 0) return 20; // Default fallback
+    // Commission rates: 0-399=25%, 400-699=22%, 700+=18%
     if (rate < 400) return 25;
-    if (rate < 700) return 18;
-    return 15;
+    if (rate < 700) return 22;
+    return 18;
   }
 
   // 1) Every minute: send reminders for sessions starting within next 30 minutes
@@ -141,8 +143,12 @@ export class TasksService {
 
           if (!fresh.isDemo && Number(fresh.tokensCharged) > 0) {
             const tokens = Number(fresh.tokensCharged);
-            const feePercent = this.platformFeePercent(fresh.tutor?.hourlyRate ?? null);
-            const tutorShare = Math.max(0, (tokens * (100 - feePercent)) / 100);
+            const hourlyRate = Number(fresh.tutor?.hourlyRate ?? 0);
+            const hours = tokens; // Since TOKENS_PER_HOUR = 1, tokens = hours
+            const bookingAmount = hours * hourlyRate; // Total amount for the booking
+            
+            const feePercent = this.platformFeePercent(hourlyRate);
+            const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
 
             await tx.tutorWallet.upsert({
               where: { tutorId: fresh.tutorId },
@@ -187,5 +193,47 @@ export class TasksService {
       },
     });
     if (bad > 0) this.logger.warn(`Found ${bad} bookings with inconsistent times (check input).`);
+  }
+
+  // 4) Daily at 03:00 UTC: Check for inactive tutors and send alerts
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async checkInactiveTutors() {
+    this.logger.log('Running inactive tutor check...');
+    try {
+      await this.availabilityTracking.checkInactiveTutorsAndAlert();
+    } catch (error) {
+      this.logger.error('Error checking inactive tutors:', error);
+    }
+  }
+
+  // 5) Every 6 hours: Check for pending tokens and send 48-hour warnings
+  @Cron('0 */6 * * *')
+  async checkPendingTokens() {
+    this.logger.log('Running pending tokens check...');
+    try {
+      await this.availabilityTracking.checkPendingTokensAndWarn();
+    } catch (error) {
+      this.logger.error('Error checking pending tokens:', error);
+    }
+  }
+
+  // 6) Daily at 04:00 UTC: Update all tutor availability metrics
+  @Cron(CronExpression.EVERY_DAY_AT_4AM)
+  async updateAllTutorMetrics() {
+    this.logger.log('Updating all tutor availability metrics...');
+    try {
+      const tutors = await this.prisma.tutor.findMany({
+        where: { status: 'APPROVED' },
+        select: { id: true },
+      });
+
+      for (const tutor of tutors) {
+        await this.availabilityTracking.updateTutorAvailabilityMetrics(tutor.id);
+      }
+
+      this.logger.log(`Updated metrics for ${tutors.length} tutors`);
+    } catch (error) {
+      this.logger.error('Error updating tutor metrics:', error);
+    }
   }
 }

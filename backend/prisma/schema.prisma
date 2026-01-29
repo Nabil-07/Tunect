@@ -698,6 +698,9 @@ model Student {
   tokenLedger                           TokenLedger[]
   tutorTokenBalances                    TutorTokenBalance[]
   waitlist                              Waitlist[]
+  tokenTransferRequests                 TokenTransferRequest[]
+  refundRequests                        RefundRequest[]
+  availabilityAlerts                    TutorAvailabilityAlert[]
 
   @@index([createdAt])
   @@index([userId])
@@ -798,12 +801,25 @@ model Tutor {
   wallet              TutorWallet?
   walletLedger        TutorWalletLedger[]
   waitlist            Waitlist[]
+  lastActiveDate      DateTime?
+  availabilityConsistency Decimal? @db.Decimal(5, 2)
+  isFeatured          Boolean @default(false)
+  isVerified          Boolean @default(false)
+  weeklyAvailabilityHours Decimal? @db.Decimal(5, 2)
+  lastAvailabilityUpdate DateTime?
+  tokenTransferRequestsFrom TokenTransferRequest[] @relation("FromTutor")
+  tokenTransferRequestsTo TokenTransferRequest[] @relation("ToTutor")
+  refundRequests      RefundRequest[]
+  availabilityAlerts  TutorAvailabilityAlert[]
 
   @@index([country])
   @@index([hourlyRate])
   @@index([isTrending, updatedAt])
   @@index([status, updatedAt])
   @@index([userId])
+  @@index([lastActiveDate])
+  @@index([isFeatured])
+  @@index([isVerified])
 }
 
 model TutorKycApplication {
@@ -915,6 +931,8 @@ model User {
   supportTicketsAssigned           SupportTicket[]   @relation("SupportTicketAssignee")
   supportMessages                  SupportMessage[]
   auditLogs                        AuditLog[]        @relation("AuditLogAdmin")
+  tokenTransferRequests            TokenTransferRequest[]
+  refundRequests                   RefundRequest[]
 
   @@index([email])
   @@index([role, hasChosenRole])
@@ -929,6 +947,8 @@ model AuditLog {
   entityId   String
   beforeData Json?
   afterData  Json?
+  endpoint   String?
+  ipAddress  String?
   createdAt  DateTime         @default(now())
   admin      User             @relation("AuditLogAdmin", fields: [adminId], references: [id], onDelete: Restrict)
 
@@ -937,6 +957,68 @@ model AuditLog {
   @@index([entityId])
   @@index([createdAt])
   @@index([entityType, createdAt])
+}
+
+model TokenTransferRequest {
+  id          String   @id @default(cuid())
+  studentId   String
+  fromTutorId String
+  toTutorId   String
+  tokenAmount Decimal  @db.Decimal(18, 2)
+  reason      String?
+  status      String   @default("PENDING")
+  adminId     String?
+  adminNotes  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+  processedAt DateTime?
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fromTutor   Tutor    @relation("FromTutor", fields: [fromTutorId], references: [id], onDelete: Cascade)
+  toTutor     Tutor    @relation("ToTutor", fields: [toTutorId], references: [id], onDelete: Cascade)
+  admin       User?    @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model RefundRequest {
+  id          String   @id @default(cuid())
+  studentId   String
+  tutorId     String
+  tokenAmount Decimal  @db.Decimal(18, 2)
+  reason      String?
+  status      String   @default("PENDING")
+  adminId     String?
+  adminNotes  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+  processedAt DateTime?
+  purchaseDate DateTime
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor       Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  admin       User?    @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TutorAvailabilityAlert {
+  id              String   @id @default(cuid())
+  tutorId         String
+  studentId       String
+  alertType       String
+  tokenAmount     Decimal? @db.Decimal(18, 2)
+  sentAt          DateTime @default(now())
+  acknowledgedAt  DateTime?
+  refundRequested Boolean  @default(false)
+  tutor           Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  student         Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([tutorId])
+  @@index([studentId])
+  @@index([alertType])
 }
 
 model BanLedger {

@@ -37,6 +37,7 @@ export interface TutorSummary {
 	user: {
 		id: string;
 		email: string;
+		name: string | null;
 		isBanned: boolean;
 		bannedScope: string | null;
 		bannedAt: string | null;
@@ -53,6 +54,7 @@ export interface StudentSummary {
 	user: {
 		id: string;
 		email: string;
+		name: string | null;
 		isBanned: boolean;
 		bannedScope: string | null;
 		bannedAt: string | null;
@@ -127,6 +129,16 @@ export async function updateTutorStatus(id: string, status: TutorStatus) {
 
 export async function fetchStudents(params: { q?: string; page?: number; pageSize?: number } = {}): Promise<Paginated<StudentSummary>> {
 	const { data } = await api.get('/admin/students', { params });
+	return data;
+}
+
+export async function fetchStudentDetail(studentId: string) {
+	const { data } = await api.get(`/admin/students/${studentId}`);
+	return data;
+}
+
+export async function fetchTutorDetail(tutorId: string) {
+	const { data } = await api.get(`/admin/tutors/${tutorId}`);
 	return data;
 }
 

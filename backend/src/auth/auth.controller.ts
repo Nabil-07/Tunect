@@ -67,7 +67,17 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Post('refresh')
   async refresh(@Body() dto: RefreshDto) {
-    return this.auth.refresh(dto.refreshToken);
+    try {
+      return await this.auth.refresh(dto.refreshToken);
+    } catch (error) {
+      // Log the error for debugging
+      console.error('[AuthController.refresh] Error:', {
+        message: error instanceof Error ? error.message : String(error),
+        hasRefreshToken: !!dto.refreshToken,
+      });
+      // Re-throw to let the exception filter handle it
+      throw error;
+    }
   }
 
   @ApiOperation({ summary: 'Logout (invalidate current session)' })

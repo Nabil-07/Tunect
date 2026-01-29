@@ -25,8 +25,28 @@ export class AdminController {
   ) {}
 
   @Get('dashboard')
-  dashboard() {
-    return this.svc.dashboard();
+  async dashboard() {
+    try {
+      return await this.svc.dashboard();
+    } catch (error: any) {
+      console.error('[AdminController.dashboard] Error:', {
+        message: error?.message,
+        stack: error?.stack,
+      });
+      // Return default dashboard data instead of throwing to prevent 500 errors
+      return {
+        totals: {
+          users: 0,
+          tutors: 0,
+          students: 0,
+          bookings: 0,
+          payments: 0,
+          revenueInMinor: 0,
+        },
+        latestSignups: [],
+        pendingKyc: 0,
+      };
+    }
   }
 
   @Get('users')
@@ -40,13 +60,27 @@ export class AdminController {
   }
 
   @Patch('tutors/:id/status')
-  setTutorStatus(@Param('id') id: string, @Body() dto: SetTutorStatusDto, @Req() req: { user?: { id: string } }) {
-    return this.svc.setTutorStatus(id, dto, req.user!.id);
+  setTutorStatus(
+    @Param('id') id: string,
+    @Body() dto: SetTutorStatusDto,
+    @Req() req: any,
+  ) {
+    return this.svc.setTutorStatus(id, dto, req.user!.id, req);
   }
 
   @Get('students')
   students(@Query() q: PaginationDto) {
     return this.svc.listStudents(q);
+  }
+
+  @Get('students/:id')
+  getStudentDetail(@Param('id') id: string) {
+    return this.svc.getStudentDetail(id);
+  }
+
+  @Get('tutors/:id')
+  getTutorDetail(@Param('id') id: string) {
+    return this.svc.getTutorDetail(id);
   }
 
   @Get('bookings')
@@ -60,13 +94,13 @@ export class AdminController {
   }
 
   @Post('users/:id/unban')
-  unbanUser(@Param('id') id: string, @Req() req: { user?: { id: string } }) {
-    return this.svc.unbanUser(id, req.user!.id);
+  unbanUser(@Param('id') id: string, @Req() req: any) {
+    return this.svc.unbanUser(id, req.user!.id, req);
   }
 
   @Post('students/tokens/adjust')
-  adjustTokens(@Body() dto: AdjustTokensDto, @Req() req: { user?: { id: string } }) {
-    return this.svc.adjustTokens(dto, req.user!.id);
+  adjustTokens(@Body() dto: AdjustTokensDto, @Req() req: any) {
+    return this.svc.adjustTokens(dto, req.user!.id, req);
   }
 
   @Get('audit')

@@ -33,8 +33,18 @@ export class ReviewsController {
 
   /** Public: Featured reviews with comments for homepage */
   @Get('featured')
-  featured(@Query('limit') limit?: number) {
-    return this.reviews.listFeatured(Number(limit) || 6);
+  async featured(@Query('limit') limit?: number) {
+    try {
+      return await this.reviews.listFeatured(Number(limit) || 6);
+    } catch (error: any) {
+      console.error('[ReviewsController.featured] Error:', {
+        message: error?.message,
+        stack: error?.stack,
+        limit,
+      });
+      // Return empty array instead of throwing to prevent 500 errors
+      return [];
+    }
   }
 
   /** Student deletes own review */

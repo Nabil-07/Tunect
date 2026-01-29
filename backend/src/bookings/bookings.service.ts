@@ -1070,8 +1070,10 @@ export class BookingsService {
 
       if (!b.isDemo && b.tokensCharged && Number(b.tokensCharged) > 0) {
         const tokens = Number(b.tokensCharged);
-        const feePercent = this.platformFeePercent(b.tutor.hourlyRate ?? null);
-        const tutorShare = Math.max(0, (tokens * (100 - feePercent)) / 100);
+        const hourlyRate = Number(b.tutor.hourlyRate ?? 0);
+        const bookingAmount = tokens * hourlyRate; // tokens = hours (TOKENS_PER_HOUR = 1)
+        const feePercent = this.platformFeePercent(hourlyRate);
+        const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
 
         await tx.tutorWallet.upsert({
           where: { tutorId: b.tutor.id },
@@ -1095,12 +1097,12 @@ export class BookingsService {
   }
 
   private platformFeePercent(hourlyRate?: number | null) {
-    const defaultFee = Number(process.env.FEE_PERCENT ?? 20);
     const rate = Number(hourlyRate ?? 0);
-    if (!Number.isFinite(rate) || rate <= 0) return defaultFee;
+    if (!Number.isFinite(rate) || rate <= 0) return 20; // Default fallback
+    // Commission rates: 0-399=25%, 400-699=22%, 700+=18%
     if (rate < 400) return 25;
-    if (rate < 700) return 18;
-    return 15;
+    if (rate < 700) return 22;
+    return 18;
   }
 
   private requiredTokens(start: Date, end: Date, tokensPerHour: number): number {

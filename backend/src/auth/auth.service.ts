@@ -2,6 +2,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
@@ -186,71 +187,97 @@ export class AuthService {
 
   // ======== Token refresh (OAuth / web) ========
   async refresh(refreshToken: string) {
-    if (!refreshToken) throw new UnauthorizedException('Missing refresh token');
-
-    let payload: any;
     try {
-      payload = await this.jwt.verifyAsync(refreshToken, {
-        secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
-        issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
-        audience: this.cfg.get<string>('JWT_AUD') || undefined,
+      if (!refreshToken) throw new UnauthorizedException('Missing refresh token');
+
+      let payload: any;
+      try {
+        payload = await this.jwt.verifyAsync(refreshToken, {
+          secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
+          issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
+          audience: this.cfg.get<string>('JWT_AUD') || undefined,
+        });
+      } catch (error) {
+        this.logger.warn('Token verification failed', { error: error instanceof Error ? error.message : String(error) });
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      const isRefresh = payload?.type === 'refresh' || payload?.typ === 'refresh';
+      if (!isRefresh || !payload?.sub) {
+        throw new UnauthorizedException('Malformed refresh token');
+      }
+
+      const user = await this.prisma.user.findUnique({ 
+        where: { id: payload.sub as string },
+        include: {
+          student: true,
+          tutor: true,
+        }
       });
-    } catch {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-
-    const isRefresh = payload?.type === 'refresh' || payload?.typ === 'refresh';
-    if (!isRefresh || !payload?.sub) {
-      throw new UnauthorizedException('Malformed refresh token');
-    }
-
-    const user = await this.prisma.user.findUnique({ 
-      where: { id: payload.sub as string },
-      include: {
-        student: true,
-        tutor: true,
+      
+      if (!user) {
+        this.logger.warn('User not found during refresh', { userId: payload.sub });
+        throw new UnauthorizedException('User not found');
       }
-    });
-    if (!user) throw new UnauthorizedException('User not found');
 
-    this.ensureInternal(user.email);
-
-    const access_token = await this.jwt.signAsync(
-      { sub: user.id, email: user.email, role: user.role },
-      {
-        secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
-        expiresIn: this.cfg.get<string>('JWT_ACCESS_TTL') ?? '900s',
-        issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
-        audience: this.cfg.get<string>('JWT_AUD') || undefined,
-      },
-    );
-
-    const new_refresh = await this.jwt.signAsync(
-      { sub: user.id, type: 'refresh' },
-      {
-        secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
-        expiresIn: this.cfg.get<string>('JWT_REFRESH_TTL') ?? '7d',
-        issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
-        audience: this.cfg.get<string>('JWT_AUD') || undefined,
-      },
-    );
-
-    // Include user profile data in the response
-    return { 
-      access_token, 
-      refresh_token: new_refresh,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        avatar: user.avatarUrl,
-        role: user.role,
-        isDirector: user.isDirector,
-        hasChosenRole: user.hasChosenRole,
-        student: user.student,
-        tutor: user.tutor,
+      // Only check internal access if email exists
+      if (user.email) {
+        try {
+          this.ensureInternal(user.email);
+        } catch (error) {
+          // If ensureInternal throws, it's already an UnauthorizedException, just rethrow
+          throw error;
+        }
       }
-    };
+
+      const access_token = await this.jwt.signAsync(
+        { sub: user.id, email: user.email, role: user.role },
+        {
+          secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
+          expiresIn: this.cfg.get<string>('JWT_ACCESS_TTL') ?? '900s',
+          issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
+          audience: this.cfg.get<string>('JWT_AUD') || undefined,
+        },
+      );
+
+      const new_refresh = await this.jwt.signAsync(
+        { sub: user.id, type: 'refresh' },
+        {
+          secret: this.cfg.get<string>('JWT_SECRET') || 'changeme',
+          expiresIn: this.cfg.get<string>('JWT_REFRESH_TTL') ?? '7d',
+          issuer:   this.cfg.get<string>('JWT_ISS') || undefined,
+          audience: this.cfg.get<string>('JWT_AUD') || undefined,
+        },
+      );
+
+      // Include user profile data in the response
+      return { 
+        access_token, 
+        refresh_token: new_refresh,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatar: user.avatarUrl,
+          role: user.role,
+          isDirector: user.isDirector,
+          hasChosenRole: user.hasChosenRole,
+          student: user.student,
+          tutor: user.tutor,
+        }
+      };
+    } catch (error) {
+      // If it's already an HttpException, rethrow it
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      // Log unexpected errors
+      this.logger.error('Unexpected error in refresh', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw new UnauthorizedException('Token refresh failed');
+    }
   }
 
   // ======== Google OAuth (unified user, no persona auto-create) ========

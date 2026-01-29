@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Send, User, Users } from 'lucide-react';
+import { Bot, Send, User, Users, RefreshCw, ArrowRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   addSupportMessage,
@@ -13,10 +13,17 @@ import {
   type SupportTicket,
   updateSupportTicketStatus,
 } from '../services/supportService';
+import {
+  getTokenBalances,
+  createRefundRequest,
+  createTokenTransferRequest,
+  type TutorTokenBalance,
+} from '../services/refundService';
+import { useToast } from '../contexts/ToastContext';
 
 type BotMessage = { id: string; from: 'user' | 'bot'; text: string; createdAt: string };
 
-type TabKey = 'ai' | 'support' | 'admin';
+type TabKey = 'ai' | 'support' | 'admin' | 'refunds';
 
 const botReplies: Array<{ keywords: string[]; reply: string }> = [
   { keywords: ['refund', 'cancel'], reply: 'Refunds depend on booking status. For confirmed sessions, you can cancel from Bookings and view the refund policy in-app.' },
@@ -34,10 +41,28 @@ function getBotReply(text: string) {
 
 export default function SupportPage() {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const role = (user?.role || '').toString().toUpperCase();
   const isAdmin = role === 'ADMIN';
+  const isStudent = role === 'STUDENT';
 
   const [tab, setTab] = useState<TabKey>('ai');
+  
+  // Refund/transfer state
+  const [tokenBalances, setTokenBalances] = useState<TutorTokenBalance[]>([]);
+  const [loadingBalances, setLoadingBalances] = useState(false);
+  const [selectedTutorForRefund, setSelectedTutorForRefund] = useState<string | null>(null);
+  const [refundAmount, setRefundAmount] = useState<string>('');
+  const [refundReason, setRefundReason] = useState<string>('');
+  const [purchaseDate, setPurchaseDate] = useState<string>('');
+  const [submittingRefund, setSubmittingRefund] = useState(false);
+  
+  // Transfer state
+  const [transferFromTutor, setTransferFromTutor] = useState<string>('');
+  const [transferToTutor, setTransferToTutor] = useState<string>('');
+  const [transferAmount, setTransferAmount] = useState<string>('');
+  const [transferReason, setTransferReason] = useState<string>('');
+  const [submittingTransfer, setSubmittingTransfer] = useState(false);
 
   // AI bot state
   const [botInput, setBotInput] = useState('');
@@ -79,6 +104,92 @@ export default function SupportPage() {
     ]);
     setUnassignedTickets(unassigned);
     setAssignedTickets(assigned);
+  };
+
+  const loadTokenBalances = async () => {
+    if (!isStudent) return;
+    setLoadingBalances(true);
+    try {
+      const balances = await getTokenBalances();
+      setTokenBalances(balances);
+    } catch (err: any) {
+      showError('Failed to load token balances');
+    } finally {
+      setLoadingBalances(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'refunds' && isStudent) {
+      loadTokenBalances();
+    }
+  }, [tab, isStudent]);
+
+  const handleRefundRequest = async () => {
+    if (!selectedTutorForRefund || !refundAmount || !purchaseDate) {
+      showError('Please fill in all required fields');
+      return;
+    }
+
+    const purchaseDateObj = new Date(purchaseDate);
+    const daysSincePurchase = (Date.now() - purchaseDateObj.getTime()) / (1000 * 60 * 60 * 24);
+    
+    if (daysSincePurchase < 7) {
+      showError('Refund is only available after 7 days from purchase');
+      return;
+    }
+
+    setSubmittingRefund(true);
+    try {
+      await createRefundRequest({
+        tutorId: selectedTutorForRefund,
+        tokenAmount: Number(refundAmount),
+        purchaseDate: purchaseDate,
+        reason: refundReason || undefined,
+      });
+      showSuccess('Refund request submitted successfully. Admin will review it shortly.');
+      setSelectedTutorForRefund(null);
+      setRefundAmount('');
+      setRefundReason('');
+      setPurchaseDate('');
+      loadTokenBalances();
+    } catch (err: any) {
+      showError(err?.response?.data?.message || 'Failed to submit refund request');
+    } finally {
+      setSubmittingRefund(false);
+    }
+  };
+
+  const handleTransferRequest = async () => {
+    if (!transferFromTutor || !transferToTutor || !transferAmount) {
+      showError('Please fill in all required fields');
+      return;
+    }
+
+    if (transferFromTutor === transferToTutor) {
+      showError('Cannot transfer tokens to the same tutor');
+      return;
+    }
+
+    setSubmittingTransfer(true);
+    try {
+      await createTokenTransferRequest({
+        fromTutorId: transferFromTutor,
+        toTutorId: transferToTutor,
+        tokenAmount: Number(transferAmount),
+        reason: transferReason || undefined,
+      });
+      showSuccess('Transfer request submitted successfully. Admin will review it shortly.');
+      setTransferFromTutor('');
+      setTransferToTutor('');
+      setTransferAmount('');
+      setTransferReason('');
+      loadTokenBalances();
+    } catch (err: any) {
+      showError(err?.response?.data?.message || 'Failed to submit transfer request');
+    } finally {
+      setSubmittingTransfer(false);
+    }
   };
 
   const loadTicketMessages = async (ticketId: string) => {
@@ -231,6 +342,14 @@ export default function SupportPage() {
               >
                 Support Chat
               </button>
+              {role === 'STUDENT' && (
+                <button
+                  onClick={() => setTab('refunds')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${tab === 'refunds' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}
+                >
+                  Refunds & Transfers
+                </button>
+              )}
               {isAdmin && (
                 <button
                   onClick={() => setTab('admin')}
@@ -470,6 +589,216 @@ export default function SupportPage() {
                 ) : (
                   <div className="text-sm text-slate-500">Pick a ticket to respond.</div>
                 )}
+              </div>
+            </section>
+          )}
+
+          {tab === 'refunds' && isStudent && (
+            <section className="space-y-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h2 className="text-lg font-semibold text-blue-900 mb-2">Refund & Transfer Requests</h2>
+                <p className="text-sm text-blue-700">
+                  Request a refund if your tutor hasn't posted availability within 7 days of purchase, 
+                  or transfer tokens to another tutor if your current tutor is unavailable.
+                </p>
+              </div>
+
+              {/* Token Balances */}
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-slate-900">Your Token Balances</h3>
+                  <button
+                    onClick={loadTokenBalances}
+                    disabled={loadingBalances}
+                    className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 inline ${loadingBalances ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+                {loadingBalances ? (
+                  <p className="text-slate-500">Loading...</p>
+                ) : tokenBalances.length === 0 ? (
+                  <p className="text-slate-500">No token balances</p>
+                ) : (
+                  <div className="space-y-2">
+                    {tokenBalances.map((balance) => (
+                      <div key={balance.id} className="border rounded-lg p-3 flex justify-between items-center">
+                        <div>
+                          <p className="font-semibold">{balance.tutor.user.name || balance.tutor.user.email}</p>
+                          <p className="text-sm text-slate-600">Balance: {Number(balance.balance).toFixed(2)} tokens</p>
+                        </div>
+                        {Number(balance.balance) > 0 && (
+                          <button
+                            onClick={() => {
+                              setSelectedTutorForRefund(balance.tutorId);
+                              setRefundAmount(balance.balance.toString());
+                            }}
+                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                          >
+                            Request Refund
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Refund Request Form */}
+              {selectedTutorForRefund && (
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Request Refund</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Tutor
+                      </label>
+                      <p className="text-sm text-slate-600">
+                        {tokenBalances.find(b => b.tutorId === selectedTutorForRefund)?.tutor.user.name || 'Unknown'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Token Amount *
+                      </label>
+                      <input
+                        type="number"
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2 text-sm"
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Purchase Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={purchaseDate}
+                        onChange={(e) => setPurchaseDate(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2 text-sm"
+                        max={new Date().toISOString().split('T')[0]}
+                      />
+                      <p className="text-xs text-slate-500 mt-1">
+                        Refund available only if 7+ days have passed and tutor hasn't posted slots
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Reason (optional)
+                      </label>
+                      <textarea
+                        value={refundReason}
+                        onChange={(e) => setRefundReason(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2 text-sm min-h-[80px]"
+                        placeholder="Why are you requesting a refund?"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleRefundRequest}
+                        disabled={submittingRefund || !refundAmount || !purchaseDate}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {submittingRefund ? 'Submitting...' : 'Submit Refund Request'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedTutorForRefund(null);
+                          setRefundAmount('');
+                          setRefundReason('');
+                          setPurchaseDate('');
+                        }}
+                        className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Token Transfer Form */}
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">Transfer Tokens to Another Tutor</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      From Tutor *
+                    </label>
+                    <select
+                      value={transferFromTutor}
+                      onChange={(e) => {
+                        setTransferFromTutor(e.target.value);
+                        const balance = tokenBalances.find(b => b.tutorId === e.target.value);
+                        if (balance) {
+                          setTransferAmount(balance.balance.toString());
+                        }
+                      }}
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <option value="">Select tutor...</option>
+                      {tokenBalances.filter(b => Number(b.balance) > 0).map((balance) => (
+                        <option key={balance.id} value={balance.tutorId}>
+                          {balance.tutor.user.name || balance.tutor.user.email} ({Number(balance.balance).toFixed(2)} tokens)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      To Tutor *
+                    </label>
+                    <select
+                      value={transferToTutor}
+                      onChange={(e) => setTransferToTutor(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <option value="">Select tutor...</option>
+                      {/* In a real implementation, you'd fetch available tutors here */}
+                      <option value="" disabled>Search for tutor first...</option>
+                    </select>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Note: You'll need to search for the tutor ID. This will be enhanced with tutor search.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Token Amount *
+                    </label>
+                    <input
+                      type="number"
+                      value={transferAmount}
+                      onChange={(e) => setTransferAmount(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                      placeholder="0.00"
+                      step="0.01"
+                      min="0"
+                      max={tokenBalances.find(b => b.tutorId === transferFromTutor)?.balance || 0}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Reason (optional)
+                    </label>
+                    <textarea
+                      value={transferReason}
+                      onChange={(e) => setTransferReason(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2 text-sm min-h-[80px]"
+                      placeholder="Why are you transferring tokens?"
+                    />
+                  </div>
+                  <button
+                    onClick={handleTransferRequest}
+                    disabled={submittingTransfer || !transferFromTutor || !transferToTutor || !transferAmount}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {submittingTransfer ? 'Submitting...' : 'Submit Transfer Request'}
+                  </button>
+                </div>
               </div>
             </section>
           )}

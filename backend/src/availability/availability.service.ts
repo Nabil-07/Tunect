@@ -14,6 +14,7 @@ import { BookingStatus, TutorStatus } from '@prisma/client';
 import { addDays, addMinutes, isBefore, startOfDay } from 'date-fns';
 import { BookableQueryDto } from './dto/bookable-query.dto';
 import { WaitlistService } from '../waitlist/waitlist.service';
+import { AvailabilityTrackingService } from './availability-tracking.service';
 
 const MIN_BLOCK_MINUTES = 15;
 
@@ -25,6 +26,7 @@ export class AvailabilityService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => WaitlistService))
     private waitlistService: WaitlistService,
+    private trackingService: AvailabilityTrackingService,
   ) {}
 
   // ---------------- helpers ----------------
@@ -296,6 +298,11 @@ export class AvailabilityService {
     // Notify waiting students about new availability
     await this.waitlistService.notifyWaitingStudentsForTutor(tutor.id);
 
+    // Update tutor availability metrics (fire-and-forget)
+    this.trackingService.updateTutorAvailabilityMetrics(tutor.id).catch(err => {
+      this.logger.warn(`Failed to update availability metrics for tutor ${tutor.id}:`, err);
+    });
+
     return slot;
   }
 
@@ -393,7 +400,13 @@ export class AvailabilityService {
       cleared = res?.count ?? 0;
     }
 
-    if (slotsInput.length === 0) return { updated: 0, cleared };
+    if (slotsInput.length === 0) {
+      // Update metrics even if clearing slots
+      this.trackingService.updateTutorAvailabilityMetrics(tutor.id).catch(err => {
+        this.logger.warn(`Failed to update availability metrics for tutor ${tutor.id}:`, err);
+      });
+      return { updated: 0, cleared };
+    }
 
     // Upsert each slot: if id points to own slot, update; else create
     let updated = 0;
@@ -465,6 +478,11 @@ export class AvailabilityService {
       });
       updated++;
     }
+
+    // Update tutor availability metrics after bulk update (fire-and-forget)
+    this.trackingService.updateTutorAvailabilityMetrics(tutor.id).catch(err => {
+      this.logger.warn(`Failed to update availability metrics for tutor ${tutor.id}:`, err);
+    });
 
     return { updated };
   }

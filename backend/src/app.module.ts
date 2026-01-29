@@ -12,7 +12,6 @@ import { UsersModule } from './users/users.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { StudentsModule } from './students/students.module';
-import { PaymentsModule } from './payments/payments.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { KycModule } from './kyc/kyc.module';
 import { SearchModule } from './search/search.module';
@@ -40,6 +39,7 @@ import { BansModule } from './bans/bans.module';
 import { SupportModule } from './support/support.module';
 import { StatsModule } from './stats/stats.module';
 import { BlogsModule } from './blogs/blogs.module';
+import { RefundsModule } from './refunds/refunds.module';
 
 import { AppController } from './app.controller';
 import { ReadyController } from './health/ready.controller';
@@ -51,6 +51,7 @@ import { FinanceDashboardModule } from './finance/dashboard/finance-dashboard.mo
 import { TokenLedgerModule } from './finance/ledger/token-ledger.module';
 import { FinancePayoutsModule } from './finance/payouts/finance-payouts.module';
 import { TutorBalancesModule } from './finance/balances/tutor-balances.module';
+import { PaymentsModule } from './finance/payments/payments.module';
 import { TaxModule } from './finance/tax/tax.module';
 import { ReconModule } from './finance/recon/recon.module';
 import { LivekitModule } from './livekit/livekit.module';
@@ -58,6 +59,8 @@ import { MetricsModule } from './metrics/metrics.module';
 import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 import { EncryptResponseInterceptor } from './common/interceptors/encrypt-response.interceptor';
 import { MetricsInterceptor } from './metrics/metrics.interceptor';
+import { APP_FILTER } from '@nestjs/core';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 @Module({
   imports: [
@@ -75,7 +78,6 @@ import { MetricsInterceptor } from './metrics/metrics.interceptor';
     TutorsModule,
     AvailabilityModule,
     StudentsModule,
-    PaymentsModule,
     ReviewsModule,
     KycModule,
     SearchModule,
@@ -103,11 +105,13 @@ import { MetricsInterceptor } from './metrics/metrics.interceptor';
     SupportModule,
     StatsModule,
     BlogsModule,
+    RefundsModule,
 
     FinanceDashboardModule,
     TokenLedgerModule,
     FinancePayoutsModule,
     TutorBalancesModule,
+    PaymentsModule,
     TaxModule,
     ReconModule,
     LivekitModule,
@@ -117,6 +121,7 @@ import { MetricsInterceptor } from './metrics/metrics.interceptor';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_INTERCEPTOR, useClass: EncryptResponseInterceptor },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
     PreprodInternalGuard,
   ],
 })

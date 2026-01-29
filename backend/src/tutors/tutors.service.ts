@@ -1012,19 +1012,21 @@ export class TutorsService {
     const sessionsCompleted = completedBookings.length;
 
     const platformFeePercent = (hourlyRate?: number | null) => {
-      const defaultFee = Number(process.env.FEE_PERCENT ?? 20);
       const rate = Number(hourlyRate ?? 0);
-      if (!Number.isFinite(rate) || rate <= 0) return defaultFee;
+      if (!Number.isFinite(rate) || rate <= 0) return 20; // Default fallback
+      // Commission rates: 0-399=25%, 400-699=22%, 700+=18%
       if (rate < 400) return 25;
-      if (rate < 700) return 18;
-      return 15;
+      if (rate < 700) return 22;
+      return 18;
     };
 
     const totalEarnings = completedBookings.reduce((sum, b) => {
       const tokens = Number(b.tokensCharged || 0);
       if (!tokens) return sum;
-      const fee = platformFeePercent(b.tutor?.hourlyRate ?? null);
-      const share = Math.max(0, (tokens * (100 - fee)) / 100);
+      const hourlyRate = Number(b.tutor?.hourlyRate ?? 0);
+      const bookingAmount = tokens * hourlyRate; // tokens = hours (TOKENS_PER_HOUR = 1)
+      const fee = platformFeePercent(hourlyRate);
+      const share = Math.max(0, (bookingAmount * (100 - fee)) / 100);
       return sum + share;
     }, 0);
 
@@ -1032,8 +1034,10 @@ export class TutorsService {
     const monthlyEarnings = monthlyBookings.reduce((sum, b) => {
       const tokens = Number(b.tokensCharged || 0);
       if (!tokens) return sum;
-      const fee = platformFeePercent(b.tutor?.hourlyRate ?? null);
-      const share = Math.max(0, (tokens * (100 - fee)) / 100);
+      const hourlyRate = Number(b.tutor?.hourlyRate ?? 0);
+      const bookingAmount = tokens * hourlyRate; // tokens = hours (TOKENS_PER_HOUR = 1)
+      const fee = platformFeePercent(hourlyRate);
+      const share = Math.max(0, (bookingAmount * (100 - fee)) / 100);
       return sum + share;
     }, 0);
 

@@ -67,6 +67,13 @@ export async function decryptField(encrypted: string | null | undefined): Promis
     return encrypted;
   }
 
+  // Check if string looks like valid base64 (simple heuristic)
+  // Valid base64 contains only alphanumeric, +, /, and = characters
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encrypted) || encrypted.length < 64) {
+    // Not a valid encrypted string, return as-is
+    return encrypted;
+  }
+
   try {
     const crypto = window.crypto || (window as any).webkitCrypto;
     if (!crypto || !crypto.subtle) {
