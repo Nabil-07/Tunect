@@ -17,12 +17,17 @@ import {
 } from '@nestjs/swagger';
 import { TutorsService } from './tutors.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AvailabilityTrackingService } from '../availability/availability-tracking.service';
+import { checkTutorProfileCompletion } from '../users/profile-completion';
 
 @ApiTags('tutors')
 @ApiBearerAuth()
 @Controller('tutors')
 export class TutorsController {
-  constructor(private readonly svc: TutorsService) {}
+  constructor(
+    private readonly svc: TutorsService,
+    private readonly availabilityTracking: AvailabilityTrackingService,
+  ) {}
 
   @ApiOperation({ summary: 'List tutors' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
@@ -149,9 +154,19 @@ export class TutorsController {
   @ApiOperation({ summary: 'Trending tutors (homepage carousel)' })
   @ApiQuery({ name: 'limit', required: false, example: 8 })
   @Get('trending')
-  trending(@Query('limit') limit?: string) {
-    const n = Number(limit);
-    return this.svc.getTrending(Number.isFinite(n) ? n : 8);
+  async trending(@Query('limit') limit?: string) {
+    try {
+      const n = Number(limit);
+      return await this.svc.getTrending(Number.isFinite(n) ? n : 8);
+    } catch (error: any) {
+      console.error('[TutorsController.trending] Error:', {
+        message: error?.message,
+        stack: error?.stack,
+        limit,
+      });
+      // Return empty array instead of throwing to prevent 500 errors
+      return [];
+    }
   }
 
   @ApiOperation({ summary: 'Get available filter options (subjects and ratings)' })
@@ -195,6 +210,21 @@ export class TutorsController {
     return this.svc.getMeByUserId(userId);
   }
 
+  @ApiOperation({ summary: 'Check my profile completion status' })
+  @UseGuards(JwtAuthGuard)
+  @Get('me/profile-status')
+  async getProfileStatus(@Req() req: any) {
+    const tutorId = req.user?.tutorId || null;
+    const userId = req.user?.userId || req.user?.id;
+    let tutor;
+    if (tutorId) {
+      tutor = await this.svc.getMe(tutorId);
+    } else {
+      tutor = await this.svc.getMeByUserId(userId);
+    }
+    return checkTutorProfileCompletion(tutor);
+  }
+
   @ApiOperation({ summary: 'Update logged-in tutor profile' })
   @UseGuards(JwtAuthGuard)
   @Put('me')
@@ -214,6 +244,12 @@ export class TutorsController {
   @Get(':id/activity')
   getActivity(@Param('id') tutorId: string) {
     return this.svc.getActivityInfo(tutorId);
+  }
+
+  @ApiOperation({ summary: 'Get tutor availability info (last active, consistency, featured status)' })
+  @Get(':id/availability-info')
+  getAvailabilityInfo(@Param('id') tutorId: string) {
+    return this.availabilityTracking.getTutorAvailabilityInfo(tutorId);
   }
 
   /* === Availability for a tutor === */

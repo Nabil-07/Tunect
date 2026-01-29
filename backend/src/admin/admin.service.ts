@@ -6,6 +6,8 @@ import { SetTutorStatusDto } from './dto/set-tutor-status.dto';
 import { AdjustTokensDto } from './dto/adjust-tokens.dto';
 import { TokenLedgerService } from '../tokens/token-ledger.service';
 import { AuditService } from '../audit/audit.service';
+import { extractAuditInfo } from '../common/audit-helper';
+import { Request } from 'express';
 
 @Injectable()
 export class AdminService {
@@ -125,7 +127,7 @@ export class AdminService {
         where, skip, take: pageSize, orderBy: { updatedAt: 'desc' },
         select: {
           id: true, bio: true, hourlyRate: true, status: true, subjects: true, createdAt: true,
-          user: { select: { id: true, email: true, isBanned: true, bannedScope: true, bannedAt: true } },
+          user: { select: { id: true, email: true, name: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
       this.prisma.tutor.count({ where }),
@@ -155,7 +157,7 @@ export class AdminService {
     return result;
   }
 
-  async setTutorStatus(tutorId: string, dto: SetTutorStatusDto, adminId: string) {
+  async setTutorStatus(tutorId: string, dto: SetTutorStatusDto, adminId: string, req?: Request) {
     const before = await this.prisma.tutor.findUnique({ where: { id: tutorId }, select: { id: true, status: true } });
     if (!before) throw new NotFoundException('Tutor not found');
     const updated = await this.prisma.tutor.update({
@@ -163,6 +165,8 @@ export class AdminService {
       data: { status: dto.status },
       select: { id: true, status: true, updatedAt: true },
     });
+    
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
     this.audit.log({
       adminId,
       action: 'TUTOR_STATUS_UPDATE',
@@ -170,6 +174,8 @@ export class AdminService {
       entityId: tutorId,
       beforeData: { status: before.status },
       afterData: { status: dto.status },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
     });
     return updated;
   }
@@ -195,7 +201,7 @@ export class AdminService {
         where, skip, take: pageSize, orderBy: { createdAt: 'desc' },
         select: {
           id: true, grade: true, tokens: true, createdAt: true,
-          user: { select: { id: true, email: true, isBanned: true, bannedScope: true, bannedAt: true } },
+          user: { select: { id: true, email: true, name: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
       this.prisma.student.count({ where }),
@@ -223,6 +229,352 @@ export class AdminService {
     const result = { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
     this.setCache(cacheKey, result);
     return result;
+  }
+
+  async getStudentDetail(studentId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            createdAt: true,
+            updatedAt: true,
+            isBanned: true,
+            bannedScope: true,
+            bannedAt: true,
+          },
+        },
+        bookings: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          include: {
+            tutor: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+            review: {
+              select: {
+                rating: true,
+                comment: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+        tutorTokenBalances: {
+          include: {
+            tutor: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        tokenLedger: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          include: {
+            tutor: {
+              include: {
+                user: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        tokenTransferRequests: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            fromTutor: {
+              include: { user: { select: { name: true } } },
+            },
+            toTutor: {
+              include: { user: { select: { name: true } } },
+            },
+            admin: {
+              select: { email: true },
+            },
+          },
+        },
+        refundRequests: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            tutor: {
+              include: { user: { select: { name: true } } },
+            },
+            admin: {
+              select: { email: true },
+            },
+          },
+        },
+        assignments: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            tutor: {
+              include: { user: { select: { name: true } } },
+            },
+          },
+        },
+        certificates: {
+          orderBy: { issuedAt: 'desc' },
+          include: {
+            tutor: {
+              include: { user: { select: { name: true } } },
+            },
+          },
+        },
+        progress: {
+          orderBy: { updatedAt: 'desc' },
+        },
+      },
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    const userId = student.user.id;
+
+    // Get purchase history (payments)
+    const payments = await this.prisma.payment.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        amountInMinor: true,
+        currency: true,
+        tokensPurchased: true,
+        status: true,
+        provider: true,
+        providerOrderId: true,
+        createdAt: true,
+      },
+    });
+
+    // Get conversations and messages
+    const conversations = await this.prisma.conversation.findMany({
+      where: { studentId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        tutor: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+              },
+            },
+          },
+        },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      ...student,
+      payments,
+      conversations,
+    };
+  }
+
+  async getTutorDetail(tutorId: string) {
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            createdAt: true,
+            updatedAt: true,
+            isBanned: true,
+            bannedScope: true,
+            bannedAt: true,
+          },
+        },
+        bookings: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          include: {
+            student: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+            review: {
+              select: {
+                rating: true,
+                comment: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+        wallet: {
+          select: {
+            balance: true,
+            updatedAt: true,
+          },
+        },
+        walletLedger: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          select: {
+            id: true,
+            delta: true,
+            reason: true,
+            createdAt: true,
+            bookingId: true,
+          },
+        },
+        payouts: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            reference: true,
+            createdAt: true,
+          },
+        },
+        reviews: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            booking: {
+              include: {
+                student: {
+                  include: {
+                    user: {
+                      select: {
+                        email: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        assignments: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            student: {
+              include: {
+                user: {
+                  select: {
+                    email: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        kycDocs: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            docType: true,
+            url: true,
+            status: true,
+            notes: true,
+            createdAt: true,
+          },
+        },
+        kycApplications: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+      },
+    });
+
+    if (!tutor) {
+      throw new NotFoundException('Tutor not found');
+    }
+
+    // Get conversations and messages
+    const conversations = await this.prisma.conversation.findMany({
+      where: { tutorId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+              },
+            },
+          },
+        },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      ...tutor,
+      conversations,
+    };
   }
 
   async listBookings(q: PaginationDto & { status?: BookingStatus }) {
@@ -281,7 +633,7 @@ export class AdminService {
   }
 
   // ---------- Manual token adjustment ----------
-  async adjustTokens(dto: AdjustTokensDto, adminId: string) {
+  async adjustTokens(dto: AdjustTokensDto, adminId: string, req?: Request) {
     const student = await this.prisma.student.findUnique({
       where: { id: dto.studentId },
       select: { id: true, tokens: true },
@@ -309,6 +661,7 @@ export class AdminService {
     });
 
     const afterTokens = beforeTokens + dto.amount;
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
     this.audit.log({
       adminId,
       action: 'TOKEN_ADJUSTMENT',
@@ -316,12 +669,14 @@ export class AdminService {
       entityId: student.id,
       beforeData: { tokens: beforeTokens, studentId: student.id },
       afterData: { tokens: afterTokens, delta: dto.amount, reason: dto.reason },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
     });
 
     return { ok: true };
   }
 
-  async unbanUser(userId: string, adminId: string) {
+  async unbanUser(userId: string, adminId: string, req?: Request) {
     const before = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, isBanned: true, bannedScope: true, bannedAt: true },
@@ -365,6 +720,7 @@ export class AdminService {
 
     await this.prisma.$transaction(operations);
 
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
     this.audit.log({
       adminId,
       action: 'USER_UNBAN',
@@ -372,6 +728,8 @@ export class AdminService {
       entityId: userId,
       beforeData: { isBanned: before.isBanned, bannedScope: before.bannedScope, bannedAt: before.bannedAt },
       afterData: { isBanned: false, bannedScope: null, bannedAt: null },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
     });
 
     return { ok: true, message: 'User has been unbanned successfully', strikesCleared: latestViolation ? 1 : 0 };

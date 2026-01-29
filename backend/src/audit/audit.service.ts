@@ -9,6 +9,8 @@ export type AuditLogParams = {
   entityId: string;
   beforeData?: object | null;
   afterData?: object | null;
+  endpoint?: string;
+  ipAddress?: string;
 };
 
 export type AuditListFilters = {
@@ -30,7 +32,7 @@ export class AuditService {
    * Failures are logged but not thrown.
    */
   log(params: AuditLogParams): void {
-    const { adminId, action, entityType, entityId, beforeData, afterData } = params;
+    const { adminId, action, entityType, entityId, beforeData, afterData, endpoint, ipAddress } = params;
     Promise.resolve()
       .then(() =>
         this.prisma.auditLog.create({
@@ -41,6 +43,8 @@ export class AuditService {
             entityId,
             beforeData: beforeData ?? undefined,
             afterData: afterData ?? undefined,
+            endpoint: endpoint ?? undefined,
+            ipAddress: ipAddress ?? undefined,
           },
         }),
       )
@@ -79,6 +83,8 @@ export class AuditService {
           entityId: true,
           beforeData: true,
           afterData: true,
+          endpoint: true,
+          ipAddress: true,
           createdAt: true,
           admin: { select: { id: true, email: true } },
         },

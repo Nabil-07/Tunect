@@ -138,3 +138,69 @@ export async function exportBalanceSheetCsv(params?: {
   });
   return response.data as Blob;
 }
+
+/* ========== Student Payments ========== */
+export type StudentPayment = {
+  id: string;
+  bookingId: string;
+  orderId: string;
+  studentId: string;
+  studentName?: string;
+  studentEmail: string;
+  tutorId: string;
+  tutorName: string;
+  amount: number; // in paise
+  amountAtBooking: number; // original amount at time of booking
+  paidAt: string;
+  receiptUrl?: string;
+  isBanned: boolean;
+};
+
+export async function getStudentPayments(params?: {
+  page?: number;
+  pageSize?: number;
+  studentId?: string;
+  tutorId?: string;
+  isBanned?: boolean;
+}) {
+  const { data } = await api.get<{ payments: StudentPayment[]; total: number }>(
+    '/admin/finance/payments/student',
+    { params }
+  );
+  return data;
+}
+
+/* ========== Tutor Payouts Due ========== */
+export type TutorPaymentSchedule = {
+  dueDate: string;
+  bookingsCount: number;
+  amountDue: number;
+  amountPaid: number;
+  status: 'pending' | 'paid' | 'blocked';
+  blockedReason?: string;
+};
+
+export type TutorPaymentDue = {
+  tutorId: string;
+  tutorName: string;
+  tutorEmail: string;
+  totalDue: number;
+  totalPaid: number;
+  paymentSchedule: TutorPaymentSchedule[];
+  commissionRate: number;
+  isBanned: boolean;
+  bannedDate?: string;
+};
+
+export async function getTutorPaymentsDue(params?: {
+  page?: number;
+  pageSize?: number;
+  tutorId?: string;
+  isBanned?: boolean;
+}) {
+  const { data } = await api.get<{ tutors: TutorPaymentDue[]; total: number }>(
+    '/admin/finance/payments/tutor-due',
+    { params }
+  );
+  return data;
+}

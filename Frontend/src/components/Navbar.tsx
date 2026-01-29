@@ -56,14 +56,20 @@ const STUDENT_CENTER = [
   { to: '/student/messages', label: 'Messages' },
 ];
 
-const ADMIN_CENTER = [
+const ADMIN_SIMPLE = [
   { to: '/', label: 'Home' },
   { to: '/admin/tutors', label: 'Tutors' },
   { to: '/admin/students', label: 'Students' },
   { to: '/admin/dashboard', label: 'Dashboard' },
   { to: '/support', label: 'Support' },
-  { to: '/admin/analytics', label: 'Analytics' },
-  { to: '/admin/blogs', label: 'Blogs' },
+];
+
+const TUTOR_CENTER = [
+  { to: '/', label: 'Home' },
+  { to: '/tutor/dashboard', label: 'Dashboard' },
+  { to: '/tutor/availability', label: 'Availability' },
+  { to: '/tutor/messages', label: 'Messages' },
+  { to: '/tutor/sessions', label: 'Sessions' },
 ];
 
 export default function Navbar() {
@@ -98,20 +104,9 @@ export default function Navbar() {
     if (!isAuthed) return PUBLIC_MAIN;
 
     if (role === 'student') return STUDENT_CENTER;
-
-    if (role === 'tutor') {
-      return [
-        { to: '/', label: 'Home' },
-        { to: '/tutor/dashboard', label: 'Dashboard' },
-        { to: '/tutor/availability', label: 'Availability' },
-        { to: '/tutor/messages', label: 'Messages' },
-        { to: '/tutor/sessions', label: 'Sessions' },
-      ];
-    }
-
-    // admin
-    return ADMIN_CENTER;
-  }, [isAuthed, role, showBecomeTutorForTutor]);
+    if (role === 'tutor') return TUTOR_CENTER;
+    return ADMIN_SIMPLE;
+  }, [isAuthed, role]);
 
   // housekeeping
   useEffect(() => { setOpen(false); setMenuOpen(false); setExtraOpen(false); }, [location.pathname]);
@@ -232,41 +227,13 @@ export default function Navbar() {
                   More <ChevronDown size={16} className="text-slate-500" />
                 </button>
                 {extraOpen && (
-                  <div className="absolute right-0 mt-3 w-60 rounded-2xl border border-slate-200 bg-white/95 shadow-xl ring-1 ring-black/5 backdrop-blur p-2 z-50">
-                    <Link to="/admin/kyc-verification" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>KYC Verification</Link>
-                    <Link to="/admin/reports" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Reports</Link>
-                    <Link to="/admin/messages" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Messages</Link>
-                    <Link to="/admin/reviews" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Reviews</Link>
-                    <Link to="/admin/blogs" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Blogs</Link>
-                    <Link to="/admin/finance" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Finance</Link>
-                    <div className="my-1 h-px bg-slate-200/70" />
-                    <Link to="/support" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Support</Link>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Tutor-only More dropdown (post-login) */}
-            {isAuthed && role === 'tutor' && (
-              <div className="relative" ref={extraRef}>
-                <button
-                  type="button"
-                  onClick={() => setExtraOpen((v) => !v)}
-                  className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
-                >
-                  More <ChevronDown size={16} className="text-slate-500" />
-                </button>
-                {extraOpen && (
-                  <div className="absolute right-0 mt-3 w-60 rounded-2xl border border-slate-200 bg-white/95 shadow-xl ring-1 ring-black/5 backdrop-blur p-2 z-50">
-                    <Link to="/tutor/profile" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Profile</Link>
-                    <Link to="/tutor/recurring-templates" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Recurring Templates</Link>
-                    <Link to="/tutor/earnings" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Total Earnings</Link>
-                    <Link to="/find-tutors" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Find Tutor</Link>
-                    <Link to="/become-tutor" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>
-                      Become a Tutor {showBecomeTutorForTutor ? '' : '(KYC)'}
-                    </Link>
-                    <div className="my-1 h-px bg-slate-200/70" />
-                    <Link to="/support" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-ink transition" onClick={() => setExtraOpen(false)}>Support</Link>
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
+                    <Link to="/admin/kyc-verification" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>KYC Verification</Link>
+                    <Link to="/admin/reports" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Reports</Link>
+                    <Link to="/admin/reviews" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Reviews</Link>
+                    <Link to="/admin/blogs" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Blogs</Link>
+                    <Link to="/admin/finance" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Finance</Link>
+                    <Link to="/admin/analytics" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Analytics</Link>
                   </div>
                 )}
               </div>

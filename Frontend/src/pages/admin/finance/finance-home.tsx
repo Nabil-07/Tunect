@@ -12,7 +12,7 @@ export default function FinanceHome() {
       icon: BarChart3,
       title: 'Balance Sheet',
       description: 'Ledger-derived financial statements and reports',
-      path: 'balance-sheet',
+      path: '/admin/finance/balance-sheet',
       restricted: true,
       badge: isDirector ? '' : 'Director Only',
     },
@@ -20,7 +20,7 @@ export default function FinanceHome() {
       icon: CreditCard,
       title: 'Payments & Receipts',
       description: 'Track student payments and tutor payouts',
-      path: 'payments',
+      path: '/admin/finance/payments',
       restricted: false,
     },
   ];

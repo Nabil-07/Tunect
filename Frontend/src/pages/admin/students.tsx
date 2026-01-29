@@ -1,10 +1,11 @@
 // Enhanced Students Page with Filtering & Sorting
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronUp, ChevronDown, ChevronDown as ChevronDownIcon } from 'lucide-react';
 import { TableRowSkeleton } from '../../components/skeletons';
 import { fetchStudents, unbanUser, type StudentSummary, type PaginationMeta } from '../../services/adminService';
 
-type SortField = 'email' | 'grade' | 'tokens' | 'accountStatus' | 'createdAt';
+type SortField = 'name' | 'grade' | 'tokens' | 'accountStatus' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
 export default function AdminStudents() {
@@ -13,45 +14,87 @@ export default function AdminStudents() {
   const [error, setError] = useState<string | null>(null);
   const [unbanError, setUnbanError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const pageSize = 100;
+  const [pageSize, setPageSize] = useState(10);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
 
   // Filters
-  const [emailFilter, setEmailFilter] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+  const [showNameDropdown, setShowNameDropdown] = useState(false);
+  const nameDropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const [gradeFilter, setGradeFilter] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BLOCKED'>('ALL');
+  const [allStudentsLoaded, setAllStudentsLoaded] = useState(false);
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
 
+  // Only load data once on mount, not on page/pageSize changes
   useEffect(() => {
+    if (initialLoadDone) return; // Don't reload after initial load
+    
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
-        // Load all students for client-side filtering (no search query)
-        const data = await fetchStudents({ page, pageSize });
-        setStudents(data.items);
-        setMeta(data.meta);
+        
+        // Load all students for client-side pagination and dropdown
+        let allItems: StudentSummary[] = [];
+        let currentPage = 1;
+        let hasMore = true;
+        let totalPages = 1;
+        
+        while (hasMore) {
+          const data = await fetchStudents({ page: currentPage, pageSize: 100 });
+          allItems = allItems.concat(data.items);
+          totalPages = data.meta?.totalPages || 1;
+          
+          if (currentPage >= totalPages) {
+            hasMore = false;
+          }
+          currentPage++;
+        }
+        
+        setStudents(allItems);
+        setAllStudentsLoaded(true);
+        setInitialLoadDone(true);
       } catch (err: any) {
         setError(err?.response?.data?.message || 'Failed to load students');
         setStudents([]);
         setMeta(null);
+        setInitialLoadDone(true);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [page, pageSize]);
+  }, [initialLoadDone]);
 
   const handleUnban = async (userId: string) => {
     try {
       await unbanUser(userId);
-      // Reload students to get updated ban status
-      const data = await fetchStudents({ page, pageSize });
-      setStudents(data.items);
-      setMeta(data.meta);
+      // Reload all students to get updated ban status
+      let allItems: StudentSummary[] = [];
+      let currentPage = 1;
+      let hasMore = true;
+      let totalPages = 1;
+      
+      while (hasMore) {
+        const data = await fetchStudents({ page: currentPage, pageSize: 100 });
+        allItems = allItems.concat(data.items);
+        totalPages = data.meta?.totalPages || 1;
+        
+        if (currentPage >= totalPages) {
+          hasMore = false;
+        }
+        currentPage++;
+      }
+      
+      setStudents(allItems);
+      setPage(1);
       setError(null);
       setUnbanError(null);
     } catch (err: any) {
@@ -59,6 +102,11 @@ export default function AdminStudents() {
       setError(message);
       setUnbanError(message);
     }
+  };
+
+  const getDisplayName = (user: any) => {
+    if (!user) return '';
+    return user.name?.trim() ? user.name : (user.email || '');
   };
 
   const handleSort = (field: SortField) => {
@@ -73,11 +121,20 @@ export default function AdminStudents() {
   const filtered = useMemo(() => {
     let result = [...students];
 
-    // Apply text filters (client-side filtering - no API calls)
-    if (emailFilter) {
-      result = result.filter((s) => 
-        s.user.email.toLowerCase().includes(emailFilter.toLowerCase())
-      );
+    // Apply name text filter
+    if (nameFilter) {
+      result = result.filter((s) => {
+        const name = getDisplayName(s.user);
+        return name ? name.toLowerCase().includes(nameFilter.toLowerCase()) : false;
+      });
+    }
+
+    // Apply name multi-select filter
+    if (selectedNames.size > 0) {
+      result = result.filter((s) => {
+        const name = getDisplayName(s.user);
+        return selectedNames.has(name);
+      });
     }
     if (gradeFilter) {
       result = result.filter((s) => 
@@ -94,9 +151,9 @@ export default function AdminStudents() {
       let aVal: any, bVal: any;
       
       switch (sortField) {
-        case 'email':
-          aVal = a.user.email;
-          bVal = b.user.email;
+        case 'name':
+          aVal = getDisplayName(a.user).toLowerCase();
+          bVal = getDisplayName(b.user).toLowerCase();
           break;
         case 'grade':
           aVal = a.grade || '';
@@ -124,7 +181,95 @@ export default function AdminStudents() {
     });
 
     return result;
-  }, [students, emailFilter, gradeFilter, accountStatusFilter, sortField, sortOrder]);
+  }, [students, nameFilter, selectedNames, gradeFilter, accountStatusFilter, sortField, sortOrder, getDisplayName]);
+
+  // Paginate filtered results for display
+  const totalFilteredCount = filtered.length;
+  const totalPages = Math.ceil(totalFilteredCount / pageSize);
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedResults = filtered.slice(startIndex, endIndex);
+
+  // Get unique names for dropdown and filter by search input
+  const uniqueNames = useMemo(() => {
+    const names = students.map(s => getDisplayName(s.user)).filter(Boolean);
+    const unique = Array.from(new Set(names)).sort();
+    
+    // Filter by nameFilter input
+    if (nameFilter.trim()) {
+      return unique.filter(name => 
+        name.toLowerCase().includes(nameFilter.toLowerCase())
+      );
+    }
+    return unique;
+  }, [students, nameFilter]);
+
+  // Handle select all
+  const handleSelectAll = () => {
+    if (selectedNames.size === uniqueNames.length) {
+      setSelectedNames(new Set());
+    } else {
+      setSelectedNames(new Set(uniqueNames));
+    }
+  };
+
+  // Handle individual name toggle
+  const handleNameToggle = (name: string) => {
+    const newSelected = new Set(selectedNames);
+    if (newSelected.has(name)) {
+      newSelected.delete(name);
+    } else {
+      newSelected.add(name);
+    }
+    setSelectedNames(newSelected);
+  };
+
+  // Calculate dropdown position
+  const updateDropdownPosition = () => {
+    if (nameDropdownRef.current) {
+      const rect = nameDropdownRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+  };
+
+  // Handle dropdown toggle with position calculation
+  const handleDropdownToggle = () => {
+    if (!showNameDropdown) {
+      updateDropdownPosition();
+    }
+    setShowNameDropdown(!showNameDropdown);
+  };
+
+  // Update position on scroll/resize
+  useEffect(() => {
+    if (showNameDropdown) {
+      const handleScroll = () => updateDropdownPosition();
+      const handleResize = () => updateDropdownPosition();
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleResize);
+      return () => {
+        window.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, [showNameDropdown]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (nameDropdownRef.current && !nameDropdownRef.current.contains(event.target as Node)) {
+        setShowNameDropdown(false);
+      }
+    };
+    if (showNameDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showNameDropdown]);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ChevronUp className="w-3 h-3 text-slate-300" />;
@@ -172,9 +317,9 @@ export default function AdminStudents() {
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3 text-left">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('email')}>
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('name')}>
                     <span>Student</span>
-                    <SortIcon field="email" />
+                    <SortIcon field="name" />
                   </div>
                 </th>
                 <th className="px-4 py-3 text-left">
@@ -206,13 +351,71 @@ export default function AdminStudents() {
               {/* Filter Row */}
               <tr className="bg-white">
                 <th className="px-4 py-2">
-                  <input
-                    type="text"
-                    placeholder="Search email..."
-                    className="w-full text-xs border rounded px-2 py-1"
-                    value={emailFilter}
-                    onChange={(e) => setEmailFilter(e.target.value)}
-                  />
+                  <div className="relative" ref={nameDropdownRef}>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        placeholder="Filter name..."
+                        className="flex-1 text-xs border rounded px-2 py-1 pr-6"
+                        value={nameFilter}
+                        onChange={(e) => setNameFilter(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleDropdownToggle}
+                        className="text-slate-500 hover:text-slate-700 p-1"
+                      >
+                        <ChevronDownIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {showNameDropdown && (
+                      <div 
+                        className="fixed z-[9999] bg-white border border-slate-200 rounded-lg shadow-lg max-h-96 overflow-y-auto"
+                        style={{
+                          top: `${dropdownPosition.top}px`,
+                          left: `${dropdownPosition.left}px`,
+                          width: `${dropdownPosition.width}px`,
+                        }}
+                      >
+                        <div className="p-2 sticky top-0 bg-white border-b border-slate-200">
+                          <p className="text-xs text-slate-500 mb-2">
+                            {nameFilter.trim() ? `${uniqueNames.length} results found` : `${uniqueNames.length} students`}
+                            {allStudentsLoaded && nameFilter.trim() === '' && ` (all loaded)`}
+                          </p>
+                        </div>
+                        <div className="p-2">
+                          <label className="flex items-center gap-2 p-2 hover:bg-slate-50 cursor-pointer rounded">
+                            <input
+                              type="checkbox"
+                              checked={selectedNames.size === uniqueNames.length && uniqueNames.length > 0}
+                              onChange={handleSelectAll}
+                              className="rounded"
+                            />
+                            <span className="text-xs font-semibold">Select All</span>
+                          </label>
+                          <div className="border-t border-slate-200 my-1"></div>
+                          {uniqueNames.length > 0 ? (
+                            uniqueNames.map((name) => (
+                              <label
+                                key={name}
+                                className="flex items-center gap-2 p-2 hover:bg-slate-50 cursor-pointer rounded"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedNames.has(name)}
+                                  onChange={() => handleNameToggle(name)}
+                                  className="rounded"
+                                />
+                                <span className="text-xs">{name}</span>
+                              </label>
+                            ))
+                          ) : (
+                            <div className="p-2 text-xs text-slate-500 text-center">No results found</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </th>
                 <th className="px-4 py-2">
                   <input
@@ -240,11 +443,16 @@ export default function AdminStudents() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map((s) => (
+              {paginatedResults.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900">{s.user.email}</div>
-                    <div className="text-xs text-slate-500">{s.id}</div>
+                    <Link 
+                      to={`/admin/students/${s.id}`}
+                      className="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      {getDisplayName(s.user)}
+                    </Link>
+                    <div className="text-xs text-slate-500">{s.user.email}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-700">{s.grade || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{s.tokens}</td>
@@ -288,23 +496,61 @@ export default function AdminStudents() {
       )}
 
       <div className="flex items-center justify-between text-sm text-slate-600">
-        <div>
-          Page {meta?.page ?? page} of {meta?.totalPages ?? 1} · Total {meta?.total ?? students.length}
+        <div className="flex items-center gap-4">
+          <div>
+            Page {page} of {totalPages} · Showing {paginatedResults.length} of {totalFilteredCount} records
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="pageSize" className="text-slate-600">
+              Rows:
+            </label>
+            <select
+              id="pageSize"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="px-2 py-1 rounded border border-slate-200 text-slate-700"
+            >
+              <option value={10}>10</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
+            onClick={() => setPage(1)}
+            disabled={page === 1 || loading}
+            title="First page"
+          >
+            First
+          </button>
+          <button
+            className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={(meta?.page ?? page) <= 1 || loading}
+            disabled={page <= 1 || loading}
+            title="Previous page"
           >
             Previous
           </button>
           <button
             className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
-            onClick={() => setPage((p) => (meta?.totalPages ? Math.min(meta.totalPages, p + 1) : p + 1))}
-            disabled={loading || (meta?.totalPages ? (meta.page ?? page) >= meta.totalPages : false)}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages || loading}
+            title="Next page"
           >
             Next
+          </button>
+          <button
+            className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
+            onClick={() => setPage(totalPages)}
+            disabled={page === totalPages || loading}
+            title="Last page"
+          >
+            Last
           </button>
         </div>
       </div>

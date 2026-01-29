@@ -1,6 +1,7 @@
 // Enhanced Tutors Page with Filtering & Sorting
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { ChevronUp, ChevronDown, ChevronDown as ChevronDownIcon } from 'lucide-react';
 import {
   fetchTutors,
   updateTutorStatus,
@@ -9,7 +10,7 @@ import {
   type TutorStatus,
 } from '../../services/adminService';
 
-type SortField = 'email' | 'status' | 'accountStatus' | 'hourlyRate' | 'createdAt';
+type SortField = 'name' | 'status' | 'accountStatus' | 'hourlyRate' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
 export default function AdminTutors() {
@@ -17,13 +18,17 @@ export default function AdminTutors() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unbanError, setUnbanError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<TutorSummary | null>(null);
   const [statusFilter, setStatusFilter] = useState<'ALL' | TutorStatus>('ALL');
   const [page, setPage] = useState(1);
-  const pageSize = 100;
+  const [pageSize, setPageSize] = useState(10);
+  const [meta, setMeta] = useState<{ page?: number; totalPages?: number; total?: number } | null>(null);
 
   // Filters
-  const [emailFilter, setEmailFilter] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+  const [showNameDropdown, setShowNameDropdown] = useState(false);
+  const nameDropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const [bioFilter, setBioFilter] = useState('');
   const [subjectsFilter, setSubjectsFilter] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BLOCKED'>('ALL');
@@ -32,26 +37,52 @@ export default function AdminTutors() {
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
+  const [allTutorsLoaded, setAllTutorsLoaded] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  // Only load data once on mount, not on page/pageSize changes
   useEffect(() => {
+    if (initialLoadDone) return; // Don't reload after initial load
+    
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchTutors({ 
-          status: statusFilter === 'ALL' ? undefined : statusFilter, 
-          page, 
-          pageSize // Load more for client-side filtering
-        });
-        setTutors(data.items);
+        
+        // Load all tutors for client-side pagination
+        let allItems: TutorSummary[] = [];
+        let currentPage = 1;
+        let hasMore = true;
+        let totalPages = 1;
+        
+        while (hasMore) {
+          const data = await fetchTutors({ 
+            status: statusFilter === 'ALL' ? undefined : statusFilter, 
+            page: currentPage, 
+            pageSize: 100
+          });
+          allItems = allItems.concat(data.items);
+          totalPages = data.meta?.totalPages || 1;
+          
+          if (currentPage >= totalPages) {
+            hasMore = false;
+          }
+          currentPage++;
+        }
+        
+        setTutors(allItems);
+        setAllTutorsLoaded(true);
+        setInitialLoadDone(true);
       } catch (err: any) {
         setError(err?.response?.data?.message || 'Failed to load tutors');
         setTutors([]);
+        setInitialLoadDone(true);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [statusFilter, page, pageSize]);
+  }, [initialLoadDone, statusFilter]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -62,6 +93,11 @@ export default function AdminTutors() {
     }
   };
 
+  const getDisplayName = (user: any) => {
+    if (!user) return '';
+    return user.name?.trim() ? user.name : (user.email || '');
+  };
+
   const filtered = useMemo(() => {
     let result = [...tutors];
 
@@ -70,11 +106,20 @@ export default function AdminTutors() {
       result = result.filter((t) => t.status === statusFilter);
     }
 
-    // Apply text filters
-    if (emailFilter) {
-      result = result.filter((t) => 
-        t.user.email.toLowerCase().includes(emailFilter.toLowerCase())
-      );
+    // Apply name text filter
+    if (nameFilter) {
+      result = result.filter((t) => {
+        const name = getDisplayName(t.user);
+        return name ? name.toLowerCase().includes(nameFilter.toLowerCase()) : false;
+      });
+    }
+
+    // Apply name multi-select filter
+    if (selectedNames.size > 0) {
+      result = result.filter((t) => {
+        const name = getDisplayName(t.user);
+        return selectedNames.has(name);
+      });
     }
     if (bioFilter) {
       result = result.filter((t) => 
@@ -96,9 +141,9 @@ export default function AdminTutors() {
       let aVal: any, bVal: any;
       
       switch (sortField) {
-        case 'email':
-          aVal = a.user.email;
-          bVal = b.user.email;
+        case 'name':
+          aVal = getDisplayName(a.user).toLowerCase();
+          bVal = getDisplayName(b.user).toLowerCase();
           break;
         case 'status':
           aVal = a.status;
@@ -126,7 +171,87 @@ export default function AdminTutors() {
     });
 
     return result;
-  }, [tutors, statusFilter, emailFilter, bioFilter, subjectsFilter, accountStatusFilter, sortField, sortOrder]);
+  }, [tutors, statusFilter, nameFilter, selectedNames, bioFilter, subjectsFilter, accountStatusFilter, sortField, sortOrder, getDisplayName]);
+
+  // Paginate filtered results for display
+  const totalFilteredCount = filtered.length;
+  const totalPages = Math.ceil(totalFilteredCount / pageSize);
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedResults = filtered.slice(startIndex, endIndex);
+
+  // Get unique names for dropdown
+  const uniqueNames = useMemo(() => {
+    const names = tutors.map(t => getDisplayName(t.user)).filter(Boolean);
+    return Array.from(new Set(names)).sort();
+  }, [tutors, getDisplayName]);
+
+  // Handle select all
+  const handleSelectAll = () => {
+    if (selectedNames.size === uniqueNames.length) {
+      setSelectedNames(new Set());
+    } else {
+      setSelectedNames(new Set(uniqueNames));
+    }
+  };
+
+  // Handle individual name toggle
+  const handleNameToggle = (name: string) => {
+    const newSelected = new Set(selectedNames);
+    if (newSelected.has(name)) {
+      newSelected.delete(name);
+    } else {
+      newSelected.add(name);
+    }
+    setSelectedNames(newSelected);
+  };
+
+  // Calculate dropdown position
+  const updateDropdownPosition = () => {
+    if (nameDropdownRef.current) {
+      const rect = nameDropdownRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+  };
+
+  // Handle dropdown toggle with position calculation
+  const handleDropdownToggle = () => {
+    if (!showNameDropdown) {
+      updateDropdownPosition();
+    }
+    setShowNameDropdown(!showNameDropdown);
+  };
+
+  // Update position on scroll/resize
+  useEffect(() => {
+    if (showNameDropdown) {
+      const handleScroll = () => updateDropdownPosition();
+      const handleResize = () => updateDropdownPosition();
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleResize);
+      return () => {
+        window.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', handleResize);
+      };
+    }
+  }, [showNameDropdown]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (nameDropdownRef.current && !nameDropdownRef.current.contains(event.target as Node)) {
+        setShowNameDropdown(false);
+      }
+    };
+    if (showNameDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showNameDropdown]);
 
   const handleStatusChange = async (id: string, status: TutorStatus) => {
     try {
@@ -140,9 +265,29 @@ export default function AdminTutors() {
   const handleUnban = async (userId: string) => {
     try {
       await unbanUser(userId);
-      // Reload tutors to get updated ban status
-      const data = await fetchTutors({ status: statusFilter === 'ALL' ? undefined : statusFilter, page, pageSize });
-      setTutors(data.items);
+      // Reload all tutors to get updated ban status
+      let allItems: TutorSummary[] = [];
+      let currentPage = 1;
+      let hasMore = true;
+      let totalPages = 1;
+      
+      while (hasMore) {
+        const data = await fetchTutors({ 
+          status: statusFilter === 'ALL' ? undefined : statusFilter, 
+          page: currentPage, 
+          pageSize: 100
+        });
+        allItems = allItems.concat(data.items);
+        totalPages = data.meta?.totalPages || 1;
+        
+        if (currentPage >= totalPages) {
+          hasMore = false;
+        }
+        currentPage++;
+      }
+      
+      setTutors(allItems);
+      setPage(1);
       setError(null);
       setUnbanError(null);
     } catch (err: any) {
@@ -190,9 +335,9 @@ export default function AdminTutors() {
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3 text-left">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('email')}>
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('name')}>
                     <span>Tutor</span>
-                    <SortIcon field="email" />
+                    <SortIcon field="name" />
                   </div>
                 </th>
                 <th className="px-4 py-3 text-left">Bio</th>
@@ -226,13 +371,61 @@ export default function AdminTutors() {
               {/* Filter Row */}
               <tr className="bg-white">
                 <th className="px-4 py-2">
-                  <input
-                    type="text"
-                    placeholder="Filter email..."
-                    className="w-full text-xs border rounded px-2 py-1"
-                    value={emailFilter}
-                    onChange={(e) => setEmailFilter(e.target.value)}
-                  />
+                  <div className="relative" ref={nameDropdownRef}>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        placeholder="Filter name..."
+                        className="flex-1 text-xs border rounded px-2 py-1 pr-6"
+                        value={nameFilter}
+                        onChange={(e) => setNameFilter(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleDropdownToggle}
+                        className="text-slate-500 hover:text-slate-700 p-1"
+                      >
+                        <ChevronDownIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {showNameDropdown && (
+                      <div 
+                        className="fixed z-[9999] bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                        style={{
+                          top: `${dropdownPosition.top}px`,
+                          left: `${dropdownPosition.left}px`,
+                          width: `${dropdownPosition.width}px`,
+                        }}
+                      >
+                        <div className="p-2">
+                          <label className="flex items-center gap-2 p-2 hover:bg-slate-50 cursor-pointer rounded">
+                            <input
+                              type="checkbox"
+                              checked={selectedNames.size === uniqueNames.length && uniqueNames.length > 0}
+                              onChange={handleSelectAll}
+                              className="rounded"
+                            />
+                            <span className="text-xs font-semibold">Select All</span>
+                          </label>
+                          <div className="border-t border-slate-200 my-1"></div>
+                          {uniqueNames.map((name) => (
+                            <label
+                              key={name}
+                              className="flex items-center gap-2 p-2 hover:bg-slate-50 cursor-pointer rounded"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedNames.has(name)}
+                                onChange={() => handleNameToggle(name)}
+                                className="rounded"
+                              />
+                              <span className="text-xs">{name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </th>
                 <th className="px-4 py-2">
                   <input
@@ -270,11 +463,16 @@ export default function AdminTutors() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map((t) => (
+              {paginatedResults.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900">{t.user.email}</div>
-                    <div className="text-xs text-slate-500">{t.id}</div>
+                    <Link 
+                      to={`/admin/tutors/${t.id}`}
+                      className="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      {getDisplayName(t.user)}
+                    </Link>
+                    <div className="text-xs text-slate-500">{t.user.email}</div>
                   </td>
                   <td className="px-4 py-3 text-slate-700 max-w-xs truncate" title={t.bio || undefined}>{t.bio || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{t.subjects?.length ? t.subjects.join(', ') : '—'}</td>
@@ -314,12 +512,12 @@ export default function AdminTutors() {
                   <td className="px-4 py-3 text-slate-700">{new Date(t.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
-                      <button
-                        className="text-indigo-600 text-sm font-semibold"
-                        onClick={() => setSelected(t)}
+                      <Link
+                        to={`/admin/tutors/${t.id}`}
+                        className="text-indigo-600 text-sm font-semibold hover:underline"
                       >
-                        View
-                      </button>
+                        View Details
+                      </Link>
                       {(t.user.isBanned || t.user.piiStrikes >= t.user.piiMaxStrikes) && (
                         <button
                           className="text-green-600 text-sm font-semibold"
@@ -337,36 +535,65 @@ export default function AdminTutors() {
         </div>
       )}
 
-      {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setSelected(null)}>
-          <div
-            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-6 p-6 border border-slate-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                  <div className="text-lg font-semibold">{selected.user.email}</div>
-                  <div className="text-sm text-slate-500">Tutor ID: {selected.id}</div>
-              </div>
-              <button className="text-slate-500" onClick={() => setSelected(null)}>Close</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-700">
-              <div><span className="font-semibold">Subjects: </span>{selected.subjects?.join(', ') || '—'}</div>
-              <div><span className="font-semibold">Status: </span>{selected.status}</div>
-              <div><span className="font-semibold">Hourly rate: </span>{selected.hourlyRate ? `₹${selected.hourlyRate}` : '—'}</div>
-              <div><span className="font-semibold">Created: </span>{new Date(selected.createdAt).toLocaleString()}</div>
-              <div><span className="font-semibold">Account: </span>{selected.user.isBanned ? '🚫 Blocked' : '✓ Active'}</div>
-              {selected.user.isBanned && selected.user.bannedAt && (
-                <div><span className="font-semibold">Banned At: </span>{new Date(selected.user.bannedAt).toLocaleString()}</div>
-              )}
-            </div>
-            <div className="mt-4 text-sm text-slate-700">
-              <div className="font-semibold mb-1">Bio</div>
-              <p className="text-slate-600">{selected.bio || 'No bio provided.'}</p>
-            </div>
+      <div className="flex items-center justify-between text-sm text-slate-600">
+        <div className="flex items-center gap-4">
+          <div>
+            Page {page} of {totalPages} · Showing {paginatedResults.length} of {totalFilteredCount} records
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="pageSize" className="text-slate-600">
+              Rows:
+            </label>
+            <select
+              id="pageSize"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="px-2 py-1 rounded border border-slate-200 text-slate-700"
+            >
+              <option value={10}>10</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
           </div>
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <button
+            className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
+            onClick={() => setPage(1)}
+            disabled={page === 1 || loading}
+            title="First page"
+          >
+            First
+          </button>
+          <button
+            className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || loading}
+            title="Previous page"
+          >
+            Previous
+          </button>
+          <button
+            className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages || loading}
+            title="Next page"
+          >
+            Next
+          </button>
+          <button
+            className="px-3 py-1 rounded border border-slate-200 disabled:opacity-50"
+            onClick={() => setPage(totalPages)}
+            disabled={page === totalPages || loading}
+            title="Last page"
+          >
+            Last
+          </button>
+        </div>
+      </div>
 
       {unbanError && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setUnbanError(null)}>

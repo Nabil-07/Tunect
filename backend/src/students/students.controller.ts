@@ -21,6 +21,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/role.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { checkStudentProfileCompletion } from '../users/profile-completion';
 
 class UpdateMeDto {
   grade?: string;
@@ -53,6 +54,14 @@ export class StudentsController {
   @Roles(Role.STUDENT, Role.ADMIN)
   getMe(@CurrentUser('id') userId: string) {
     return this.students.getMe(userId);
+  }
+
+  @ApiOperation({ summary: 'Check my profile completion status' })
+  @Get('me/profile-status')
+  @Roles(Role.STUDENT, Role.ADMIN)
+  async getProfileStatus(@CurrentUser('id') userId: string) {
+    const student = await this.students.getMe(userId);
+    return checkStudentProfileCompletion(student);
   }
 
   @ApiOperation({ summary: 'Update my student profile (grade)' })
