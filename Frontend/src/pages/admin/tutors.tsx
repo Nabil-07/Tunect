@@ -69,7 +69,6 @@ export default function AdminTutors() {
         }
         
         setTutors(allItems);
-        setAllTutorsLoaded(true);
         setInitialLoadDone(true);
       } catch (err: any) {
         setError(err?.response?.data?.message || 'Failed to load tutors');
