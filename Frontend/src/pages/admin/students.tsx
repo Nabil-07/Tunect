@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronUp, ChevronDown, ChevronDown as ChevronDownIcon } from 'lucide-react';
 import { TableRowSkeleton } from '../../components/skeletons';
-import { fetchStudents, unbanUser, type StudentSummary, type PaginationMeta } from '../../services/adminService';
+import { fetchStudents, unbanUser, type StudentSummary } from '../../services/adminService';
 
 type SortField = 'name' | 'grade' | 'tokens' | 'accountStatus' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
@@ -63,7 +63,6 @@ export default function AdminStudents() {
       } catch (err: any) {
         setError(err?.response?.data?.message || 'Failed to load students');
         setStudents([]);
-        setMeta(null);
         setInitialLoadDone(true);
       } finally {
         setLoading(false);
