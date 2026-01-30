@@ -503,6 +503,14 @@ export class BookingsService {
     await this.ensureNoTutorOverlap(resolvedTutorId, start, end);
     await this.ensureNoStudentOverlap(dto.studentId!, start, end);
 
+    // Check if booking is in the past
+    const now = new Date();
+    if (start < now) {
+      throw new BadRequestException(
+        'Cannot book a session in the past. Please select a future date and time.'
+      );
+    }
+
     const cost = this.requiredTokens(start, end, TOKENS_PER_HOUR);
 
     return this.prisma.$transaction(async (tx) => {
@@ -520,6 +528,11 @@ export class BookingsService {
       });
 
       const availableTutorTokens = Number(tutorBalance?.balance ?? 0);
+      const globalStudentTokens = Number(student.tokens ?? 0);
+      
+      console.log(`[BOOKING] studentId=${dto.studentId}, tutorId=${resolvedTutorId}, cost=${cost}`);
+      console.log(`[BOOKING] tutorBalance=${availableTutorTokens}, studentTokens=${globalStudentTokens}`);
+      
       if (!tutorBalance || availableTutorTokens < cost) {
         throw new HttpException(
           {
@@ -1068,28 +1081,40 @@ export class BookingsService {
         data: { status: BookingStatus.COMPLETED },
       });
 
-      if (!b.isDemo && b.tokensCharged && Number(b.tokensCharged) > 0) {
-        const tokens = Number(b.tokensCharged);
+      if (!b.isDemo) {
         const hourlyRate = Number(b.tutor.hourlyRate ?? 0);
-        const bookingAmount = tokens * hourlyRate; // tokens = hours (TOKENS_PER_HOUR = 1)
+        const hours = this.getBookingHours(b.startTime, b.endTime, Number(b.tokensCharged));
+        if (!hours) return updated;
+        const bookingAmount = hours * hourlyRate;
         const feePercent = this.platformFeePercent(hourlyRate);
         const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
 
-        await tx.tutorWallet.upsert({
-          where: { tutorId: b.tutor.id },
-          update: { balance: { increment: tutorShare } },
-          create: { tutorId: b.tutor.id, balance: tutorShare },
-        });
-
-        await tx.tutorWalletLedger.create({
-          data: {
+        // Check if ledger entry already exists for this booking to prevent duplicates
+        const existingLedger = await tx.tutorWalletLedger.findFirst({
+          where: {
             tutorId: b.tutor.id,
             bookingId: b.id,
-            delta: tutorShare,
             reason: 'BOOKING_EARNED',
-            note: `Completed booking ${b.id}`,
           },
         });
+
+        if (!existingLedger) {
+          await tx.tutorWallet.upsert({
+            where: { tutorId: b.tutor.id },
+            update: { balance: { increment: tutorShare } },
+            create: { tutorId: b.tutor.id, balance: tutorShare },
+          });
+
+          await tx.tutorWalletLedger.create({
+            data: {
+              tutorId: b.tutor.id,
+              bookingId: b.id,
+              delta: tutorShare,
+              reason: 'BOOKING_EARNED',
+              note: `Completed booking ${b.id}`,
+            },
+          });
+        }
       }
 
       return updated;
@@ -1103,6 +1128,15 @@ export class BookingsService {
     if (rate < 400) return 25;
     if (rate < 700) return 22;
     return 18;
+  }
+
+  private getBookingHours(startTime?: Date | null, endTime?: Date | null, fallbackTokens?: number | null): number {
+    if (startTime && endTime) {
+      const diffMs = endTime.getTime() - startTime.getTime();
+      if (Number.isFinite(diffMs) && diffMs > 0) return diffMs / 3_600_000;
+    }
+    const fallback = Number(fallbackTokens ?? 0);
+    return Number.isFinite(fallback) ? fallback : 0;
   }
 
   private requiredTokens(start: Date, end: Date, tokensPerHour: number): number {
@@ -1123,6 +1157,14 @@ export class BookingsService {
     if (!isBefore(start, end)) throw new BadRequestException('startTime must be before endTime.');
     if (isBefore(end, addMinutes(start, MIN_BLOCK_MINUTES))) {
       throw new BadRequestException(`Minimum booking is ${MIN_BLOCK_MINUTES} minutes.`);
+    }
+
+    // Check if slot is in the past
+    const now = new Date();
+    if (start < now) {
+      throw new BadRequestException(
+        'Cannot assign a slot in the past. Please select a future date and time.'
+      );
     }
 
     // Edge Case Fix: Use transaction with row-level locking to prevent concurrent slot assignments

@@ -610,15 +610,40 @@ export class StudentsService {
       take: 50, // Limit to top 50 tutors
     });
 
-    return balances.map((b) => ({
-      ...b,
-      balance: toNum(b.balance),
-      pricePerToken: toNum(b.pricePerToken),
-      tutor: {
-        ...b.tutor,
-        hourlyRate: toNum(b.tutor.hourlyRate),
-      },
-    }));
+    // For each tutor, get the earliest expiration date of their purchased tokens
+    const balancesWithExpiration = await Promise.all(
+      balances.map(async (b) => {
+        const earliestExpiry = await this.prisma.tokenLedger.findFirst({
+          where: {
+            studentId: studentIdToUse,
+            tutorId: b.tutorId,
+            reason: 'PURCHASED', // Only purchased tokens expire
+            expiresAt: { not: null },
+            delta: { gt: 0 }, // Only count added tokens
+          },
+          select: {
+            expiresAt: true,
+          },
+          orderBy: { expiresAt: 'asc' },
+        });
+
+        return {
+          ...b,
+          balance: toNum(b.balance),
+          pricePerToken: toNum(b.pricePerToken),
+          expiresAt: earliestExpiry?.expiresAt || null,
+          daysUntilExpiry: earliestExpiry?.expiresAt 
+            ? Math.ceil((earliestExpiry.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+            : null,
+          tutor: {
+            ...b.tutor,
+            hourlyRate: toNum(b.tutor.hourlyRate),
+          },
+        };
+      }),
+    );
+
+    return balancesWithExpiration;
   }
 
   async getTokenLedgerAll(userId: string, studentId?: string) {

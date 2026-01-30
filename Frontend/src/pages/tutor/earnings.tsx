@@ -19,7 +19,7 @@ export default function TutorEarnings() {
   const nextPayoutDate = (() => {
     const today = new Date();
     const day = today.getDate();
-    const candidates = [1, 7, 14, 21].filter((d) => d >= day);
+    const candidates = [1, 7, 14, 21].filter((d) => d > day);
     const nextDay = candidates[0];
     const target = new Date(today);
     if (nextDay) {

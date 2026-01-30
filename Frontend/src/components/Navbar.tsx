@@ -64,6 +64,13 @@ const ADMIN_SIMPLE = [
   { to: '/support', label: 'Support' },
 ];
 
+const STUDENT_EXTRA = [
+  { to: '/support', label: 'Support' },
+  { to: '/about', label: 'About' },
+  { to: '/student/favorites', label: 'Favorites' },
+  { to: '/student/transactions', label: 'Transactions' },
+];
+
 const TUTOR_CENTER = [
   { to: '/', label: 'Home' },
   { to: '/tutor/dashboard', label: 'Dashboard' },
@@ -211,6 +218,27 @@ export default function Navbar() {
                         {n.label}
                       </Link>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Student More dropdown */}
+            {isAuthed && role === 'student' && (
+              <div className="relative" ref={extraRef}>
+                <button
+                  type="button"
+                  onClick={() => setExtraOpen((v) => !v)}
+                  className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
+                >
+                  More <ChevronDown size={16} className="text-slate-500" />
+                </button>
+                {extraOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
+                    <Link to="/support" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Support</Link>
+                    <Link to="/about" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>About</Link>
+                    <Link to="/student/favorites" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Favorites</Link>
+                    <Link to="/student/transactions" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Transactions</Link>
                   </div>
                 )}
               </div>
@@ -518,6 +546,18 @@ export default function Navbar() {
                 </NavLink>
                 <NavLink to="/support" className="btn-ghost" onClick={() => setOpen(false)}>Support</NavLink>
                 <NavLink to="/tutor/earnings" className="btn-ghost" onClick={() => setOpen(false)}>Total earnings</NavLink>
+              </>
+            )}
+
+            {/* Student Extra on mobile */}
+            {isAuthed && role === 'student' && (
+              <>
+                <hr className="my-2" />
+                <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Extra</div>
+                <NavLink to="/support" className="btn-ghost" onClick={() => setOpen(false)}>Support</NavLink>
+                <NavLink to="/about" className="btn-ghost" onClick={() => setOpen(false)}>About</NavLink>
+                <NavLink to="/student/favorites" className="btn-ghost" onClick={() => setOpen(false)}>Favorites</NavLink>
+                <NavLink to="/student/transactions" className="btn-ghost" onClick={() => setOpen(false)}>Transactions</NavLink>
               </>
             )}
 

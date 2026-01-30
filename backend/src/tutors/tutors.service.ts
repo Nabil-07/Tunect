@@ -1002,6 +1002,7 @@ export class TutorsService {
       },
       select: {
         id: true,
+        startTime: true,
         endTime: true,
         isDemo: true,
         tokensCharged: true,
@@ -1021,10 +1022,12 @@ export class TutorsService {
     };
 
     const totalEarnings = completedBookings.reduce((sum, b) => {
-      const tokens = Number(b.tokensCharged || 0);
-      if (!tokens) return sum;
+      const hours = b.startTime && b.endTime
+        ? Math.max(0, (b.endTime.getTime() - b.startTime.getTime()) / 3_600_000)
+        : Number(b.tokensCharged || 0);
+      if (!hours) return sum;
       const hourlyRate = Number(b.tutor?.hourlyRate ?? 0);
-      const bookingAmount = tokens * hourlyRate; // tokens = hours (TOKENS_PER_HOUR = 1)
+      const bookingAmount = hours * hourlyRate;
       const fee = platformFeePercent(hourlyRate);
       const share = Math.max(0, (bookingAmount * (100 - fee)) / 100);
       return sum + share;
@@ -1032,10 +1035,12 @@ export class TutorsService {
 
     const monthlyBookings = completedBookings.filter((b) => b.endTime && new Date(b.endTime) >= startOfMonth);
     const monthlyEarnings = monthlyBookings.reduce((sum, b) => {
-      const tokens = Number(b.tokensCharged || 0);
-      if (!tokens) return sum;
+      const hours = b.startTime && b.endTime
+        ? Math.max(0, (b.endTime.getTime() - b.startTime.getTime()) / 3_600_000)
+        : Number(b.tokensCharged || 0);
+      if (!hours) return sum;
       const hourlyRate = Number(b.tutor?.hourlyRate ?? 0);
-      const bookingAmount = tokens * hourlyRate; // tokens = hours (TOKENS_PER_HOUR = 1)
+      const bookingAmount = hours * hourlyRate;
       const fee = platformFeePercent(hourlyRate);
       const share = Math.max(0, (bookingAmount * (100 - fee)) / 100);
       return sum + share;

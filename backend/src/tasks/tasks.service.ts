@@ -129,6 +129,8 @@ export class TasksService {
               status: true,
               isDemo: true,
               tokensCharged: true,
+              startTime: true,
+              endTime: true,
               tutorId: true,
               tutor: { select: { hourlyRate: true } },
             },
@@ -141,10 +143,12 @@ export class TasksService {
             data: { status: BookingStatus.COMPLETED },
           });
 
-          if (!fresh.isDemo && Number(fresh.tokensCharged) > 0) {
-            const tokens = Number(fresh.tokensCharged);
+          if (!fresh.isDemo) {
             const hourlyRate = Number(fresh.tutor?.hourlyRate ?? 0);
-            const hours = tokens; // Since TOKENS_PER_HOUR = 1, tokens = hours
+            const hours = fresh.startTime && fresh.endTime
+              ? Math.max(0, (fresh.endTime.getTime() - fresh.startTime.getTime()) / 3_600_000)
+              : Number(fresh.tokensCharged || 0);
+            if (!hours) return;
             const bookingAmount = hours * hourlyRate; // Total amount for the booking
             
             const feePercent = this.platformFeePercent(hourlyRate);

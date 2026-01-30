@@ -160,6 +160,7 @@ const StudentCheckoutPaid = lazy(() => import('./pages/student/checkout-paid'));
 const PaymentSuccess = lazy(() => import('./pages/student/payment-success'));    // NEW
 const PaymentFailure = lazy(() => import('./pages/student/payment-failure'));    // NEW
 const TokenBalance = lazy(() => import('./pages/student/token-balance'));        // NEW
+const StudentTransactions = lazy(() => import('./pages/student/transactions'));  // NEW
 /** Phase 4: Student Features */
 const StudentManageAccount = lazy(() => import('./pages/student/manage-account'));
 const ClassPage = lazy(() => import('./pages/class'));
@@ -355,6 +356,7 @@ function App() {
           <Route path="/student/bookings" element={<StudentBookings />} />
           <Route path="/student/sessions" element={<StudentSessions />} />
           <Route path="/student/token-balance" element={<TokenBalance />} />
+          <Route path="/student/transactions" element={<StudentTransactions />} />
           <Route path="/student/messages" element={<StudentChat />} />
           <Route path="/student/chat" element={<StudentChat />} />
           <Route path="/student/chat/:conversationId" element={<StudentChat />} />

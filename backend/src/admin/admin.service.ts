@@ -355,6 +355,33 @@ export class AdminService {
 
     const userId = student.user.id;
 
+    // Enhance tutorTokenBalances with expiration info
+    const tutorTokenBalancesWithExpiry = await Promise.all(
+      student.tutorTokenBalances.map(async (balance) => {
+        const earliestExpiry = await this.prisma.tokenLedger.findFirst({
+          where: {
+            studentId,
+            tutorId: balance.tutorId,
+            reason: 'PURCHASED',
+            expiresAt: { not: null },
+            delta: { gt: 0 },
+          },
+          select: {
+            expiresAt: true,
+          },
+          orderBy: { expiresAt: 'asc' },
+        });
+
+        return {
+          ...balance,
+          expiresAt: earliestExpiry?.expiresAt || null,
+          daysUntilExpiry: earliestExpiry?.expiresAt 
+            ? Math.ceil((earliestExpiry.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+            : null,
+        };
+      }),
+    );
+
     // Get purchase history (payments)
     const payments = await this.prisma.payment.findMany({
       where: { userId },
@@ -407,6 +434,7 @@ export class AdminService {
 
     return {
       ...student,
+      tutorTokenBalances: tutorTokenBalancesWithExpiry,
       payments,
       conversations,
     };
