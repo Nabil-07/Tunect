@@ -64,13 +64,6 @@ const ADMIN_SIMPLE = [
   { to: '/support', label: 'Support' },
 ];
 
-const STUDENT_EXTRA = [
-  { to: '/support', label: 'Support' },
-  { to: '/about', label: 'About' },
-  { to: '/student/favorites', label: 'Favorites' },
-  { to: '/student/transactions', label: 'Transactions' },
-];
-
 const TUTOR_CENTER = [
   { to: '/', label: 'Home' },
   { to: '/tutor/dashboard', label: 'Dashboard' },

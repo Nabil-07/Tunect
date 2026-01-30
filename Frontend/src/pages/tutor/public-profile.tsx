@@ -92,7 +92,6 @@ export default function TutorPublicProfile() {
   const [errorModal, setErrorModal] = useState<string | null>(null);
   const [tokenBalance, setTokenBalance] = useState<number | null>(null);
   const [tokenBalanceLoading, setTokenBalanceLoading] = useState(false);
-  const [tokenExpiresAt, setTokenExpiresAt] = useState<Date | null>(null);
   const [daysUntilExpiry, setDaysUntilExpiry] = useState<number | null>(null);
   
   // Reviews state
@@ -193,7 +192,6 @@ export default function TutorPublicProfile() {
   const fetchTokenBalance = useCallback(async (tutorId: string) => {
     if (!tutorId || user?.role !== 'STUDENT') {
       setTokenBalance(null);
-      setTokenExpiresAt(null);
       setDaysUntilExpiry(null);
       return;
     }
@@ -203,12 +201,10 @@ export default function TutorPublicProfile() {
       const balances = Array.isArray(data) ? data : [];
       const balance = balances.find((b: any) => b.tutorId === tutorId);
       setTokenBalance(balance ? Number(balance.balance || 0) : 0);
-      setTokenExpiresAt(balance?.expiresAt ? new Date(balance.expiresAt) : null);
       setDaysUntilExpiry(balance?.daysUntilExpiry ?? null);
     } catch (error) {
       console.error('Failed to fetch token balance:', error);
       setTokenBalance(null);
-      setTokenExpiresAt(null);
       setDaysUntilExpiry(null);
     } finally {
       setTokenBalanceLoading(false);
