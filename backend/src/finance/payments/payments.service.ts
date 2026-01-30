@@ -5,6 +5,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private getBookingHours(startTime?: Date | null, endTime?: Date | null, fallbackTokens?: number | null): number {
+    if (startTime && endTime) {
+      const diffMs = endTime.getTime() - startTime.getTime();
+      if (Number.isFinite(diffMs) && diffMs > 0) return diffMs / 3_600_000;
+    }
+    const fallback = Number(fallbackTokens ?? 0);
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+
   async getStudentPayments(page: number = 1, pageSize: number = 100) {
     const skip = (page - 1) * pageSize;
 
@@ -38,9 +47,9 @@ export class PaymentsService {
 
     // Map to frontend format
     const payments = bookings.map((booking) => {
-      const tokens = Number(booking.tokensCharged || 0);
+      const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
       const hourlyRate = Number(booking.tutor.hourlyRate || 0);
-      const bookingAmount = tokens * hourlyRate; // tokens = hours, so total amount student paid
+      const bookingAmount = hours * hourlyRate;
 
       return {
         id: booking.id,
@@ -98,9 +107,9 @@ export class PaymentsService {
       let totalPaid = 0;
 
       for (const booking of tutor.bookings) {
-        const tokensCharged = Number(booking.tokensCharged || 0);
+        const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
         const hourlyRate = Number(tutor.hourlyRate || 0);
-        const bookingAmount = tokensCharged * hourlyRate; // hours * rupees/hour = rupees
+        const bookingAmount = hours * hourlyRate;
         const commissionRate = this.getCommissionRate(hourlyRate);
         const tutorPaymentINR = bookingAmount * ((100 - commissionRate) / 100); // in INR
         const tutorPayment = Math.round(tutorPaymentINR * 100); // Convert to paise for API

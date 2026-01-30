@@ -41,6 +41,8 @@ interface StudentDetail {
   tutorTokenBalances: Array<{
     id: string;
     balance: number;
+    expiresAt: string | null;
+    daysUntilExpiry: number | null;
     tutor: {
       id: string;
       user: {
@@ -300,19 +302,43 @@ export default function StudentDetailPage() {
                 <tr className="border-b">
                   <th className="text-left py-2 px-4">Tutor</th>
                   <th className="text-right py-2 px-4">Balance</th>
+                  <th className="text-left py-2 px-4">Expiration</th>
                 </tr>
               </thead>
               <tbody>
-                {student.tutorTokenBalances.map((balance) => (
-                  <tr key={balance.id} className="border-b">
-                    <td className="py-2 px-4">
-                      {balance.tutor.user.name || balance.tutor.user.email}
-                    </td>
-                    <td className="text-right py-2 px-4 font-semibold">
-                      {Number(balance.balance).toFixed(2)} tokens
-                    </td>
-                  </tr>
-                ))}
+                {student.tutorTokenBalances.map((balance) => {
+                  const isExpired = balance.daysUntilExpiry !== null && balance.daysUntilExpiry < 0;
+                  const isExpiring = balance.daysUntilExpiry !== null && balance.daysUntilExpiry < 7;
+                  
+                  return (
+                    <tr 
+                      key={balance.id} 
+                      className={`border-b ${isExpired ? 'bg-red-50' : isExpiring ? 'bg-amber-50' : ''}`}
+                    >
+                      <td className="py-2 px-4">
+                        {balance.tutor.user.name || balance.tutor.user.email}
+                      </td>
+                      <td className="text-right py-2 px-4 font-semibold">
+                        {Number(balance.balance).toFixed(2)} tokens
+                      </td>
+                      <td className="py-2 px-4">
+                        {balance.daysUntilExpiry !== null ? (
+                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                            isExpired 
+                              ? 'bg-red-100 text-red-700' 
+                              : isExpiring 
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {isExpired ? '❌ Expired' : `⏰ ${balance.daysUntilExpiry} days`}
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 text-sm">No expiry</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

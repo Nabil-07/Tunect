@@ -33,6 +33,17 @@ export default function MySessions() {
   const [loading, setLoading] = useState(true);
   const [meetingLinks, setMeetingLinks] = useState<Map<string, string>>(new Map());
 
+  const getSessionAmount = (session: Booking) => {
+    const rate = Number(session.tutor?.hourlyRate || 0);
+    if (session.startTime && session.endTime) {
+      const diffMs = new Date(session.endTime).getTime() - new Date(session.startTime).getTime();
+      const hours = Math.max(0, diffMs / 3_600_000);
+      return Math.round(rate * hours);
+    }
+    const fallbackTokens = Number(session.tokensCharged || 0);
+    return Math.round(rate * (fallbackTokens || 0));
+  };
+
   useEffect(() => {
     loadSessions();
   }, []);
@@ -327,7 +338,7 @@ export default function MySessions() {
                         {!session.isDemo && (
                           <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                             <IndianRupee className="h-4 w-4" />
-                            {Math.round((session.tutor?.hourlyRate || 0) * Number(session.tokensCharged || 1))}
+                            {getSessionAmount(session)}
                           </p>
                         )}
                       </div>
@@ -416,7 +427,7 @@ export default function MySessions() {
                         {!session.isDemo && (
                           <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                             <IndianRupee className="h-4 w-4" />
-                            {Math.round((session.tutor?.hourlyRate || 0) * Number(session.tokensCharged || 1))}
+                            {getSessionAmount(session)}
                           </p>
                         )}
                       </div>
@@ -501,7 +512,7 @@ export default function MySessions() {
                         {!session.isDemo && (
                           <p className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                             <IndianRupee className="h-4 w-4" />
-                            {Math.round((session.tutor?.hourlyRate || 0) * Number(session.tokensCharged || 1))}
+                            {getSessionAmount(session)}
                           </p>
                         )}
                       </div>

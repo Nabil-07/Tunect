@@ -92,6 +92,8 @@ export default function TutorPublicProfile() {
   const [errorModal, setErrorModal] = useState<string | null>(null);
   const [tokenBalance, setTokenBalance] = useState<number | null>(null);
   const [tokenBalanceLoading, setTokenBalanceLoading] = useState(false);
+  const [tokenExpiresAt, setTokenExpiresAt] = useState<Date | null>(null);
+  const [daysUntilExpiry, setDaysUntilExpiry] = useState<number | null>(null);
   
   // Reviews state
   const [reviews, setReviews] = useState<Array<{
@@ -191,6 +193,8 @@ export default function TutorPublicProfile() {
   const fetchTokenBalance = useCallback(async (tutorId: string) => {
     if (!tutorId || user?.role !== 'STUDENT') {
       setTokenBalance(null);
+      setTokenExpiresAt(null);
+      setDaysUntilExpiry(null);
       return;
     }
     try {
@@ -199,9 +203,13 @@ export default function TutorPublicProfile() {
       const balances = Array.isArray(data) ? data : [];
       const balance = balances.find((b: any) => b.tutorId === tutorId);
       setTokenBalance(balance ? Number(balance.balance || 0) : 0);
+      setTokenExpiresAt(balance?.expiresAt ? new Date(balance.expiresAt) : null);
+      setDaysUntilExpiry(balance?.daysUntilExpiry ?? null);
     } catch (error) {
       console.error('Failed to fetch token balance:', error);
       setTokenBalance(null);
+      setTokenExpiresAt(null);
+      setDaysUntilExpiry(null);
     } finally {
       setTokenBalanceLoading(false);
     }
@@ -277,11 +285,20 @@ export default function TutorPublicProfile() {
         return;
       }
       
-      // Calculate required tokens (assuming 1 token per hour, minimum 1 hour)
+      // Check if booking is in the past
       const start = new Date(slot.startTime);
+      const now = new Date();
+      if (start < now) {
+        setErrorModal(
+          'This date has already passed. Please select a future date and time to book a session.'
+        );
+        return;
+      }
+      
+      // Calculate required tokens: 1 token per hour (TOKENS_PER_HOUR = 1)
       const end = new Date(slot.endTime);
       const hours = Math.max(1, (end.getTime() - start.getTime()) / (1000 * 60 * 60));
-      const requiredTokens = Math.ceil(hours * (tutor?.hourlyRate || 0));
+      const requiredTokens = Math.ceil(hours * 1); // 1 token per hour
       
       if (tokenBalance === null || tokenBalance < requiredTokens) {
         setErrorModal(
@@ -331,17 +348,36 @@ export default function TutorPublicProfile() {
       setBookable(slots);
       setToast(isDemoIntent ? 'Demo slot confirmed!' : 'Booking created!');
     } catch (e: any) {
-      console.error(e);
+      console.error('Booking error response:', e?.response?.data);
       const status = e?.response?.status;
       const apiError = e?.response?.data?.error;
+      const message = e?.response?.data?.message || '';
+      
+      // Check for past date errors (various message formats)
+      if (
+        message.toLowerCase().includes('past') ||
+        message.toLowerCase().includes('already passed') ||
+        message.toLowerCase().includes('future date')
+      ) {
+        setErrorModal(
+          'This date has already passed. Please select a future date and time to book a session.'
+        );
+        return;
+      }
+      
       if (apiError === 'INSUFFICIENT_TOKENS') {
         setErrorModal(e?.response?.data?.message || 'You need more tokens to book this slot.');
         return;
       }
+      
       if (status === 409 || status === 400) {
-        setErrorModal('That slot was just taken. Please pick another.');
-        const slots = await fetchSlots(month);
-        setBookable(slots);
+        if (message.includes('already have')) {
+          setErrorModal(message);
+        } else {
+          setErrorModal('That slot was just taken. Please pick another.');
+          const slots = await fetchSlots(month);
+          setBookable(slots);
+        }
       } else {
         setErrorModal(e?.response?.data?.message || 'Could not book. Please try again.');
       }
@@ -530,7 +566,38 @@ export default function TutorPublicProfile() {
 
             {/* Purchase Tokens */}
             <div className="mt-5 border-t pt-4">
-              <h3 className="text-sm font-semibold mb-2">Purchase Tokens</h3>
+              <h3 className="text-sm font-semibold mb-2">Your Tokens</h3>
+              
+              {/* Token Balance Display */}
+              {user?.role === 'STUDENT' && (
+                <div className="mb-4 p-3 bg-slate-50 rounded-lg">
+                  {tokenBalanceLoading ? (
+                    <div className="text-sm text-slate-600">Loading token info...</div>
+                  ) : tokenBalance !== null && tokenBalance > 0 ? (
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900 mb-1">
+                        ₹{tutor.hourlyRate ?? '--'} × {Math.floor(tokenBalance)} tokens = ₹{Math.floor(tokenBalance) * (tutor.hourlyRate || 0)} available
+                      </div>
+                      {daysUntilExpiry !== null && daysUntilExpiry >= 0 ? (
+                        <div className={`text-xs font-medium ${
+                          daysUntilExpiry < 7 ? 'text-red-600' : 
+                          daysUntilExpiry < 30 ? 'text-amber-600' : 
+                          'text-emerald-600'
+                        }`}>
+                          ⏰ Use token or expires in {daysUntilExpiry} days
+                        </div>
+                      ) : daysUntilExpiry !== null ? (
+                        <div className="text-xs font-medium text-red-600">
+                          ⚠️ Tokens have expired
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-600">No tokens yet. Purchase to book a session.</div>
+                  )}
+                </div>
+              )}
+
               <p className="text-xs text-slate-600 mb-3">
                 Each token costs ₹{tutor.hourlyRate ?? '--'} (paid via Razorpay).
               </p>

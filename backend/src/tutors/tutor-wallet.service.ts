@@ -7,6 +7,15 @@ import { PayoutStatus } from '@prisma/client';
 export class TutorWalletService {
   constructor(private prisma: PrismaService) {}
 
+  private getBookingHours(startTime?: Date | null, endTime?: Date | null, fallbackTokens?: number | null): number {
+    if (startTime && endTime) {
+      const diffMs = endTime.getTime() - startTime.getTime();
+      if (Number.isFinite(diffMs) && diffMs > 0) return diffMs / 3_600_000;
+    }
+    const fallback = Number(fallbackTokens ?? 0);
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+
   private platformFeePercent(hourlyRate?: number | null) {
     const rate = Number(hourlyRate ?? 0);
     if (!Number.isFinite(rate) || rate <= 0) return 20; // Default fallback
@@ -29,6 +38,8 @@ export class TutorWalletService {
         status: true,
         isDemo: true,
         tokensCharged: true,
+        startTime: true,
+        endTime: true,
         tutor: { select: { hourlyRate: true } },
       },
     });
@@ -48,13 +59,12 @@ export class TutorWalletService {
     for (const booking of bookings) {
       if (credited.has(booking.id)) continue;
       if (booking.isDemo) continue;
-      const tokens = Number(booking.tokensCharged || 0);
-      if (!tokens) continue;
+      const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
+      if (!hours) continue;
 
       // Calculate earnings based on hourly rate and duration
       // tokensCharged represents hours (TOKENS_PER_HOUR = 1)
       const hourlyRate = Number(booking.tutor?.hourlyRate ?? 0);
-      const hours = tokens; // Since TOKENS_PER_HOUR = 1, tokens = hours
       const bookingAmount = hours * hourlyRate; // Total amount for the booking
       
       const fee = this.platformFeePercent(hourlyRate);

@@ -12,6 +12,8 @@ import {
   ExternalLink,
   Coins,
   Star,
+  BookOpen,
+  CheckCircle,
 } from "lucide-react";
 import {
   getMyBookings,
@@ -358,20 +360,59 @@ export default function MyBookings() {
   }, [upcoming, completed]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-semibold text-gray-800 mb-6">
-        My Bookings
-      </h1>
-
-      {loadingBookings ? (
-        <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
-          <p className="mt-4 text-slate-600">Loading your bookings...</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Enhanced Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+            <BookOpen className="h-8 w-8 text-indigo-600" />
+            My Bookings
+          </h1>
+          <p className="text-slate-600">Manage your tutoring sessions and schedule new classes</p>
         </div>
-      ) : (
-        <>
-          {/* Tutors with tokens but no pending booking */}
-          {!loadingBalances && Array.from(tokenBalances.entries()).filter(([tutorId, balance]) => 
+
+        {/* Quick Stats */}
+        {!loadingBookings && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 flex items-center gap-4">
+              <div className="p-3 bg-indigo-100 rounded-lg">
+                <Calendar className="h-6 w-6 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-600">Upcoming</p>
+                <p className="text-2xl font-bold text-gray-900">{upcoming.length}</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 flex items-center gap-4">
+              <div className="p-3 bg-emerald-100 rounded-lg">
+                <CheckCircle className="h-6 w-6 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-600">Completed</p>
+                <p className="text-2xl font-bold text-gray-900">{completed.length}</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 flex items-center gap-4">
+              <div className="p-3 bg-amber-100 rounded-lg">
+                <Clock className="h-6 w-6 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-600">Awaiting Slot</p>
+                <p className="text-2xl font-bold text-gray-900">{unscheduled.length}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {loadingBookings ? (
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <p className="mt-4 text-slate-600">Loading your bookings...</p>
+          </div>
+        ) : (
+          <>
+            {/* Tutors with tokens but no pending booking */}
+            {!loadingBalances && Array.from(tokenBalances.entries()).filter(([tutorId, balance]) => 
         balance > 0 && !unscheduled.some(b => b.tutor?.id === tutorId)
       ).length > 0 && (
         <Section
@@ -388,18 +429,19 @@ export default function MyBookings() {
               if (!tutorInfo) return null;
               
               return (
-                <div key={tutorId} className="bg-white shadow rounded-xl p-5 border hover:shadow-md transition">
+                <div key={tutorId} className="bg-white rounded-xl border border-emerald-200 shadow-sm hover:shadow-md transition p-5 bg-gradient-to-r from-white to-emerald-50">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                      <h3 className="text-lg font-semibold">{tutorInfo.name || "Tutor"}</h3>
-                      <div className="mt-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 inline-block">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Coins className="h-4 w-4 text-emerald-600" />
-                          <span className="text-emerald-700 font-medium">
-                            {balance.toFixed(1)} tokens available
-                          </span>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-900">{tutorInfo.name || "Tutor"}</h3>
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="p-3 rounded-lg bg-emerald-100">
+                          <Coins className="h-5 w-5 text-emerald-700" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-600 uppercase tracking-wide">Available Balance</p>
+                          <p className="text-2xl font-bold text-emerald-700">{balance.toFixed(1)} tokens</p>
                           {balance <= 1 && (
-                            <span className="ml-2 text-xs text-amber-600 font-medium">Low balance!</span>
+                            <p className="text-xs text-amber-600 font-semibold mt-1">⚠️ Low balance</p>
                           )}
                         </div>
                       </div>
@@ -414,9 +456,9 @@ export default function MyBookings() {
                           showError(err.response?.data?.message || 'Failed to reserve tokens');
                         }
                       }}
-                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-700 active:bg-emerald-800 transition transform hover:scale-105"
                     >
-                      <CalendarPlus2 size={16} /> Schedule Class
+                      <CalendarPlus2 size={18} /> Schedule Class
                     </button>
                   </div>
                 </div>
@@ -511,29 +553,29 @@ export default function MyBookings() {
           onClose={closePicker}
           bookingId={pickerBooking.id}
           tutorId={pickerBooking.tutor.id}
-                      onAssigned={async () => {
-                        await refresh();
-                        // Refresh token balances after slot assignment
-                        try {
-                          const res = await api.get('/students/me/token-balances');
-                          const balances = Array.isArray(res.data) ? res.data : [];
-                          const balanceMap = new Map<string, number>();
-                          balances.forEach((b: any) => {
-                            if (b.tutorId) {
-                              balanceMap.set(b.tutorId, Number(b.balance || 0));
-                            }
-                          });
-                          setTokenBalances(balanceMap);
-                        } catch (e) {
-                          console.error('Failed to refresh token balances:', e);
-                        }
-                        // Refresh demo status if this was a demo booking
-                        if (pickerBooking?.isDemo) {
-                          window.dispatchEvent(new CustomEvent('demo-status-changed', { 
-                            detail: { tutorId: pickerBooking.tutorId } 
-                          }));
-                        }
-                      }}
+          onAssigned={async () => {
+            await refresh();
+            // Refresh token balances after slot assignment
+            try {
+              const res = await api.get('/students/me/token-balances');
+              const balances = Array.isArray(res.data) ? res.data : [];
+              const balanceMap = new Map() as Map<string, number>;
+              balances.forEach((b: any) => {
+                if (b.tutorId) {
+                  balanceMap.set(b.tutorId, Number(b.balance || 0));
+                }
+              });
+              setTokenBalances(balanceMap);
+            } catch (e) {
+              console.error('Failed to refresh token balances:', e);
+            }
+            // Refresh demo status if this was a demo booking
+            if (pickerBooking?.isDemo) {
+              window.dispatchEvent(new CustomEvent('demo-status-changed', { 
+                detail: { tutorId: pickerBooking.tutorId } 
+              }));
+            }
+          }}
         />
       )}
 
@@ -616,6 +658,7 @@ export default function MyBookings() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -633,12 +676,20 @@ function Section({
     Array.isArray(children) ? (children as any[]).length > 0 : !!children;
 
   return (
-    <div className="mb-10">
-      <h2 className="text-xl font-medium text-blue-600 mb-4">{title}</h2>
+    <div className="mb-8">
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+        {hasChildren && (
+          <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">
+            {Array.isArray(children) ? (children as any[]).length : 1}
+          </span>
+        )}
+      </div>
       {!hasChildren ? (
-        <p className="flex items-center gap-2 text-gray-500">
-          <AlertCircle className="h-4 w-4" /> {emptyNote}
-        </p>
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-8 text-center">
+          <AlertCircle className="h-6 w-6 text-slate-400 mx-auto mb-2" />
+          <p className="text-slate-500">{emptyNote}</p>
+        </div>
       ) : (
         <div className="grid gap-4">{children}</div>
       )}
@@ -704,52 +755,74 @@ function BookingCard({
     : undefined;
 
   return (
-    <div className="bg-white shadow rounded-xl p-5 border hover:shadow-md transition">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">
-            {tutor?.name || "Unknown Tutor"}
-          </h3>
-          
-          {/* Token Balance for Awaiting Slot */}
+    <div className={`bg-white rounded-xl border shadow-sm hover:shadow-md transition p-5 ${
+      status === 'CANCELED' ? 'opacity-75 bg-slate-50' : ''
+    } ${status === 'COMPLETED' ? 'bg-emerald-50' : ''}`}>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+        {/* Left: Tutor Info & Details */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-gray-900">
+                {tutor?.name || "Unknown Tutor"}
+              </h3>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                  status === 'CONFIRMED' ? 'bg-indigo-100 text-indigo-700' :
+                  status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' :
+                  status === 'CANCELED' ? 'bg-red-100 text-red-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {statusMeta.label} {isDemo && "(Demo)"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Session Details */}
+          <div className="space-y-2 text-sm text-slate-600">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-indigo-600" />
+              <span className="font-medium text-gray-800">{startDateText}</span>
+              {endDateText && startDateText !== endDateText && <span>→ {endDateText}</span>}
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-indigo-600" />
+              <span className="font-medium text-gray-800">{timeText}</span>
+            </div>
+          </div>
+
+          {/* Token Balance Warning */}
           {(status === "PENDING_SLOT" || status === "PENDING") && tokenBalance !== undefined && tokenBalance > 0 && (
-            <div className="mt-2 mb-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 inline-block">
+            <div className="mt-3 p-2 rounded-lg bg-emerald-50 border border-emerald-200 inline-block">
               <div className="flex items-center gap-2 text-sm">
                 <Coins className="h-4 w-4 text-emerald-600" />
                 <span className="text-emerald-700 font-medium">
-                  {tokenBalance.toFixed(1)} tokens remaining for this tutor
+                  {tokenBalance.toFixed(1)} tokens available
                 </span>
                 {tokenBalance <= 1 && (
-                  <span className="ml-2 text-xs text-amber-600 font-medium">Low balance!</span>
+                  <span className="ml-2 text-xs text-amber-600 font-medium">⚠️ Low</span>
                 )}
               </div>
             </div>
           )}
-          
-          <p className="text-gray-600 flex items-center gap-2">
-            <Calendar size={16} /> {startDateText}
-            {endDateText && ` - ${endDateText}`}
-          </p>
-          <p className="text-gray-600 flex items-center gap-2">
-            <Clock size={16} /> {timeText}
-          </p>
-          
-          {/* Group Session Badge */}
+
+          {/* Group Session Info */}
           {isGroupSession && (
-            <div className="mt-2 flex items-center gap-2 text-sm">
-              <Users size={16} className="text-blue-600" />
+            <div className="mt-3 flex items-center gap-2 text-sm bg-blue-50 p-2 rounded-lg border border-blue-200">
+              <Users size={16} className="text-blue-600 flex-shrink-0" />
               <span className="text-gray-700">
-                Group Session ({currentEnrollment}/{maxStudents} students)
+                <span className="font-semibold text-blue-700">{currentEnrollment}/{maxStudents}</span> students enrolled
               </span>
             </div>
           )}
-          
-          {/* Join link - only show for confirmed sessions that haven't ended yet */}
+
+          {/* Join Link */}
           {joinUrl && status === "CONFIRMED" && endTime && new Date(endTime) > new Date() && (
-            <div className="mt-2">
+            <div className="mt-3">
               <a
                 href={joinUrl}
-                className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition"
               >
                 <Video size={16} />
                 Join Class
@@ -759,36 +832,43 @@ function BookingCard({
           )}
         </div>
 
-        <div className="text-right">
-          <p className={`font-semibold ${statusMeta.color}`}>
-            {statusMeta.label} {isDemo ? "(Demo)" : ""}
-          </p>
-          <p className="flex items-center justify-end gap-1 text-gray-700 font-medium">
-            <IndianRupee size={16} />{" "}
-            {isDemo 
-              ? 0 
-              : Math.round((tutor?.hourlyRate || 0) * Number(tokensCharged || 1))
-            }
-          </p>
+        {/* Right: Pricing & Actions */}
+        <div className="flex flex-col items-end gap-3 md:w-48">
+          {/* Price */}
+          <div className="text-right">
+            <p className="text-xs text-slate-600 uppercase tracking-wide">Amount</p>
+            <p className="text-2xl font-bold text-gray-900 flex items-center justify-end gap-1">
+              <IndianRupee size={20} className="text-indigo-600" />
+              {(() => {
+                if (isDemo) return "0";
+                if (startTime && endTime) {
+                  const diffMs = new Date(endTime).getTime() - new Date(startTime).getTime();
+                  const hours = Math.max(0, diffMs / 3_600_000);
+                  return Math.round((tutor?.hourlyRate || 0) * hours);
+                }
+                const fallbackTokens = Number(tokensCharged || 0);
+                return Math.round((tutor?.hourlyRate || 0) * (fallbackTokens || 0));
+              })()}
+            </p>
+          </div>
 
-          {/* Receipt download (if payment exists) */}
+          {/* Receipt Download */}
           {payment && (
-            <div className="mt-2">
-              <p className="text-sm text-gray-600">
-                Payment: {(payment.amountInMinor ?? 0) / 100} {payment.currency} (
-                {payment.status})
+            <div className="w-full">
+              <p className="text-xs text-slate-600 text-right mb-1">
+                {payment.currency} • {payment.status}
               </p>
               <button
                 onClick={() => downloadReceipt(payment.id)}
-                className="mt-1 inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800"
+                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition"
               >
-                <FileDown size={16} /> Download Receipt
+                <FileDown size={16} /> Receipt
               </button>
             </div>
           )}
 
-          {/* Card actions (e.g., Select Slot) */}
-          {actions && <div className="mt-3">{actions}</div>}
+          {/* Actions */}
+          {actions && <div className="w-full">{actions}</div>}
         </div>
       </div>
     </div>

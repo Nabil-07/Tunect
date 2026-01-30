@@ -747,6 +747,7 @@ model TokenLedger {
   bookingId String?
   paymentId String?
   createdAt DateTime    @default(now())
+  expiresAt DateTime?   // Token expiration date (60 days after purchase for PURCHASED tokens)
   tutorId   String?
   booking   Booking?    @relation(fields: [bookingId], references: [id])
   payment   Payment?    @relation(fields: [paymentId], references: [id])
@@ -757,6 +758,7 @@ model TokenLedger {
   @@index([paymentId])
   @@index([studentId, createdAt])
   @@index([tutorId])
+  @@index([expiresAt])
 }
 
 model Tutor {
@@ -888,6 +890,7 @@ model TutorWalletLedger {
 
   @@index([bookingId])
   @@index([tutorId, createdAt])
+  @@unique([tutorId, bookingId, reason])
 }
 
 model User {
