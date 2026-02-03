@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  FileDown,
   Calendar,
   Clock,
-  IndianRupee,
   AlertCircle,
   CalendarPlus2,
   XCircle,
@@ -11,7 +9,6 @@ import {
   Users,
   ExternalLink,
   Coins,
-  Star,
   BookOpen,
   CheckCircle,
 } from "lucide-react";
@@ -21,13 +18,11 @@ import {
   cancelBooking,
   getBookingDetails,
 } from "../../services/bookingsService";
-import { downloadReceipt } from "../../services/paymentsService";
 import SlotPicker from "../../components/SlotPicker";
 import { useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useToast } from "../../contexts/ToastContext";
 import api from "../../lib/apiClient";
-import { createReview, getMyReviews } from "../../services/reviewService";
 
 type Booking = BookingDto;
 
@@ -42,13 +37,6 @@ export default function MyBookings() {
   const [loadingBalances, setLoadingBalances] = useState(true);
   const [tokenBalances, setTokenBalances] = useState<Map<string, number>>(new Map());
   const [meetingLinks, setMeetingLinks] = useState<Map<string, string>>(new Map());
-
-  const [reviewMap, setReviewMap] = useState<Map<string, number>>(new Map());
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
-  const [reviewRating, setReviewRating] = useState(0);
-  const [reviewComment, setReviewComment] = useState("");
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   // slot picker state
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -106,8 +94,8 @@ export default function MyBookings() {
       // Trigger demo status refresh if this was a demo booking
       if (confirmBooking.isDemo) {
         // Dispatch event to refresh demo statuses in other components
-        window.dispatchEvent(new CustomEvent('demo-status-changed', { 
-          detail: { tutorId: confirmBooking.tutorId } 
+        globalThis.dispatchEvent(new CustomEvent('demo-status-changed', {
+          detail: { tutorId: confirmBooking.tutorId }
         }));
       }
     } catch (err: any) {
@@ -173,8 +161,6 @@ export default function MyBookings() {
             ...((data?.completed as Booking[]) ?? []),
           ];
 
-      const byStatus = (status: string) => all.filter((b) => b.status === status);
-
       // Unscheduled can be:
       //  - paid booking without slot -> PENDING_SLOT
       //  - demo booking created without times -> PENDING
@@ -183,7 +169,7 @@ export default function MyBookings() {
         all.filter((b) => b.status === "PENDING_SLOT" || b.status === "PENDING");
 
       const upc: Booking[] =
-        (data?.upcoming as Booking[]) ?? byStatus("CONFIRMED");
+        (data?.upcoming as Booking[]) ?? all.filter((b) => b.status === "CONFIRMED");
 
       // Trust backend's completed array (based on endTime < now)
       // Also include any bookings with endTime in the past that aren't canceled
@@ -220,14 +206,21 @@ export default function MyBookings() {
         params.get("promptSelect") === "1" ||
         localStorage.getItem("PROMPT_SELECT_SLOT") === "1";
 
+      const promptTutorId = params.get("tutorId") || localStorage.getItem("PROMPT_TUTOR_ID") || "";
+
       if (prompt && uns.length > 0) {
-        openPickerFor(uns[0]);
+        const match = promptTutorId
+          ? uns.find((b) => b.tutor?.id === promptTutorId || b.tutorId === promptTutorId)
+          : undefined;
+        openPickerFor(match || uns[0]);
       }
 
       if (prompt) {
         params.delete("promptSelect");
+        params.delete("tutorId");
         setParams(params, { replace: true });
         localStorage.removeItem("PROMPT_SELECT_SLOT");
+        localStorage.removeItem("PROMPT_TUTOR_ID");
       }
     })
     .catch(err => {
@@ -251,77 +244,14 @@ export default function MyBookings() {
       .catch(() => setTokenBalances(new Map()))
       .finally(() => setLoadingBalances(false));
 
-    getMyReviews()
-      .then((items) => {
-        const map = new Map<string, number>();
-        items.forEach((r) => {
-          if (r.bookingId) map.set(r.bookingId, r.rating);
-        });
-        setReviewMap(map);
-      })
-      .catch(() => setReviewMap(new Map()));
   }
+
+  const paramsKey = params.toString();
 
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function openReviewModal(booking: Booking) {
-    setReviewBooking(booking);
-    setReviewRating(0);
-    setReviewComment("");
-    setReviewOpen(true);
-  }
-
-  async function submitReview() {
-    if (!reviewBooking || !reviewBooking.id) {
-      showError("Invalid booking selected.");
-      return;
-    }
-    if (reviewRating < 1 || reviewRating > 5) {
-      showError("Please select a rating.");
-      return;
-    }
-    // Ensure bookingId is a valid CUID string (not UUID - Prisma uses CUID)
-    const bookingId = String(reviewBooking.id).trim();
-    if (!bookingId || bookingId.length < 10) {
-      showError("Invalid booking ID.");
-      return;
-    }
-    
-    // Validate bookingId format (CUID format: starts with 'c' and is 25 chars, or at least 10 chars)
-    if (!/^[a-z0-9]{10,}$/i.test(bookingId)) {
-      console.error("Invalid booking ID format:", bookingId);
-      showError("Invalid booking ID format.");
-      return;
-    }
-    
-    try {
-      setReviewSubmitting(true);
-      await createReview({
-        bookingId,
-        rating: reviewRating,
-        comment: reviewComment.trim() || undefined,
-      });
-      showSuccess("Thanks for your review!");
-      setReviewMap((prev) => new Map(prev).set(bookingId, reviewRating));
-      setReviewOpen(false);
-      await refresh(); // Refresh to update review status
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || "Failed to submit review";
-      console.error("Review submission error:", err);
-      // Check if it's a validation error about bookingId
-      if (errorMsg.includes("bookingId") || errorMsg.includes("UUID")) {
-        console.error("Booking ID validation failed. Booking ID:", bookingId, "Type:", typeof bookingId);
-        showError("Invalid booking ID. Please refresh the page and try again.");
-      } else {
-        showError(errorMsg);
-      }
-    } finally {
-      setReviewSubmitting(false);
-    }
-  }
+  }, [paramsKey]);
 
   useEffect(() => {
     const confirmed = [...upcoming, ...completed].filter((b) => b.status === "CONFIRMED");
@@ -337,10 +267,12 @@ export default function MyBookings() {
         confirmed.map(async (b) => {
           try {
             const detail = await getBookingDetails(b.id);
-            return [b.id, detail?.meetingUrl as string | undefined] as const;
+            const entry: [string, string | undefined] = [b.id, detail?.meetingUrl];
+            return entry;
           } catch (err) {
             console.error('Failed to load booking details', b.id, err);
-            return [b.id, (b as any)?.meetingUrl as string | undefined] as const;
+            const entry: [string, string | undefined] = [b.id, (b as any)?.meetingUrl];
+            return entry;
           }
         })
       );
@@ -412,9 +344,9 @@ export default function MyBookings() {
         ) : (
           <>
             {/* Tutors with tokens but no pending booking */}
-            {!loadingBalances && Array.from(tokenBalances.entries()).filter(([tutorId, balance]) => 
+            {!loadingBalances && Array.from(tokenBalances.entries()).some(([tutorId, balance]) =>
         balance > 0 && !unscheduled.some(b => b.tutor?.id === tutorId)
-      ).length > 0 && (
+      ) && (
         <Section
           title="Schedule with Your Tokens"
           emptyNote=""
@@ -527,19 +459,7 @@ export default function MyBookings() {
             key={b.id}
             booking={b}
             meetingLink={meetingLinks.get(b.id)}
-            actions={
-              reviewMap.has(b.id) ? (
-                <div className="text-xs font-semibold text-emerald-700">Reviewed</div>
-              ) : (
-                <button
-                  onClick={() => openReviewModal(b)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
-                >
-                  <Star className="h-4 w-4" />
-                  Leave Review
-                </button>
-              )
-            }
+            actions={null}
           />
         ))}
       </Section>
@@ -552,7 +472,7 @@ export default function MyBookings() {
           open={pickerOpen}
           onClose={closePicker}
           bookingId={pickerBooking.id}
-          tutorId={pickerBooking.tutor.id}
+          tutorId={pickerBooking.tutor?.id || pickerBooking.tutorId}
           onAssigned={async () => {
             await refresh();
             // Refresh token balances after slot assignment
@@ -571,8 +491,8 @@ export default function MyBookings() {
             }
             // Refresh demo status if this was a demo booking
             if (pickerBooking?.isDemo) {
-              window.dispatchEvent(new CustomEvent('demo-status-changed', { 
-                detail: { tutorId: pickerBooking.tutorId } 
+              globalThis.dispatchEvent(new CustomEvent('demo-status-changed', {
+                detail: { tutorId: pickerBooking.tutorId }
               }));
             }
           }}
@@ -592,72 +512,6 @@ export default function MyBookings() {
         isLoading={cancelling}
       />
 
-      {/* Review Modal */}
-      {reviewOpen && reviewBooking && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="text-lg font-semibold">Rate your session</h3>
-              <button className="p-1 rounded hover:bg-slate-100" onClick={() => setReviewOpen(false)}>
-                <XCircle className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              <div>
-                <div className="text-sm text-slate-600 mb-2">Tutor</div>
-                <div className="font-medium">{reviewBooking.tutor?.name || "Tutor"}</div>
-              </div>
-
-              <div>
-                <div className="text-sm text-slate-600 mb-2">Your rating</div>
-                <div className="flex items-center gap-2">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setReviewRating(n)}
-                      className={`rounded-full p-2 ${
-                        n <= reviewRating ? "text-amber-500" : "text-slate-300"
-                      }`}
-                      aria-label={`Rate ${n}`}
-                    >
-                      <Star className="h-6 w-6 fill-current" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-600 mb-2">Comments (optional)</label>
-                <textarea
-                  value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
-                  rows={4}
-                  className="w-full rounded-xl border px-3 py-2 text-sm"
-                  placeholder="Share a quick note about your experience..."
-                />
-              </div>
-            </div>
-
-            <div className="px-5 py-4 border-t flex items-center justify-end gap-2">
-              <button
-                className="rounded-xl border px-4 py-2 hover:bg-slate-50"
-                onClick={() => setReviewOpen(false)}
-                disabled={reviewSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                className="rounded-xl bg-amber-500 px-4 py-2 text-white hover:bg-amber-600 disabled:opacity-60"
-                onClick={submitReview}
-                disabled={reviewSubmitting}
-              >
-                {reviewSubmitting ? "Submitting..." : "Submit Review"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       </div>
     </div>
   );
@@ -668,12 +522,17 @@ function Section({
   emptyNote,
   children,
 }: {
-  title: string;
-  emptyNote: string;
-  children: React.ReactNode;
+  readonly title: string;
+  readonly emptyNote: string;
+  readonly children: React.ReactNode;
 }) {
-  const hasChildren =
-    Array.isArray(children) ? (children as any[]).length > 0 : !!children;
+  let childCount = 0;
+  if (Array.isArray(children)) {
+    childCount = children.length;
+  } else if (children) {
+    childCount = 1;
+  }
+  const hasChildren = childCount > 0;
 
   return (
     <div className="mb-8">
@@ -681,17 +540,17 @@ function Section({
         <h2 className="text-xl font-bold text-gray-900">{title}</h2>
         {hasChildren && (
           <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">
-            {Array.isArray(children) ? (children as any[]).length : 1}
+            {childCount}
           </span>
         )}
       </div>
-      {!hasChildren ? (
+      {hasChildren ? (
+        <div className="grid gap-4">{children}</div>
+      ) : (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-8 text-center">
           <AlertCircle className="h-6 w-6 text-slate-400 mx-auto mb-2" />
           <p className="text-slate-500">{emptyNote}</p>
         </div>
-      ) : (
-        <div className="grid gap-4">{children}</div>
       )}
     </div>
   );
@@ -703,18 +562,16 @@ function BookingCard({
   tokenBalance,
   meetingLink,
 }: {
-  booking: Booking;
-  actions?: React.ReactNode;
-  tokenBalance?: number;
-  meetingLink?: string;
+  readonly booking: Booking;
+  readonly actions?: React.ReactNode;
+  readonly tokenBalance?: number;
+  readonly meetingLink?: string;
 }) {
   const {
     tutor,
     startTime,
     endTime,
     status,
-    tokensCharged,
-    payment,
     isDemo,
   } = booking;
   
@@ -754,6 +611,14 @@ function BookingCard({
     ? new Date(endTime).toLocaleDateString()
     : undefined;
 
+  const statusBadgeClass = {
+    CONFIRMED: 'bg-indigo-100 text-indigo-700',
+    COMPLETED: 'bg-emerald-100 text-emerald-700',
+    CANCELED: 'bg-red-100 text-red-700',
+    PENDING: 'bg-amber-100 text-amber-700',
+    PENDING_SLOT: 'bg-amber-100 text-amber-700',
+  }[status] ?? 'bg-amber-100 text-amber-700';
+
   return (
     <div className={`bg-white rounded-xl border shadow-sm hover:shadow-md transition p-5 ${
       status === 'CANCELED' ? 'opacity-75 bg-slate-50' : ''
@@ -767,12 +632,7 @@ function BookingCard({
                 {tutor?.name || "Unknown Tutor"}
               </h3>
               <div className="flex items-center gap-2 mt-1">
-                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                  status === 'CONFIRMED' ? 'bg-indigo-100 text-indigo-700' :
-                  status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' :
-                  status === 'CANCELED' ? 'bg-red-100 text-red-700' :
-                  'bg-amber-100 text-amber-700'
-                }`}>
+                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClass}`}>
                   {statusMeta.label} {isDemo && "(Demo)"}
                 </span>
               </div>
@@ -832,42 +692,8 @@ function BookingCard({
           )}
         </div>
 
-        {/* Right: Pricing & Actions */}
+        {/* Right: Actions */}
         <div className="flex flex-col items-end gap-3 md:w-48">
-          {/* Price */}
-          <div className="text-right">
-            <p className="text-xs text-slate-600 uppercase tracking-wide">Amount</p>
-            <p className="text-2xl font-bold text-gray-900 flex items-center justify-end gap-1">
-              <IndianRupee size={20} className="text-indigo-600" />
-              {(() => {
-                if (isDemo) return "0";
-                if (startTime && endTime) {
-                  const diffMs = new Date(endTime).getTime() - new Date(startTime).getTime();
-                  const hours = Math.max(0, diffMs / 3_600_000);
-                  return Math.round((tutor?.hourlyRate || 0) * hours);
-                }
-                const fallbackTokens = Number(tokensCharged || 0);
-                return Math.round((tutor?.hourlyRate || 0) * (fallbackTokens || 0));
-              })()}
-            </p>
-          </div>
-
-          {/* Receipt Download */}
-          {payment && (
-            <div className="w-full">
-              <p className="text-xs text-slate-600 text-right mb-1">
-                {payment.currency} • {payment.status}
-              </p>
-              <button
-                onClick={() => downloadReceipt(payment.id)}
-                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition"
-              >
-                <FileDown size={16} /> Receipt
-              </button>
-            </div>
-          )}
-
-          {/* Actions */}
           {actions && <div className="w-full">{actions}</div>}
         </div>
       </div>

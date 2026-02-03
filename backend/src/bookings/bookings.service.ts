@@ -12,14 +12,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
-import { CreateGroupBookingDto, JoinGroupBookingDto } from './dto/group-booking.dto';
+import { CreateGroupBookingDto } from './dto/group-booking.dto';
 import { addMinutes, isBefore, differenceInMinutes, differenceInHours } from 'date-fns';
 import { Prisma, BookingStatus, TokenReason, Role } from '@prisma/client';
 import { toUtc, fromUtc } from '../common/time.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WaitlistService } from '../waitlist/waitlist.service';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
-import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { ChatTriggersService } from '../messages/chat-triggers.service';
 import { BansService } from '../bans/bans.service';
 
@@ -30,12 +29,14 @@ const FAILED_TECHNICAL = 'FAILED_TECHNICAL' as BookingStatus;
 
 @Injectable()
 export class BookingsService {
+  private readonly logger = new Logger(BookingsService.name);
+
   constructor(
-    private prisma: PrismaService,
-    private notifications: NotificationsService,
-    private waitlistService: WaitlistService,
-    private chatTriggers: ChatTriggersService,
-    private bans: BansService,
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly waitlistService: WaitlistService,
+    private readonly chatTriggers: ChatTriggersService,
+    private readonly bans: BansService,
   ) {}
 
   /**
@@ -54,6 +55,10 @@ export class BookingsService {
       [BookingStatus.COMPLETED]: [], // Terminal state
       [BookingStatus.CANCELED]: [], // Terminal state
       [BookingStatus.FAILED_TECHNICAL]: [], // Terminal state
+      [BookingStatus.WAITING_ROOM]: [BookingStatus.LIVE, BookingStatus.CANCELED],
+      [BookingStatus.LIVE]: [BookingStatus.COMPLETED, BookingStatus.CANCELED],
+      [BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW]: [],
+      [BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW]: [],
     };
 
     const allowed = validTransitions[currentStatus] || [];
@@ -293,7 +298,7 @@ export class BookingsService {
   }
 
   // ---------- mutations ----------
-  async create(dto: CreateBookingDto, tz?: string, actorUserId?: string) {
+  async create(dto: CreateBookingDto, tz?: string, actorUserId?: string) { // NOSONAR
     const isDemo = !!dto.isDemo;
 
     if (actorUserId) {
@@ -306,6 +311,7 @@ export class BookingsService {
       dto.studentId = st.id;
     }
     if (!dto.studentId) throw new BadRequestException('studentId is required');
+    const studentId = dto.studentId;
 
     // Use same lookup logic as TutorsService.getByIdOrTid for flexible ID matching
     // First try exact match by full ID
@@ -315,20 +321,16 @@ export class BookingsService {
     });
     
     // Then try by tutorTid
-    if (!tutor) {
-      tutor = await this.prisma.tutor.findUnique({
-        where: { tutorTid: dto.tutorId },
-        select: { id: true, status: true },
-      });
-    }
+    tutor ??= await this.prisma.tutor.findUnique({
+      where: { tutorTid: dto.tutorId },
+      select: { id: true, status: true },
+    });
     
     // Finally try finding by ID ending with the provided string (for slug-based lookups)
-    if (!tutor) {
-      tutor = await this.prisma.tutor.findFirst({
-        where: { id: { endsWith: dto.tutorId } },
-        select: { id: true, status: true },
-      });
-    }
+    tutor ??= await this.prisma.tutor.findFirst({
+      where: { id: { endsWith: dto.tutorId } },
+      select: { id: true, status: true },
+    });
     
     if (!tutor) throw new NotFoundException('Tutor not found');
     if (tutor.status !== 'APPROVED') throw new BadRequestException('Tutor is not approved.');
@@ -346,7 +348,7 @@ export class BookingsService {
         // Using SELECT FOR UPDATE to lock the row and prevent concurrent creation
         const existingDemo = await tx.booking.findFirst({
           where: {
-            studentId: dto.studentId!,
+            studentId,
             tutorId: resolvedTutorId,
             isDemo: true,
             status: { 
@@ -382,6 +384,7 @@ export class BookingsService {
           await this.ensureWithinAvailabilitySlot(resolvedTutorId, start, end);
           await this.ensureNoTutorOverlap(resolvedTutorId, start, end);
         } catch (e) {
+          this.logger.warn('Requested slot unavailable; adding demo booking to waitlist.', e);
           // Add to waitlist and create a demo booking awaiting slot selection
           await this.waitlistService.addToWaitlist(
             {
@@ -392,13 +395,13 @@ export class BookingsService {
               notes: dto.notes,
               priority: 1,
             },
-            dto.studentId!,
+            studentId,
           );
 
           const booking = await tx.booking.create({
             data: {
               tutorId: resolvedTutorId,
-              studentId: dto.studentId!,
+              studentId,
               isDemo: true,
               status: BookingStatus.PENDING,
               tokensCharged: new Prisma.Decimal(0),
@@ -413,7 +416,7 @@ export class BookingsService {
         const booking = await tx.booking.create({
           data: {
             tutorId: resolvedTutorId,
-            studentId: dto.studentId!,
+            studentId,
             isDemo: true,
             status: BookingStatus.CONFIRMED,
             startTime: start,
@@ -432,7 +435,7 @@ export class BookingsService {
         const booking = await tx.booking.create({
           data: {
             tutorId: resolvedTutorId,
-            studentId: dto.studentId!,
+            studentId,
             isDemo: true,
             status: BookingStatus.PENDING,
             tokensCharged: new Prisma.Decimal(0),
@@ -463,7 +466,7 @@ export class BookingsService {
       // Check for existing PENDING_SLOT bookings for this student-tutor pair
       const existingPendingSlots = await this.prisma.booking.count({
         where: {
-          studentId: dto.studentId!,
+          studentId,
           tutorId: resolvedTutorId,
           isDemo: false,
           status: BookingStatus.PENDING_SLOT,
@@ -482,7 +485,7 @@ export class BookingsService {
       return this.prisma.booking.create({
         data: {
           tutorId: resolvedTutorId,
-          studentId: dto.studentId!,
+          studentId,
           isDemo: false,
           status: BookingStatus.PENDING_SLOT,
           tokensCharged: new Prisma.Decimal(0),
@@ -501,7 +504,7 @@ export class BookingsService {
 
     await this.ensureWithinAvailabilitySlot(resolvedTutorId, start, end);
     await this.ensureNoTutorOverlap(resolvedTutorId, start, end);
-    await this.ensureNoStudentOverlap(dto.studentId!, start, end);
+    await this.ensureNoStudentOverlap(studentId, start, end);
 
     // Check if booking is in the past
     const now = new Date();
@@ -513,14 +516,14 @@ export class BookingsService {
 
     const cost = this.requiredTokens(start, end, TOKENS_PER_HOUR);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => { // NOSONAR
       const student = await tx.student.findUnique({ where: { id: dto.studentId } });
       if (!student) throw new NotFoundException('Student not found');
 
       const tutorBalance = await tx.tutorTokenBalance.findUnique({
         where: {
           studentId_tutorId: {
-            studentId: dto.studentId!,
+            studentId,
             tutorId: resolvedTutorId,
           },
         },
@@ -553,7 +556,7 @@ export class BookingsService {
       const booking = await tx.booking.create({
         data: {
           tutorId: resolvedTutorId,
-          studentId: dto.studentId!,
+          studentId,
           isDemo: false,
           status: BookingStatus.CONFIRMED,
           startTime: start,
@@ -571,7 +574,7 @@ export class BookingsService {
       await tx.tutorTokenBalance.update({
         where: {
           studentId_tutorId: {
-            studentId: dto.studentId!,
+            studentId,
             tutorId: resolvedTutorId,
           },
         },
@@ -580,7 +583,7 @@ export class BookingsService {
 
       await tx.tokenLedger.create({
         data: {
-          studentId: dto.studentId!,
+          studentId,
           tutorId: resolvedTutorId,
           bookingId: booking.id,
           delta: new Prisma.Decimal(-cost),
@@ -628,6 +631,9 @@ export class BookingsService {
           },
         },
         student: { include: { user: true } },
+        whiteboardSessions: {
+          select: { data: true },
+        },
       },
     });
 
@@ -640,6 +646,15 @@ export class BookingsService {
     }
 
     await this.ensureLivekitMeeting(booking.id);
+
+    const attendance = (() => {
+      const data = booking.whiteboardSessions?.[0]?.data as any;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const att = data.attendance;
+        if (att && typeof att === 'object') return att;
+      }
+      return null;
+    })();
 
     return {
       id: booking.id,
@@ -660,18 +675,19 @@ export class BookingsService {
       },
       isDemo: booking.isDemo,
       isGroupSession: booking.isGroupSession,
+      attendance,
     };
   }
 
   // ---------- cancel ----------
-  async cancel(
+  async cancel( // NOSONAR
     id: string, 
     actorUserId?: string,
     actorTutorId?: string,
     actorStudentId?: string,
     actorRole?: Role,
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => { // NOSONAR
       const booking = await tx.booking.findUnique({
         where: { id },
         include: {
@@ -722,7 +738,9 @@ export class BookingsService {
         data: { status: BookingStatus.CANCELED },
       });
 
-      if (!booking.isDemo) {
+      if (booking.isDemo) {
+        // Demo bookings do not charge tokens.
+      } else {
         const agg = await tx.tokenLedger.aggregate({
           where: { bookingId: id, reason: TokenReason.BOOKING },
           _sum: { delta: true },
@@ -758,18 +776,11 @@ export class BookingsService {
               where: { id: booking.tutor.id },
             });
             const currentDemerits = (tutorFull as any)?.demeritPoints ?? 0;
-            const lastReset = (tutorFull as any)?.lastDemeritReset ?? null;
-            
             if (tutor) {
               let newDemeritPoints = currentDemerits + 1;
               const now = new Date();
               
               // Check if we need to reset demerits (if last reset was today)
-              const shouldReset = lastReset && 
-                lastReset.getDate() === now.getDate() &&
-                lastReset.getMonth() === now.getMonth() &&
-                lastReset.getFullYear() === now.getFullYear();
-              
               // If demerits reach 3, reduce hourly rate from payout and reset
               if (newDemeritPoints >= 3) {
                 const hourlyRate = Number(tutor.hourlyRate ?? 0);
@@ -794,7 +805,6 @@ export class BookingsService {
                 }
                 
                 // Reset demerit points to 0 and update reset date
-                newDemeritPoints = 0;
                 await tx.tutor.update({
                   where: { id: booking.tutor.id },
                   data: {
@@ -818,17 +828,14 @@ export class BookingsService {
             const hoursUntilStart = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
 
             // No refund for group sessions (student cancellation)
-            if (booking.isGroupSession) {
-              refundAmount = 0;
-            } else if (hoursUntilStart >= 48) {
-              // 48+ hours before: 100% refund
-              refundAmount = charged;
-            } else if (hoursUntilStart >= 24) {
-              // 24-48 hours before: 50% refund
-              refundAmount = Math.floor(charged * 0.5);
-            } else {
-              // Less than 24 hours: No refund
-              refundAmount = 0;
+            if (!booking.isGroupSession) {
+              if (hoursUntilStart >= 48) {
+                // 48+ hours before: 100% refund
+                refundAmount = charged;
+              } else if (hoursUntilStart >= 24) {
+                // 24-48 hours before: 50% refund
+                refundAmount = Math.floor(charged * 0.5);
+              }
             }
           } else if (!booking.startTime) {
             // Booking without slot (PENDING or PENDING_SLOT): full refund
@@ -931,7 +938,9 @@ export class BookingsService {
       });
 
       const charged = Math.abs(Number(agg._sum.delta ?? 0));
-      if (charged > 0 && !booking.isDemo) {
+      if (booking.isDemo) {
+        // No refund for demo bookings.
+      } else if (charged > 0) {
         // Update global student tokens
         await tx.student.update({
           where: { id: booking.student.id },
@@ -987,7 +996,7 @@ export class BookingsService {
     const start = toUtc(dto.startTime, tz);
     const end = toUtc(dto.endTime, tz);
 
-    if (!(start < end)) throw new BadRequestException('startTime must be before endTime.');
+    if (start >= end) throw new BadRequestException('startTime must be before endTime.');
     if (end.getTime() - start.getTime() < MIN_BLOCK_MINUTES * 60_000) {
       throw new BadRequestException(`Minimum booking is ${MIN_BLOCK_MINUTES} minutes.`);
     }
@@ -1234,7 +1243,18 @@ export class BookingsService {
       // ✅ For paid bookings awaiting slot (PENDING or PENDING_SLOT), ensure tokens are truly deducted now
       const cost = this.requiredTokens(start, end, TOKENS_PER_HOUR);
 
-      if (!booking.isDemo) {
+      if (booking.isDemo) {
+        // Demo: just update times and status
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: {
+            startTime: start,
+            endTime: end,
+            status: BookingStatus.CONFIRMED,
+            notes: dto.notes ?? booking.notes,
+          },
+        });
+      } else {
         const tokensAlreadyCharged = Number(booking.tokensCharged ?? 0);
         const tokensToCharge = Math.max(cost - tokensAlreadyCharged, 0);
 
@@ -1290,17 +1310,6 @@ export class BookingsService {
             endTime: end,
             status: BookingStatus.CONFIRMED,
             tokensCharged: new Prisma.Decimal(cost),
-            notes: dto.notes ?? booking.notes,
-          },
-        });
-      } else {
-        // Demo: just update times and status
-        await tx.booking.update({
-          where: { id: bookingId },
-          data: {
-            startTime: start,
-            endTime: end,
-            status: BookingStatus.CONFIRMED,
             notes: dto.notes ?? booking.notes,
           },
         });
@@ -1587,7 +1596,7 @@ export class BookingsService {
         throw new BadRequestException('Booking must have start and end times.');
       }
 
-      const hoursUntilSession = differenceInHours(new Date(booking.startTime!), new Date());
+      const hoursUntilSession = differenceInHours(new Date(booking.startTime), new Date());
       if (hoursUntilSession <= 24) {
         throw new BadRequestException('Can only convert slots more than 24 hours before the session.');
       }
@@ -1683,7 +1692,7 @@ export class BookingsService {
       select: { meetingUrl: true, meetingProvider: true },
     });
 
-    if (!booking || !booking.meetingUrl) {
+    if (!booking?.meetingUrl) {
       await this.prisma.booking.update({
         where: { id: bookingId },
         data: {

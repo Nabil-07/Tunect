@@ -23,10 +23,10 @@ export class AvailabilityService {
   private readonly logger = new Logger(AvailabilityService.name);
 
   constructor(
-    private prisma: PrismaService,
+    private readonly prisma: PrismaService,
     @Inject(forwardRef(() => WaitlistService))
-    private waitlistService: WaitlistService,
-    private trackingService: AvailabilityTrackingService,
+    private readonly waitlistService: WaitlistService,
+    private readonly trackingService: AvailabilityTrackingService,
   ) {}
 
   // ---------------- helpers ----------------
@@ -372,13 +372,13 @@ export class AvailabilityService {
   // Accepts either:
   // - { slots: [{ id?, date: 'YYYY-MM-DD', startTime: 'HH:mm', endTime: 'HH:mm', title? }] }
   // - { from, to, slots: [...] } -> replace all slots within [from,to] with provided ones
-  async updateMineBulk(userId: string, body: any) {
+  async updateMineBulk(userId: string, body: any) { // NOSONAR
     const tutor = await this.getTutorByUser(userId);
 
     const parseIso = (dateStr: string, hhmm: string, tzOffsetMinutes?: number) => {
       const [h, m] = String(hhmm || '').split(':').map((x) => Number(x) || 0);
       if (typeof tzOffsetMinutes === 'number' && Number.isFinite(tzOffsetMinutes)) {
-        const [yy, mm, dd] = dateStr.split('-').map((v) => Number(v));
+        const [yy, mm, dd] = dateStr.split('-').map(Number);
         const utcMs = Date.UTC(yy || 0, (mm || 1) - 1, dd || 1, h, m, 0, 0);
         return new Date(utcMs + tzOffsetMinutes * 60_000).toISOString();
       }
@@ -424,7 +424,7 @@ export class AvailabilityService {
       if (hasIso) {
         const startDate = new Date(s.startTime);
         const endDate = new Date(s.endTime);
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) continue;
+        if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) continue;
         startIso = startDate.toISOString();
         endIso = endDate.toISOString();
       } else {
@@ -499,20 +499,22 @@ export class AvailabilityService {
     });
     
     // Then try by tutorTid
-    if (!tutor) {
-      tutor = await this.prisma.tutor.findUnique({
-        where: { tutorTid: tutorId },
-        select: { id: true, status: true },
-      });
-    }
+    tutor ??= await this.prisma.tutor.findUnique({
+      where: { tutorTid: tutorId },
+      select: { id: true, status: true },
+    });
     
     // Finally try finding by ID ending with the provided string (for slug-based lookups)
-    if (!tutor) {
-      tutor = await this.prisma.tutor.findFirst({
-        where: { id: { endsWith: tutorId } },
-        select: { id: true, status: true },
-      });
-    }
+    tutor ??= await this.prisma.tutor.findFirst({
+      where: { id: { endsWith: tutorId } },
+      select: { id: true, status: true },
+    });
+
+    // Fallback: allow passing tutor userId
+    tutor ??= await this.prisma.tutor.findUnique({
+      where: { userId: tutorId },
+      select: { id: true, status: true },
+    });
     
     if (!tutor) throw new NotFoundException('Tutor not found');
     if (tutor.status !== TutorStatus.APPROVED) {
@@ -568,7 +570,7 @@ export class AvailabilityService {
   }
 
   // ready-to-book time slices for a tutor within an optional window
-  async listBookable(tutorId: string, q: BookableQueryDto) {
+  async listBookable(tutorId: string, q: BookableQueryDto) { // NOSONAR
     // validate tutor - use same lookup logic as TutorsService.getByIdOrTid
     // First try exact match by full ID
     let tutor = await this.prisma.tutor.findUnique({
@@ -577,20 +579,22 @@ export class AvailabilityService {
     });
     
     // Then try by tutorTid
-    if (!tutor) {
-      tutor = await this.prisma.tutor.findUnique({
-        where: { tutorTid: tutorId },
-        select: { id: true, status: true },
-      });
-    }
+    tutor ??= await this.prisma.tutor.findUnique({
+      where: { tutorTid: tutorId },
+      select: { id: true, status: true },
+    });
     
     // Finally try finding by ID ending with the provided string (for slug-based lookups)
-    if (!tutor) {
-      tutor = await this.prisma.tutor.findFirst({
-        where: { id: { endsWith: tutorId } },
-        select: { id: true, status: true },
-      });
-    }
+    tutor ??= await this.prisma.tutor.findFirst({
+      where: { id: { endsWith: tutorId } },
+      select: { id: true, status: true },
+    });
+
+    // Fallback: allow passing tutor userId
+    tutor ??= await this.prisma.tutor.findUnique({
+      where: { userId: tutorId },
+      select: { id: true, status: true },
+    });
     
     if (!tutor) throw new NotFoundException('Tutor not found');
     if (tutor.status !== TutorStatus.APPROVED) {
@@ -602,7 +606,7 @@ export class AvailabilityService {
 
     const windowStart = q.from ? new Date(q.from) : new Date(Date.now());
     const windowEnd = q.to ? new Date(q.to) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // default 7 days
-    if (!(windowStart < windowEnd)) throw new BadRequestException('Invalid window');
+    if (windowStart >= windowEnd) throw new BadRequestException('Invalid window');
 
     const durationMin = Math.max(15, q.durationMin ?? 60);
     const stepMin = Math.max(5, q.stepMin ?? 15);

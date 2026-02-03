@@ -27,7 +27,16 @@ export type BookingDto = {
   tutorId: string;
   studentId: string;
   isDemo: boolean;
-  status: "PENDING" | "PENDING_SLOT" | "CONFIRMED" | "COMPLETED" | "CANCELED";
+  status:
+    | "PENDING"
+    | "PENDING_SLOT"
+    | "CONFIRMED"
+    | "WAITING_ROOM"
+    | "LIVE"
+    | "COMPLETED"
+    | "CANCELED"
+    | "AUTO_CANCELLED_TUTOR_NO_SHOW"
+    | "AUTO_CANCELLED_STUDENT_NO_SHOW";
   startTime?: string | null;
   endTime?: string | null;
   createdAt?: string;
@@ -48,6 +57,11 @@ export type BookingDto = {
 export type BookingDetailsDto = GroupBookingDto & {
   meetingUrl?: string;
   meetingProvider?: string;
+  attendance?: {
+    studentJoinedAt?: string;
+    tutorJoinedAt?: string;
+    startedAt?: string;
+  } | null;
 };
 
 /* ========== Helpers ========== */

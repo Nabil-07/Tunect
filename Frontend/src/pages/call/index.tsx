@@ -9,6 +9,7 @@ import {
   TrackLoop,
   useParticipants,
   useTracks,
+  useRoomContext,
 } from "@livekit/components-react";
 import { Track, type Participant, DisconnectReason } from "livekit-client";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
@@ -17,6 +18,7 @@ import { getTokenPayload } from "../../lib/apiClient";
 import { fetchLivekitToken } from "../../services/livekit";
 import { getBookingPerspective } from "../../utils/bookingPerspective";
 import { useAuth } from "../../contexts/AuthContext";
+import Whiteboard from "../../components/Whiteboard/Whiteboard";
 import "@livekit/components-styles";
 
 function ParticipantList() {
@@ -37,7 +39,7 @@ function ParticipantList() {
   );
 }
 
-function LivekitStage() {
+function LivekitStage({ showControls }: { showControls: boolean }) {
   const cameraTracks = useTracks(
     [{ source: Track.Source.Camera, withPlaceholder: true }],
     { onlySubscribed: false }
@@ -62,7 +64,78 @@ function LivekitStage() {
         </GridLayout>
       </div>
       <RoomAudioRenderer />
-      <ControlBar />
+      {showControls ? <ControlBar /> : null}
+    </div>
+  );
+}
+
+function CallRoomContent({ bookingId }: { bookingId: string }) {
+  const participants = useParticipants() as Participant[];
+  const room = useRoomContext();
+  const [callStartedAt, setCallStartedAt] = useState<Date | null>(null);
+  const [sideTab, setSideTab] = useState<"participants" | "whiteboard">("participants");
+
+  const hasBothJoined = participants.length >= 2;
+
+  useEffect(() => {
+    if (!callStartedAt && hasBothJoined) {
+      setCallStartedAt(new Date());
+    }
+  }, [callStartedAt, hasBothJoined]);
+
+  useEffect(() => {
+    if (!callStartedAt) return;
+    const timer = globalThis.setTimeout(() => {
+      room.disconnect();
+    }, 60 * 60 * 1000);
+    return () => globalThis.clearTimeout(timer);
+  }, [callStartedAt, room]);
+
+  return (
+    <div className="grid h-[calc(100vh-56px)] grid-cols-1 gap-4 p-4 lg:grid-cols-[1fr_320px]">
+      <div className="relative">
+        {!hasBothJoined && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 text-sm text-slate-700">
+            Waiting room: the class will start when both participants join.
+          </div>
+        )}
+        <LivekitStage showControls={hasBothJoined} />
+      </div>
+      <div className="rounded-2xl border bg-white p-4 flex flex-col">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <button
+            type="button"
+            onClick={() => setSideTab("participants")}
+            className={
+              sideTab === "participants"
+                ? "rounded-lg bg-slate-900 px-3 py-1 text-white"
+                : "rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100"
+            }
+          >
+            Participants
+          </button>
+          <button
+            type="button"
+            onClick={() => setSideTab("whiteboard")}
+            className={
+              sideTab === "whiteboard"
+                ? "rounded-lg bg-slate-900 px-3 py-1 text-white"
+                : "rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100"
+            }
+          >
+            Whiteboard
+          </button>
+        </div>
+        <div className="flex-1 min-h-0">
+          {sideTab === "participants" ? (
+            <ParticipantList />
+          ) : (
+            <div className="h-full rounded-xl border">
+              <Whiteboard bookingId={bookingId} className="h-full min-h-[360px]" />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -118,6 +191,15 @@ export default function CallPage() {
 
   useEffect(() => {
     if (!bookingId || !data || !me.id) return;
+
+    if (data.startTime) {
+      const start = new Date(data.startTime);
+      const openAt = new Date(start.getTime() - 5 * 60 * 1000);
+      if (new Date() < openAt) {
+        setAccessDenied('Classroom opens 5 minutes before start time.');
+        return;
+      }
+    }
     
     // Try matching by profile IDs first (most reliable)
     const studentId = (me as any).studentId;
@@ -212,6 +294,19 @@ export default function CallPage() {
     return <div className="p-6">Failed to load class details.</div>;
   }
 
+  if (
+    data.status === "CANCELED" ||
+    data.status === "AUTO_CANCELLED_TUTOR_NO_SHOW" ||
+    data.status === "AUTO_CANCELLED_STUDENT_NO_SHOW"
+  ) {
+    return (
+      <div className="p-6">
+        <div className="text-lg font-semibold text-slate-900">Class not available</div>
+        <div className="mt-2 text-sm text-slate-700">This class has been closed due to a no-show or cancellation.</div>
+      </div>
+    );
+  }
+
   if (accessDenied) {
     return (
       <div className="p-6">
@@ -269,13 +364,7 @@ export default function CallPage() {
           }}
           className="h-full"
         >
-          <div className="grid h-[calc(100vh-56px)] grid-cols-1 gap-4 p-4 lg:grid-cols-[1fr_280px]">
-            <LivekitStage />
-            <div className="rounded-2xl border bg-white p-4">
-              <div className="mb-3 text-sm font-semibold text-slate-900">Participants</div>
-              <ParticipantList />
-            </div>
-          </div>
+          <CallRoomContent bookingId={bookingId} />
         </LiveKitRoom>
       )}
     </div>

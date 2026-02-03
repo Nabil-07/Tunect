@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { BookingStatus, Prisma } from '@prisma/client';
+import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
 
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
@@ -10,7 +10,7 @@ function toNum(v: unknown): number {
 
 @Injectable()
 export class StudentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Helper method to ensure student profile exists, auto-creating if needed
@@ -82,21 +82,19 @@ export class StudentsService {
 
     // Auto-create student profile if it doesn't exist (defensive approach)
     let student = user.student;
-    if (!student) {
-      student = await this.prisma.student.create({
-        data: { userId, tokens: 0 },
-        select: {
-          id: true,
-          grade: true,
-          tokens: true,
-          bio: true,
-          timezone: true,
-          preferredLanguage: true,
-          createdAt: true,
-          updatedAt: true,
-        } as any,
-      });
-    }
+    student ??= await this.prisma.student.create({
+      data: { userId, tokens: 0 },
+      select: {
+        id: true,
+        grade: true,
+        tokens: true,
+        bio: true,
+        timezone: true,
+        preferredLanguage: true,
+        createdAt: true,
+        updatedAt: true,
+      } as any,
+    });
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -163,7 +161,7 @@ export class StudentsService {
 
     // Debug logging (remove in production if needed)
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[getMe] Student ${student.id}: completedCount=${completedCount}, monthlyCompleted=${monthlyCompletedBookings.length}, expiredWithAttendance=${expiredWithAttendance.length}, hoursStudied=${hoursStudied.toFixed(2)}`);
+      console.log(`[getMe] Student ID: ${typeof student.id === 'object' ? JSON.stringify(student.id) : student.id}, completedCount=${completedCount}, monthlyCompleted=${monthlyCompletedBookings.length}, expiredWithAttendance=${expiredWithAttendance.length}, hoursStudied=${hoursStudied.toFixed(2)}`);
     }
 
     const studentPayload = {
@@ -617,7 +615,7 @@ export class StudentsService {
           where: {
             studentId: studentIdToUse,
             tutorId: b.tutorId,
-            reason: 'PURCHASED', // Only purchased tokens expire
+            reason: 'PURCHASED' as TokenReason, // Only purchased tokens expire
             expiresAt: { not: null },
             delta: { gt: 0 }, // Only count added tokens
           },

@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { UpdateReviewDto } from './dto/update-review.dto';
 import { QueryReviewsDto } from './dto/query-reviews.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -52,6 +53,17 @@ export class ReviewsController {
   @Delete(':id')
   removeMine(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.reviews.removeMine(userId, id);
+  }
+
+  /** Student updates own review */
+  @UseGuards(JwtAuthGuard)
+  @Put(':id')
+  updateMine(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateReviewDto,
+  ) {
+    return this.reviews.updateMine(userId, id, dto);
   }
 
   /** Admin deletes any review */

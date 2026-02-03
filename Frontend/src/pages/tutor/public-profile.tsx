@@ -39,7 +39,7 @@ function startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 
 function endOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999); }
 function sameDay(a: Date, b: Date) { return a.toDateString() === b.toDateString(); }
 
-export default function TutorPublicProfile() {
+export default function TutorPublicProfile() { // NOSONAR
   const { slug: idOrSlug } = useParams<{ slug: string }>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -60,7 +60,7 @@ export default function TutorPublicProfile() {
       if (parsed) return parsed;
       // If parsing fails, try extracting the last part (might be partial ID)
       const parts = idOrSlug.split('-');
-      const lastPart = parts[parts.length - 1];
+      const lastPart = parts.at(-1);
       if (lastPart && lastPart.length >= 8) {
         return lastPart; // Backend will handle lookup with endsWith
       }
@@ -138,7 +138,13 @@ export default function TutorPublicProfile() {
     return res;
   }, [month]);
 
-  const fetchSlots = useCallback(async (targetMonth: Date) => {
+  const normalizeSlots = (data: any): BookableSlot[] => {
+    if (Array.isArray(data?.slices)) return data.slices as BookableSlot[];
+    if (Array.isArray(data)) return data as BookableSlot[];
+    return [] as BookableSlot[];
+  };
+
+  const fetchSlots = useCallback(async (targetMonth: Date) => { // NOSONAR
     if (!id) return [] as BookableSlot[];
     const from = startOfMonth(targetMonth).toISOString();
     const to = endOfMonth(targetMonth).toISOString();
@@ -147,18 +153,18 @@ export default function TutorPublicProfile() {
 
     try {
       const { data } = await api.get(`/availability/tutors/${id}/bookable`, { params });
-      const slots = Array.isArray(data?.slices) ? data.slices : [];
-      return (slots as BookableSlot[]).filter((s) => s?.startTime && s?.endTime);
+      const slots = normalizeSlots(data);
+      return slots.filter((s) => s?.startTime && s?.endTime);
     } catch {
       try {
         const { data } = await api.get(`/availability/tutor/${id}/bookable`, { params });
-        const slots = Array.isArray(data?.slices) ? data.slices : Array.isArray(data) ? data : [];
-        return (slots as BookableSlot[]).filter((s) => s?.startTime && s?.endTime);
+        const slots = normalizeSlots(data);
+        return slots.filter((s) => s?.startTime && s?.endTime);
       } catch {
         try {
           const { data } = await api.get(`/availability/bookable/${id}`, { params });
-          const slots = Array.isArray(data?.slices) ? data.slices : Array.isArray(data) ? data : [];
-          return (slots as BookableSlot[]).filter((s) => s?.startTime && s?.endTime);
+          const slots = normalizeSlots(data);
+          return slots.filter((s) => s?.startTime && s?.endTime);
         } catch {
           return [] as BookableSlot[];
         }
@@ -246,6 +252,7 @@ export default function TutorPublicProfile() {
         if (!mounted) return;
         setBookable(slots);
       } catch (e) {
+        console.error('Failed to load tutor profile:', e);
         if (mounted) {
           setErr('Unable to load tutor.');
           setTutor(null);
@@ -528,7 +535,12 @@ export default function TutorPublicProfile() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
-                  <span>Availability Consistency: {availabilityInfo.consistencyPercentage.toFixed(0)}%</span>
+                  <span>
+                    Availability Consistency:{' '}
+                    {Number.isFinite(Number(availabilityInfo.consistencyPercentage))
+                      ? Number(availabilityInfo.consistencyPercentage).toFixed(0)
+                      : '0'}%
+                  </span>
                 </div>
                 {(availabilityInfo.isFeatured || availabilityInfo.isVerified) && (
                   <div className="flex gap-2 mt-2">

@@ -1,7 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import * as bodyParser from 'body-parser';
 
@@ -59,7 +59,6 @@ import { MetricsModule } from './metrics/metrics.module';
 import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 import { EncryptResponseInterceptor } from './common/interceptors/encrypt-response.interceptor';
 import { MetricsInterceptor } from './metrics/metrics.interceptor';
-import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 @Module({

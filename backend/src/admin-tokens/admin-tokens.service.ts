@@ -1,15 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-export enum TokenReason {
-  BOOKING = 'BOOKING',
-  REFUND = 'REFUND',
-  ADMIN_ADJUSTMENT = 'ADMIN_ADJUSTMENT',
-}
-
 @Injectable()
 export class AdminTokensService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async adjust(dto: { studentId: string; delta: number; bookingId?: string; paymentId?: string }) {
     if (dto.delta === 0) throw new BadRequestException('Delta cannot be zero');

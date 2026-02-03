@@ -5,7 +5,7 @@ import { NotifierService } from './notifier.service';
 import { AvailabilityTrackingService } from '../availability/availability-tracking.service';
 import { fromUtc } from '../common/time.util';
 import { addMinutes } from 'date-fns';
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
 
 // Config: how many minutes before session we remind
 const REMIND_BEFORE_MIN = 30;
@@ -27,6 +27,20 @@ export class TasksService {
     if (rate < 400) return 25;
     if (rate < 700) return 22;
     return 18;
+  }
+
+  private parseAttendance(data: any): { studentJoinedAt?: string; tutorJoinedAt?: string; startedAt?: string } {
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const att = (data as any).attendance;
+      if (att && typeof att === 'object') {
+        return {
+          studentJoinedAt: (att as any).studentJoinedAt,
+          tutorJoinedAt: (att as any).tutorJoinedAt,
+          startedAt: (att as any).startedAt,
+        };
+      }
+    }
+    return {};
   }
 
   // 1) Every minute: send reminders for sessions starting within next 30 minutes
@@ -182,6 +196,142 @@ export class TasksService {
     }
     if (skippedNoAttendance > 0) {
       this.logger.log(`Skipped ${skippedNoAttendance} sessions without attendance evidence (not auto-completed).`);
+    }
+  }
+
+  // 2.5) Every minute: auto-handle no-show after 10 minutes from start
+  @Interval(60 * 1000)
+  async handleNoShowBookings() {
+    const now = new Date();
+    const cutoff = addMinutes(now, -10);
+
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        status: { in: [BookingStatus.CONFIRMED, BookingStatus.WAITING_ROOM] },
+        startTime: { not: null, lte: cutoff },
+        noShowCheckAt: null,
+      },
+      include: {
+        tutor: { select: { id: true, hourlyRate: true } },
+        student: { select: { id: true } },
+        whiteboardSessions: { select: { data: true } },
+      },
+    });
+
+    for (const booking of bookings) {
+      try {
+        const attendance = this.parseAttendance(booking.whiteboardSessions?.[0]?.data);
+        const studentJoined = !!attendance.studentJoinedAt;
+        const tutorJoined = !!attendance.tutorJoinedAt;
+
+        if (studentJoined && tutorJoined) {
+          await this.prisma.booking.update({
+            where: { id: booking.id },
+            data: { status: BookingStatus.LIVE, noShowCheckAt: now },
+          });
+          continue;
+        }
+
+        const isTutorNoShow = studentJoined && !tutorJoined;
+        const isStudentNoShow = tutorJoined && !studentJoined;
+        const bothMissing = !studentJoined && !tutorJoined;
+
+        await this.prisma.$transaction(async (tx) => {
+          if (isTutorNoShow || bothMissing) {
+            await tx.booking.update({
+              where: { id: booking.id },
+              data: {
+                status: BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW,
+                refundProcessed: true,
+                noShowCheckAt: now,
+              },
+            });
+
+            if (!booking.isDemo) {
+              const refundAmount = 1;
+              const existingBalance = await tx.tutorTokenBalance.findUnique({
+                where: {
+                  studentId_tutorId: {
+                    studentId: booking.studentId,
+                    tutorId: booking.tutorId,
+                  },
+                },
+              });
+
+              if (existingBalance) {
+                await tx.tutorTokenBalance.update({
+                  where: {
+                    studentId_tutorId: {
+                      studentId: booking.studentId,
+                      tutorId: booking.tutorId,
+                    },
+                  },
+                  data: { balance: { increment: refundAmount } },
+                });
+                await tx.student.update({
+                  where: { id: booking.studentId },
+                  data: { tokens: { increment: refundAmount } },
+                });
+              } else {
+                await tx.student.update({
+                  where: { id: booking.studentId },
+                  data: { tokens: { increment: refundAmount } },
+                });
+              }
+
+              await tx.tokenLedger.create({
+                data: {
+                  studentId: booking.studentId,
+                  tutorId: booking.tutorId,
+                  delta: new Prisma.Decimal(refundAmount),
+                  reason: TokenReason.REFUND,
+                  bookingId: booking.id,
+                },
+              });
+            }
+          } else if (isStudentNoShow) {
+            await tx.booking.update({
+              where: { id: booking.id },
+              data: {
+                status: BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW,
+                refundProcessed: true,
+                noShowCheckAt: now,
+              },
+            });
+
+            if (!booking.isDemo) {
+              const start = booking.startTime!;
+              const end = booking.endTime ?? addMinutes(start, 60);
+              const hours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
+              const hourlyRate = Number(booking.tutor?.hourlyRate ?? 0);
+              const bookingAmount = hours * hourlyRate;
+
+              const feePercent = this.platformFeePercent(hourlyRate);
+              const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
+
+              if (tutorShare > 0) {
+                await tx.tutorWallet.upsert({
+                  where: { tutorId: booking.tutorId },
+                  update: { balance: { increment: tutorShare } },
+                  create: { tutorId: booking.tutorId, balance: tutorShare },
+                });
+
+                await tx.tutorWalletLedger.create({
+                  data: {
+                    tutorId: booking.tutorId,
+                    bookingId: booking.id,
+                    delta: tutorShare,
+                    reason: 'BOOKING_EARNED',
+                    note: `Auto no-show payout for booking ${booking.id}`,
+                  },
+                });
+              }
+            }
+          }
+        });
+      } catch (error) {
+        this.logger.warn(`Failed no-show handling for booking ${booking.id}: ${error}`);
+      }
     }
   }
 
