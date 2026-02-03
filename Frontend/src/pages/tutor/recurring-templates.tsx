@@ -45,7 +45,6 @@ export default function RecurringTemplates() {
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
-          'Expires': '0',
         },
         // Prevent axios from caching the response - add timestamp param to bypass browser cache
         params: forceRefresh ? { _t: Date.now() } : {},
