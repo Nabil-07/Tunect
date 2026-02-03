@@ -9,6 +9,10 @@ export class WhiteboardService {
     private s3Service: S3Service,
   ) {}
 
+  private isPlainObject(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
   async getWhiteboardData(bookingId: string, userId: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
@@ -52,16 +56,32 @@ export class WhiteboardService {
       throw new ForbiddenException('Access denied');
     }
 
+    const existing = await this.prisma.whiteboardSession.findUnique({
+      where: { bookingId },
+      select: { data: true },
+    });
+
+    const existingAttendance =
+      this.isPlainObject(existing?.data) && this.isPlainObject((existing?.data as any).attendance)
+        ? (existing?.data as any).attendance
+        : null;
+
+    const mergedData = this.isPlainObject(data)
+      ? { ...data, ...(existingAttendance ? { attendance: existingAttendance } : {}) }
+      : existingAttendance
+        ? { attendance: existingAttendance }
+        : data;
+
     // Upsert whiteboard data
     return this.prisma.whiteboardSession.upsert({
       where: { bookingId },
       update: {
-        data,
+        data: mergedData,
         updatedAt: new Date(),
       },
       create: {
         bookingId,
-        data,
+        data: mergedData,
       },
     });
   }

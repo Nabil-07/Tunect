@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus, Prisma } from '@prisma/client';
 import { addMinutes } from 'date-fns';
 import { AccessToken } from 'livekit-server-sdk';
 
@@ -13,6 +13,10 @@ export class LivekitService {
     private readonly prisma: PrismaService,
     private readonly cfg: ConfigService,
   ) {}
+
+  private isPlainObject(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
 
   private getApiKey() {
     const key = this.cfg.get<string>('LIVEKIT_API_KEY') || '';
@@ -66,6 +70,8 @@ export class LivekitService {
 
     const isAllowedStatus =
       booking.status === BookingStatus.CONFIRMED ||
+      booking.status === BookingStatus.WAITING_ROOM ||
+      booking.status === BookingStatus.LIVE ||
       booking.isDemo;
     if (!isAllowedStatus) {
       throw new ForbiddenException('Booking is not active');
@@ -143,31 +149,78 @@ export class LivekitService {
       throw new ForbiddenException('You are not part of this booking');
     }
 
-    // Track attendance: If student is joining, ensure whiteboard session exists (marks attendance)
-    // This is better than relying solely on whiteboard data - token request indicates intent to join
-    if (isStudent && booking.studentId) {
-      try {
-        // Check if whiteboard session exists, if not create one to mark attendance
-        const existingWhiteboard = await this.prisma.whiteboardSession.findUnique({
-          where: { bookingId },
-          select: { id: true },
-        });
+    // Track attendance: mark join times in whiteboard session data
+    try {
+      const existingWhiteboard = await this.prisma.whiteboardSession.findUnique({
+        where: { bookingId },
+        select: { id: true, data: true },
+      });
 
-        if (!existingWhiteboard) {
-          // Create whiteboard session to mark that student is joining/attending
-          // This serves as attendance tracking for LiveKit participation
-          await this.prisma.whiteboardSession.create({
-            data: {
-              bookingId,
-              data: { joined: true, joinedAt: new Date().toISOString() }, // Mark attendance
-            },
-          });
-          this.logger.debug(`[LiveKit] Created whiteboard session for booking ${bookingId} to track attendance`);
-        }
-      } catch (error) {
-        // Don't fail token generation if attendance tracking fails
-        this.logger.warn(`[LiveKit] Failed to track attendance for booking ${bookingId}:`, error);
+      const nowIso = new Date().toISOString();
+      const baseData: Record<string, Prisma.InputJsonValue> = this.isPlainObject(existingWhiteboard?.data)
+        ? (existingWhiteboard?.data as Record<string, Prisma.InputJsonValue>)
+        : {};
+      const existingAttendance: Record<string, Prisma.InputJsonValue> = this.isPlainObject(baseData.attendance)
+        ? (baseData.attendance as Record<string, Prisma.InputJsonValue>)
+        : {};
+
+      const attendancePatch: Record<string, Prisma.InputJsonValue> = {};
+      if (isStudent && booking.studentId) {
+        attendancePatch.studentJoinedAt = existingAttendance.studentJoinedAt ?? nowIso;
       }
+      if (isTutor && booking.tutorId) {
+        attendancePatch.tutorJoinedAt = existingAttendance.tutorJoinedAt ?? nowIso;
+      }
+
+      const mergedAttendance: Record<string, Prisma.InputJsonValue> = {
+        ...existingAttendance,
+        ...attendancePatch,
+      };
+
+      if (
+        !mergedAttendance.startedAt &&
+        mergedAttendance.studentJoinedAt &&
+        mergedAttendance.tutorJoinedAt
+      ) {
+        mergedAttendance.startedAt = nowIso;
+      }
+
+      const mergedData: Prisma.InputJsonObject = {
+        ...baseData,
+        attendance: mergedAttendance as Prisma.InputJsonObject,
+      };
+
+      await this.prisma.whiteboardSession.upsert({
+        where: { bookingId },
+        update: {
+          data: mergedData,
+          updatedAt: new Date(),
+        },
+        create: {
+          bookingId,
+          data: mergedData,
+        },
+      });
+
+      const hasStudentJoined = !!mergedAttendance.studentJoinedAt;
+      const hasTutorJoined = !!mergedAttendance.tutorJoinedAt;
+      const shouldMoveToLive = hasStudentJoined && hasTutorJoined;
+
+      if (
+        booking.status === BookingStatus.CONFIRMED ||
+        booking.status === BookingStatus.WAITING_ROOM
+      ) {
+        const nextStatus = shouldMoveToLive ? BookingStatus.LIVE : BookingStatus.WAITING_ROOM;
+        if (nextStatus !== booking.status) {
+          await this.prisma.booking.update({
+            where: { id: bookingId },
+            data: { status: nextStatus },
+          });
+        }
+      }
+    } catch (error) {
+      // Don't fail token generation if attendance tracking fails
+      this.logger.warn(`[LiveKit] Failed to track attendance for booking ${bookingId}:`, error);
     }
 
     const apiKey = this.getApiKey();

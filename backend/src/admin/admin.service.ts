@@ -16,9 +16,9 @@ export class AdminService {
   private readonly cacheTtlMs = 30_000;
 
   constructor(
-    private prisma: PrismaService,
-    private ledger: TokenLedgerService,
-    private audit: AuditService,
+    private readonly prisma: PrismaService,
+    private readonly ledger: TokenLedgerService,
+    private readonly audit: AuditService,
   ) {}
 
   private getFromCache<T>(key: string): T | undefined {
@@ -362,7 +362,7 @@ export class AdminService {
           where: {
             studentId,
             tutorId: balance.tutorId,
-            reason: 'PURCHASED',
+            reason: 'PURCHASED' as TokenReason,
             expiresAt: { not: null },
             delta: { gt: 0 },
           },

@@ -5,11 +5,17 @@ export default function PaymentSuccess() {
   const [params] = useSearchParams();
   const nav = useNavigate();
   const orderId = params.get("orderId") || params.get("order_id") || "—";
+  const tutorId = params.get("tutorId") || "";
 
   // if the student came here after a booking purchase without slot,
   // prepare to prompt slot selection on the bookings page
   function goPickSlot() {
     localStorage.setItem("PROMPT_SELECT_SLOT", "1");
+    if (tutorId) {
+      localStorage.setItem("PROMPT_TUTOR_ID", tutorId);
+      nav(`/student/bookings?promptSelect=1&tutorId=${tutorId}`);
+      return;
+    }
     nav("/student/bookings?promptSelect=1");
   }
 

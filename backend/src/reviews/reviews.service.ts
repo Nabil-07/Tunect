@@ -11,7 +11,7 @@ import { BookingStatus } from '@prisma/client';
 
 @Injectable()
 export class ReviewsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /** Student creates a review for a completed (or finished) booking they attended. */
   async create(studentUserId: string, dto: CreateReviewDto) {
@@ -42,14 +42,23 @@ export class ReviewsService {
       throw new BadRequestException('You can review only after the session ends.');
     }
 
+    const student = await this.prisma.student.findUnique({
+      where: { userId: studentUserId },
+      select: { id: true },
+    });
+    if (!student) throw new NotFoundException('Student profile not found');
+
+    // Enforce one review per tutor for this student
+    const existing = await this.prisma.review.findFirst({
+      where: { studentId: student.id, tutorId: booking.tutorId },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException('You have already reviewed this tutor. You can edit or delete your review.');
+    }
+
     // Create the review (unique bookingId already enforced in schema)
     try {
-      const student = await this.prisma.student.findUnique({
-        where: { userId: studentUserId },
-        select: { id: true },
-      });
-      if (!student) throw new NotFoundException('Student profile not found');
-
       const review = await this.prisma.review.create({
         data: {
           bookingId: booking.id,
@@ -65,6 +74,27 @@ export class ReviewsService {
       if (e?.code === 'P2002') throw new BadRequestException('You have already reviewed this session.');
       throw e;
     }
+  }
+
+  /** Student updates own review. */
+  async updateMine(studentUserId: string, reviewId: string, dto: { rating?: number; comment?: string }) {
+    const student = await this.prisma.student.findUnique({
+      where: { userId: studentUserId },
+      select: { id: true },
+    });
+    if (!student) throw new NotFoundException('Student profile not found');
+
+    const review = await this.prisma.review.findUnique({ where: { id: reviewId } });
+    if (!review) throw new NotFoundException('Review not found');
+    if (review.studentId !== student.id) throw new ForbiddenException('Not your review.');
+
+    return this.prisma.review.update({
+      where: { id: reviewId },
+      data: {
+        rating: dto.rating ?? review.rating,
+        comment: dto.comment ?? review.comment,
+      },
+    });
   }
 
   /** Student’s own reviews (paginated). */
@@ -89,6 +119,7 @@ export class ReviewsService {
           createdAt: true,
           tutorId: true,
           bookingId: true,
+          tutor: { select: { id: true, user: { select: { name: true, email: true } } } },
         },
       }),
       this.prisma.review.count({ where: { studentId: student.id } }),
@@ -106,20 +137,16 @@ export class ReviewsService {
     });
     
     // Then try by tutorTid
-    if (!tutor) {
-      tutor = await this.prisma.tutor.findUnique({
-        where: { tutorTid: tutorId },
-        select: { id: true },
-      });
-    }
+    tutor ??= await this.prisma.tutor.findUnique({
+      where: { tutorTid: tutorId },
+      select: { id: true },
+    });
     
     // Finally try finding by ID ending with the provided string (for slug-based lookups)
-    if (!tutor) {
-      tutor = await this.prisma.tutor.findFirst({
-        where: { id: { endsWith: tutorId } },
-        select: { id: true },
-      });
-    }
+    tutor ??= await this.prisma.tutor.findFirst({
+      where: { id: { endsWith: tutorId } },
+      select: { id: true },
+    });
     
     // Use resolved tutor ID (or original if not found - will return empty results)
     const resolvedTutorId = tutor?.id || tutorId;

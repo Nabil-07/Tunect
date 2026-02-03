@@ -146,6 +146,9 @@ model Booking {
   walletLedger            TutorWalletLedger[]
   waitlist                Waitlist[]
   whiteboardSessions      WhiteboardSession[]
+  demeritApplied          Boolean?                  @default(false)
+  noShowCheckAt           DateTime?
+  refundProcessed         Boolean?                  @default(false)
 
   @@index([isGroupSession, currentEnrollment, maxStudents])
   @@index([recurringTemplateId])
@@ -630,6 +633,8 @@ model Review {
   comment   String?
   createdAt DateTime @default(now())
   bookingId String   @unique
+  isDeleted Boolean? @default(false)
+  updatedAt DateTime? @default(now()) @updatedAt
   booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
@@ -749,6 +754,7 @@ model TokenLedger {
   createdAt DateTime    @default(now())
   expiresAt DateTime?   // Token expiration date (60 days after purchase for PURCHASED tokens)
   tutorId   String?
+  description String?
   booking   Booking?    @relation(fields: [bookingId], references: [id])
   payment   Payment?    @relation(fields: [paymentId], references: [id])
   student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -813,6 +819,8 @@ model Tutor {
   tokenTransferRequestsTo TokenTransferRequest[] @relation("ToTutor")
   refundRequests      RefundRequest[]
   availabilityAlerts  TutorAvailabilityAlert[]
+  isAutoSuspended     Boolean?                  @default(false)
+  noShowCount         Int?                      @default(0)
 
   @@index([country])
   @@index([hourlyRate])
@@ -1168,6 +1176,10 @@ enum BookingStatus {
   CANCELED
   FAILED_TECHNICAL
   PENDING_SLOT
+  WAITING_ROOM
+  LIVE
+  AUTO_CANCELLED_TUTOR_NO_SHOW
+  AUTO_CANCELLED_STUDENT_NO_SHOW
 }
 
 enum CertificateType {
@@ -1283,6 +1295,9 @@ enum TokenReason {
   BOOKING
   REFUND
   ADMIN_ADJUSTMENT
+  NO_SHOW_REFUND
+  SESSION_COMPLETION
+  PURCHASED
 }
 
 enum AuditEntityType {

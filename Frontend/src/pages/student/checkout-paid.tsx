@@ -11,7 +11,7 @@ declare global {
 }
 
 async function loadRazorpayScript(): Promise<void> {
-  if (window.Razorpay) return;
+  if (globalThis.Razorpay) return;
   await new Promise<void>((resolve, reject) => {
     const s = document.createElement('script');
     s.src = 'https://checkout.razorpay.com/v1/checkout.js';
@@ -82,11 +82,12 @@ export default function StudentCheckoutPaid() {
                 razorpay_signature,
               });
               if (verification?.ok) {
-                navigate(`/student/payment/success?orderId=${order.orderId}`, { replace: true });
+                navigate(`/student/payment/success?orderId=${order.orderId}&tutorId=${tutorId}`, { replace: true });
               } else {
                 navigate(`/student/payment/failure?orderId=${order.orderId}`, { replace: true });
               }
             } catch (e) {
+              console.error('Payment verification failed:', e);
               navigate(`/student/payment/failure?orderId=${order.orderId}`, { replace: true });
             }
           },
@@ -100,7 +101,7 @@ export default function StudentCheckoutPaid() {
 
         if (!mounted) return;
 
-        const rzp = new window.Razorpay(options);
+        const rzp = new globalThis.Razorpay(options);
         rzp.open();
       } catch (e: any) {
         if (mounted) setErr(e?.message || 'Could not start checkout.');

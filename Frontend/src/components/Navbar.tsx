@@ -9,103 +9,110 @@ import { useAuth } from '../contexts/AuthContext';
 import NotificationBell from './NotificationBell';
 
 /* ---------------- helpers ---------------- */
-function normalizeRole(r?: string): 'student' | 'tutor' | 'admin' {
+type RoleLower = 'student' | 'tutor' | 'admin';
+
+function normalizeRole(r?: string): RoleLower {
   const up = String(r || '').toUpperCase();
   if (up === 'ADMIN') return 'admin';
   if (up === 'TUTOR') return 'tutor';
   return 'student';
 }
-function roleDashboard(role?: 'student' | 'tutor' | 'admin') {
+function roleDashboard(role?: RoleLower) {
   if (role === 'tutor') return '/tutor/dashboard';
   if (role === 'admin') return '/admin/dashboard';
   return '/student/dashboard';
 }
 
-function roleMessages(role?: 'student' | 'tutor' | 'admin') {
+function roleMessages(role?: RoleLower) {
   if (role === 'tutor') return '/tutor/messages';
   if (role === 'admin') return '/admin/messages';
   return '/student/messages';
 }
 
-const roleNotifications = (role?: 'student' | 'tutor' | 'admin') => {
+const roleNotifications = (role?: RoleLower) => {
   if (role === 'tutor') return '/tutor/notifications';
   if (role === 'admin') return '/admin/notifications';
   return '/student/notifications';
 };
 
-/* -------- public menus (before login) -------- */
-const PUBLIC_MAIN = [
-  { to: '/', label: 'Home' },
-  { to: '/find-tutors', label: 'Find Tutor' },
-  { to: '/become-tutor', label: 'Become a Tutor' },
-  { to: '/how-it-works', label: 'How it Works' },
-];
-const PUBLIC_EXTRA = [
-  { to: '/about', label: 'About' },
-  { to: '/pricing', label: 'Pricing' },
-  { to: '/support', label: 'Support' },
+type NavItem = { label: string; to: string };
+
+const PUBLIC_MAIN: NavItem[] = [
+  { label: 'Home', to: '/' },
+  { label: 'Find Tutor', to: '/find-tutors' },
+  { label: 'Become a Tutor', to: '/become-tutor' },
 ];
 
-/* -------- role menus (after login) -------- */
-const STUDENT_CENTER = [
-  { to: '/', label: 'Home' },
-  { to: '/find-tutors', label: 'Find Tutor' },
-  { to: '/student/dashboard', label: 'Dashboard' },
-  { to: '/student/bookings', label: 'Bookings' },
-  { to: '/student/sessions', label: 'Sessions' },
-  { to: '/student/messages', label: 'Messages' },
+const PUBLIC_EXTRA: NavItem[] = [
+  { label: 'About', to: '/about' },
+  { label: 'Pricing', to: '/pricing' },
+  { label: 'Support', to: '/support' },
 ];
 
-const ADMIN_SIMPLE = [
-  { to: '/', label: 'Home' },
-  { to: '/admin/tutors', label: 'Tutors' },
-  { to: '/admin/students', label: 'Students' },
-  { to: '/admin/dashboard', label: 'Dashboard' },
-  { to: '/support', label: 'Support' },
+const STUDENT_CENTER: NavItem[] = [
+  { label: 'Home', to: '/' },
+  { label: 'Dashboard', to: '/student/dashboard' },
+  { label: 'Find Tutor', to: '/find-tutors' },
+  { label: 'Sessions', to: '/student/sessions' },
+  { label: 'Bookings', to: '/student/bookings' },
 ];
 
-const TUTOR_CENTER = [
-  { to: '/', label: 'Home' },
-  { to: '/tutor/dashboard', label: 'Dashboard' },
-  { to: '/tutor/availability', label: 'Availability' },
-  { to: '/tutor/messages', label: 'Messages' },
-  { to: '/tutor/sessions', label: 'Sessions' },
+const TUTOR_CENTER: NavItem[] = [
+  { label: 'Home', to: '/' },
+  { label: 'Dashboard', to: '/tutor/dashboard' },
+  { label: 'Sessions', to: '/tutor/sessions' },
+  { label: 'Availability', to: '/tutor/availability' },
+  { label: 'Earnings', to: '/tutor/earnings' },
+];
+
+const ADMIN_SIMPLE: NavItem[] = [
+  { label: 'Home', to: '/' },
+  { label: 'Dashboard', to: '/admin/dashboard' },
+  { label: 'Tutors', to: '/admin/tutors' },
+  { label: 'Students', to: '/admin/students' },
+  { label: 'Reports', to: '/admin/reports' },
 ];
 
 export default function Navbar() {
-  // TODO: Next Release - Multi-account switching
-  // const { user, logout, accounts, switchAccount } = useAuth();
-  const { user, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const nav = useNavigate();
   const location = useLocation();
+
+  const role = useMemo(() => normalizeRole(user?.role), [user?.role]);
+  const isAuthed = Boolean(isAuthenticated);
 
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
   const menuRef = useRef<HTMLDivElement | null>(null);
   const extraRef = useRef<HTMLDivElement | null>(null);
 
-  const isAuthed = !!user?.id;
-  const role: 'student' | 'tutor' | 'admin' = useMemo(
-    () => normalizeRole(user?.role),
-    [user?.role],
-  );
+  const storedTutorStatus = useMemo(() => {
+    try {
+      return globalThis.localStorage?.getItem('tutorStatus');
+    } catch {
+      return null;
+    }
+  }, []);
 
-  // Tutor KYC/application status (kept from your earlier logic)
-  const rawTutorStatus = (user as any)?.tutorStatus as string | undefined;
-  const kycSubmittedFlag = (user as any)?.kycSubmitted ?? false;
-  const SUBMITTED_STATUSES = new Set(['submitted', 'under_review', 'approved', 'verified']);
-  const showBecomeTutorForTutor =
-    role === 'tutor' && !kycSubmittedFlag && !SUBMITTED_STATUSES.has(rawTutorStatus || '');
+  const tutorStatus = (user as any)?.tutorStatus || (user as any)?.tutor?.status || storedTutorStatus;
+  const showBecomeTutorForTutor = String(tutorStatus || '').toLowerCase() === 'approved';
 
-  // CENTER MENU (before login uses PUBLIC, after login uses role-specific)
+  const manageAccountPath = useMemo(() => {
+    if (role === 'tutor') return '/tutor/manage-account';
+    if (role === 'student') return '/student/manage-account';
+    return '/admin/dashboard';
+  }, [role]);
+
   const centerNav = useMemo(() => {
-    if (!isAuthed) return PUBLIC_MAIN;
-
-    if (role === 'student') return STUDENT_CENTER;
-    if (role === 'tutor') return TUTOR_CENTER;
-    return ADMIN_SIMPLE;
+    if (isAuthed) {
+      if (role === 'student') return STUDENT_CENTER;
+      if (role === 'tutor') return TUTOR_CENTER;
+      return ADMIN_SIMPLE;
+    }
+    return PUBLIC_MAIN;
   }, [isAuthed, role]);
 
   // housekeeping
@@ -119,7 +126,13 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [menuOpen, extraOpen]);
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') { setMenuOpen(false); setExtraOpen(false); } }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        setExtraOpen(false);
+        setShowLogoutModal(false);
+      }
+    }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
@@ -190,7 +203,7 @@ export default function Navbar() {
             ))}
 
             {/* Public "More" dropdown (About, Pricing, Support) */}
-            {!isAuthed && (
+            {isAuthed ? null : (
               <div className="relative" ref={extraRef}>
                 <button
                   type="button"
@@ -231,6 +244,7 @@ export default function Navbar() {
                     <Link to="/support" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Support</Link>
                     <Link to="/about" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>About</Link>
                     <Link to="/student/favorites" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Favorites</Link>
+                    <Link to="/student/reviews" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Reviews</Link>
                     <Link to="/student/transactions" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Transactions</Link>
                   </div>
                 )}
@@ -302,16 +316,7 @@ export default function Navbar() {
               </div>
             </>
           )}
-          {!isAuthed ? (
-            <>
-              <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-ink">
-                Login
-              </Link>
-              <Link to="/signup" className="text-sm font-medium text-ocean-600 hover:text-ocean-800">
-                Sign Up
-              </Link>
-            </>
-          ) : (
+          {isAuthed ? (
             <div className="relative" ref={menuRef}>
               <button
                 type="button"
@@ -347,7 +352,7 @@ export default function Navbar() {
                     <span>Edit details</span>
                   </Link>
                   <Link
-                    to={role === 'tutor' ? '/tutor/manage-account' : role === 'student' ? '/student/manage-account' : '/account'}
+                    to={manageAccountPath}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
                     onClick={() => setMenuOpen(false)}
                   >
@@ -363,75 +368,7 @@ export default function Navbar() {
                     <span>Password &amp; security</span>
                   </Link>
                   
-                  {/* TODO: Next Release - Multi-Account Switcher */}
-                  {/* {accounts && accounts.length > 1 && (
-                    <>
-                      <hr className="my-2 border-slate-100" />
-                      <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Switch Account
-                      </div>
-                      {accounts
-                        .filter(acc => acc.id !== user?.id)
-                        .map(account => (
-                          <button
-                            key={account.id}
-                            type="button"
-                            onClick={() => {
-                              switchAccount(account.id);
-                              setMenuOpen(false);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
-                          >
-                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-                              {account.name 
-                                ? account.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-                                : account.email.substring(0, 2).toUpperCase()
-                              }
-                            </div>
-                            <div className="flex-1 text-left min-w-0">
-                              <div className="text-sm font-medium text-gray-900 truncate">
-                                {account.name || account.email}
-                              </div>
-                              <div className="text-xs text-gray-500 truncate">{account.email}</div>
-                            </div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              account.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' :
-                              account.role === 'TUTOR' ? 'bg-blue-100 text-blue-700' :
-                              'bg-green-100 text-green-700'
-                            }`}>
-                              {account.role}
-                            </span>
-                          </button>
-                        ))
-                      }
-                    </>
-                  )} */}
-                  
-                  <hr className="my-2 border-slate-100\" />
-                  {/* TODO: Next Release - Add Account feature */}
-                  {/* <button
-                    type=\"button\"
-                    onClick={() => {
-                      // Store flag that user wants to add account
-                      try { 
-                        localStorage.setItem('adding_account', 'true');
-                        // Clear current auth tokens completely
-                        localStorage.removeItem('token');
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('auth_ok');
-                        sessionStorage.removeItem('token');
-                        sessionStorage.removeItem('access_token');
-                      } catch {}
-                      // Hard reload to /login to completely reset React state
-                      window.location.href = '/login';
-                    }}
-                    className=\"w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50\"
-                  >
-                    <svg className=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\">
-                      <path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M12 4v16m8-8H4\" />
-                    </svg>
-                    <span>Add another account</span>
-                  </button> */}
+                  <hr className="my-2 border-slate-100" />
                   <button
                     type="button"
                     onClick={() => {
@@ -443,16 +380,18 @@ export default function Navbar() {
                     <LogOut size={16} />
                     <span>Logout</span>
                   </button>
-                  
-                  {/* TODO: Next Release - Account count */}
-                  {/* {accounts && accounts.length > 0 && (
-                    <div className="px-3 py-2 mt-1 text-xs text-gray-500 border-t border-slate-100">
-                      {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
-                    </div>
-                  )} */}
                 </div>
               )}
             </div>
+          ) : (
+            <>
+              <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-ink">
+                Login
+              </Link>
+              <Link to="/signup" className="text-sm font-medium text-ocean-600 hover:text-ocean-800">
+                Sign Up
+              </Link>
+            </>
           )}
         </div>
 
@@ -510,7 +449,7 @@ export default function Navbar() {
             ))}
 
             {/* Public Extra on mobile */}
-            {!isAuthed && (
+            {isAuthed ? null : (
               <>
                 <hr className="my-2" />
                 <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Extra</div>
@@ -550,22 +489,14 @@ export default function Navbar() {
                 <NavLink to="/support" className="btn-ghost" onClick={() => setOpen(false)}>Support</NavLink>
                 <NavLink to="/about" className="btn-ghost" onClick={() => setOpen(false)}>About</NavLink>
                 <NavLink to="/student/favorites" className="btn-ghost" onClick={() => setOpen(false)}>Favorites</NavLink>
+                <NavLink to="/student/reviews" className="btn-ghost" onClick={() => setOpen(false)}>Reviews</NavLink>
                 <NavLink to="/student/transactions" className="btn-ghost" onClick={() => setOpen(false)}>Transactions</NavLink>
               </>
             )}
 
             <hr className="my-2" />
 
-            {!isAuthed ? (
-              <div className="flex gap-2">
-                <Link to="/login" className="btn-ghost flex-1" onClick={() => setOpen(false)}>
-                  <LogIn size={18} /> Login
-                </Link>
-                <Link to="/signup" className="btn-accent flex-1" onClick={() => setOpen(false)}>
-                  <UserPlus size={18} /> Sign Up
-                </Link>
-              </div>
-            ) : (
+            {isAuthed ? (
               <button
                 type="button"
                 onClick={() => { 
@@ -576,6 +507,15 @@ export default function Navbar() {
               >
                 <LogOut size={18} /> Logout
               </button>
+            ) : (
+              <div className="flex gap-2">
+                <Link to="/login" className="btn-ghost flex-1" onClick={() => setOpen(false)}>
+                  <LogIn size={18} /> Login
+                </Link>
+                <Link to="/signup" className="btn-accent flex-1" onClick={() => setOpen(false)}>
+                  <UserPlus size={18} /> Sign Up
+                </Link>
+              </div>
             )}
           </div>
         </div>
@@ -583,13 +523,18 @@ export default function Navbar() {
 
       {/* Logout Confirmation Modal */}
       {showLogoutModal && (
-        <div 
+        <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm min-h-screen"
-          onClick={() => setShowLogoutModal(false)}
         >
-          <div 
-            className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in duration-200"
-            onClick={(e) => e.stopPropagation()}
+          <button
+            type="button"
+            aria-label="Close logout dialog"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setShowLogoutModal(false)}
+          />
+          <dialog
+            open
+            className="relative z-[101] bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in duration-200"
           >
             <div className="flex items-center gap-3 mb-4">
               <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
@@ -616,7 +561,7 @@ export default function Navbar() {
                 Sign out
               </button>
             </div>
-          </div>
+          </dialog>
         </div>
       )}
     </header>

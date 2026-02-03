@@ -28,8 +28,15 @@ export default function Cart() {
   const { currency: displayCurrency, convertFromINR } = useDisplayCurrency();
   const { showError } = useToast();
 
+  const displayStudentName = user?.name
+    || (user?.email?.includes('@') ? user.email.split('@')[0] : '')
+    || 'Student';
+
   const [tutor, setTutor] = useState<Tutor | null>(null);
-  const [qty, setQty] = useState<number>(5); // tokens count
+  const [qty, setQty] = useState<number>(() => {
+    const q = Number(sp.get('tokens') || 5);
+    return Number.isFinite(q) ? Math.max(5, q) : 5;
+  }); // tokens count
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<Array<{ startTime: string; endTime: string }>>([]);
@@ -63,13 +70,32 @@ export default function Cart() {
         const from = new Date();
         const to = new Date();
         to.setDate(to.getDate() + 14); // Next 14 days
+        const params = { from: from.toISOString(), to: to.toISOString(), durationMin: 60, stepMin: 15 } as const;
+
+        const normalizeSlices = (data: any) => {
+          if (Array.isArray(data?.slices)) return data.slices;
+          if (Array.isArray(data)) return data;
+          return [];
+        };
         
         try {
           const [slots, activity] = await Promise.all([
-            getTutorAvailability(tutorId, from.toISOString(), to.toISOString()),
+            (async () => {
+              try {
+                const { data } = await api.get(`/availability/tutor/${tutorId}/bookable`, { params });
+                return normalizeSlices(data);
+              } catch {
+                try {
+                  const { data } = await api.get(`/availability/bookable/${tutorId}`, { params });
+                  return normalizeSlices(data);
+                } catch {
+                  return await getTutorAvailability(tutorId, from.toISOString(), to.toISOString());
+                }
+              }
+            })(),
             api.get(`/tutors/${tutorId}/activity`).then(res => res.data).catch(() => null),
           ]);
-          
+
           setAvailableSlots(Array.isArray(slots) ? slots.slice(0, 10) : []); // Show first 10 slots
           setActivityInfo(activity);
         } catch (e) {
@@ -95,10 +121,53 @@ export default function Cart() {
   );
 
   const onQtyChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const n = parseInt(e.target.value || '5', 10);
+    const n = Number.parseInt(e.target.value || '5', 10);
     if (Number.isNaN(n)) return;
     setQty(Math.max(5, n));
   };
+
+  const slotsSection = (() => {
+    if (loadingSlots) {
+      return <div className="mt-6 h-24 animate-pulse rounded-lg bg-slate-100" />;
+    }
+    if (availableSlots.length > 0) {
+      return (
+        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-slate-700 flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Available Slots (Next 14 Days)
+          </h3>
+          <div className="space-y-2">
+            {availableSlots.slice(0, 5).map((slot) => {
+              const key = `${slot.startTime}-${slot.endTime}`;
+              return (
+                <div key={key} className="flex items-center gap-2 text-xs text-slate-600">
+                  <Clock className="h-3 w-3" />
+                  <span>
+                    {new Date(slot.startTime).toLocaleDateString()} {' '}
+                    {new Date(slot.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {' '}
+                    {new Date(slot.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              );
+            })}
+            {availableSlots.length > 5 && (
+              <p className="text-xs text-slate-500 italic">
+                +{availableSlots.length - 5} more slots available
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <p className="text-sm text-amber-700">
+          No available slots in the next 14 days. Check back later or contact the tutor.
+        </p>
+      </div>
+    );
+  })();
 
   const proceedToPayment = () => {
     nav(`/student/checkout?tutorId=${tutor?.id}&tokens=${qty}`, { replace: true });
@@ -219,10 +288,11 @@ export default function Cart() {
           </div>
 
           <div className="mt-6">
-            <label className="mb-1 block text-sm font-medium text-slate-700">
+            <label htmlFor="cart-tokens" className="mb-1 block text-sm font-medium text-slate-700">
               Tokens (min 5 for booking)
             </label>
             <input
+              id="cart-tokens"
               type="number"
               min={5}
               step={1}
@@ -258,39 +328,7 @@ export default function Cart() {
           )}
 
           {/* Available Slots Preview */}
-          {loadingSlots ? (
-            <div className="mt-6 h-24 animate-pulse rounded-lg bg-slate-100" />
-          ) : availableSlots.length > 0 ? (
-            <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Available Slots (Next 14 Days)
-              </h3>
-              <div className="space-y-2">
-                {availableSlots.slice(0, 5).map((slot, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
-                    <Clock className="h-3 w-3" />
-                    <span>
-                      {new Date(slot.startTime).toLocaleDateString()} {' '}
-                      {new Date(slot.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {' '}
-                      {new Date(slot.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                ))}
-                {availableSlots.length > 5 && (
-                  <p className="text-xs text-slate-500 italic">
-                    +{availableSlots.length - 5} more slots available
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm text-amber-700">
-                No available slots in the next 14 days. Check back later or contact the tutor.
-              </p>
-            </div>
-          )}
+          {slotsSection}
         </div>
 
         {/* Summary */}
@@ -302,7 +340,7 @@ export default function Cart() {
           <div className="mt-3 space-y-1 text-sm">
             <div className="flex justify-between">
               <span>Student</span>
-              <span>{user?.email}</span>
+              <span>{displayStudentName}</span>
             </div>
             <div className="flex justify-between">
               <span>Tokens</span>

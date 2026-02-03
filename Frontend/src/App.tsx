@@ -33,7 +33,7 @@ const getStoredRoleUpper = (): RoleApi | null => {
   return r ? (r.toUpperCase() as RoleApi) : null;
 };
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, loading } = useAuth();
   
   // Wait for auth to finish loading before making decisions
@@ -49,7 +49,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
+function PublicOnlyRoute({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, loading } = useAuth();
   
   // Wait for auth to finish loading before making decisions
@@ -68,10 +68,9 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/choose-role" replace />;
   }
   
-  const target =
-    role === 'ADMIN' ? '/admin/dashboard' :
-    role === 'TUTOR' ? '/tutor/dashboard' :
-    '/student/dashboard';
+  let target = '/student/dashboard';
+  if (role === 'ADMIN') target = '/admin/dashboard';
+  else if (role === 'TUTOR') target = '/tutor/dashboard';
   
   return <Navigate to={target} replace />;
 }
@@ -80,10 +79,10 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
 function RoleRoute({
   role: requiredLower,
   children,
-}: {
+}: Readonly<{
   role: 'student' | 'tutor' | 'admin';
   children: React.ReactNode;
-}) {
+}>) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
@@ -153,6 +152,7 @@ const StudentGoals = lazy(() => import('./pages/student/goals'));
 const SessionNotes = lazy(() => import('./pages/student/session-notes'));
 const StudentCertificates = lazy(() => import('./pages/student/certificates'));
 const ReviewSession = lazy(() => import('./pages/student/review-session'));
+const StudentReviews = lazy(() => import('./pages/student/reviews'));
 const Cart = lazy(() => import('./pages/student/cart'));
 const StudentWaitlist = lazy(() => import('./pages/student/waitlist'));
 const DemoCheckout = lazy(() => import('./pages/student/checkout')); // FREE demo checkout (existing)
@@ -245,21 +245,20 @@ function App() {
         return;
       }
 
-      const target =
-        role === 'ADMIN' ? '/admin/dashboard' :
-        role === 'TUTOR' ? '/tutor/dashboard' :
-        '/student/dashboard';
+      let target = '/student/dashboard';
+      if (role === 'ADMIN') target = '/admin/dashboard';
+      else if (role === 'TUTOR') target = '/tutor/dashboard';
 
-      if (window.location.pathname !== target) {
+      if (globalThis.location?.pathname !== target) {
         navigate(target, { replace: true });
       }
     };
 
-    window.addEventListener('auth:unauthorized', onUnauthorized);
-    window.addEventListener('auth:login', onLogin);
+    globalThis.addEventListener('auth:unauthorized', onUnauthorized);
+    globalThis.addEventListener('auth:login', onLogin);
     return () => {
-      window.removeEventListener('auth:unauthorized', onUnauthorized);
-      window.removeEventListener('auth:login', onLogin);
+      globalThis.removeEventListener('auth:unauthorized', onUnauthorized);
+      globalThis.removeEventListener('auth:login', onLogin);
     };
   }, [navigate]);
 
@@ -367,6 +366,7 @@ function App() {
           <Route path="/student/session-notes" element={<SessionNotes />} />
           <Route path="/student/certificates" element={<StudentCertificates />} />
           <Route path="/student/review-session" element={<ReviewSession />} />
+          <Route path="/student/reviews" element={<StudentReviews />} />
           <Route path="/student/cart" element={<Cart />} />
           <Route path="/student/waitlist" element={<StudentWaitlist />} />
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, CalendarDays, Clock, Loader2, RotateCw, X } from 'lucide-react';
 import { assignSlot, getTutorAvailability, listBookings } from '../services/bookingsService';
+import api from '../lib/apiClient';
 import { addToWaitlist } from '../services/waitlistService';
 import NotificationModal from './common/NotificationModal';
 
@@ -19,13 +20,13 @@ export default function SlotPicker({
   onClose,
   onAssigned,
 }: {
-  open: boolean;
-  bookingId: string;
-  tutorId: string;
-  tz?: string;          // optional IANA timezone header passthrough
-  days?: number;        // how many days ahead to fetch (default 14)
-  onClose: () => void;
-  onAssigned: (payload: { startTime: string; endTime: string }) => void;
+  readonly open: boolean;
+  readonly bookingId: string;
+  readonly tutorId: string;
+  readonly tz?: string;          // optional IANA timezone header passthrough
+  readonly days?: number;        // how many days ahead to fetch (default 14)
+  readonly onClose: () => void;
+  readonly onAssigned: (payload: { startTime: string; endTime: string }) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
@@ -56,10 +57,34 @@ export default function SlotPicker({
       const from = new Date();
       const to = new Date();
       to.setDate(to.getDate() + Math.max(1, days));
+
+      const params = { from: from.toISOString(), to: to.toISOString(), durationMin: 60, stepMin: 15 } as const;
+      const normalizeSlices = (data: any) => {
+        if (Array.isArray(data?.slices)) return data.slices;
+        if (Array.isArray(data)) return data;
+        return [];
+      };
       
       // Fetch availability and booked slots in parallel
       const [availabilityRes, bookedRes] = await Promise.all([
-        getTutorAvailability(tutorId, from.toISOString(), to.toISOString(), tz),
+        (async () => {
+          try {
+            const { data } = await api.get(`/availability/tutor/${tutorId}/bookable`, { params });
+            return normalizeSlices(data);
+          } catch {
+            try {
+              const { data } = await api.get(`/availability/tutors/${tutorId}/bookable`, { params });
+              return normalizeSlices(data);
+            } catch {
+              try {
+              const { data } = await api.get(`/availability/bookable/${tutorId}`, { params });
+              return normalizeSlices(data);
+            } catch {
+              return await getTutorAvailability(tutorId, from.toISOString(), to.toISOString(), tz);
+              }
+            }
+          }
+        })(),
         listBookings({ tutorId, status: 'CONFIRMED', tz }).catch(() => [])
       ]);
       
@@ -113,10 +138,10 @@ export default function SlotPicker({
       arr.push(s);
       map.set(label, arr);
     }
-    return Array.from(map.entries()).map(([day, arr]) => ({
-      day,
-      items: arr.sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime)),
-    }));
+    return Array.from(map.entries()).map(([day, arr]) => {
+      const items = [...arr].sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
+      return { day, items };
+    });
   }, [slots, bookedSlots, dtDate]);
 
   async function handleAssign() {
@@ -172,6 +197,61 @@ export default function SlotPicker({
 
   if (!open) return null;
 
+  let content: React.ReactNode;
+  if (loading) {
+    content = (
+      <div className="flex items-center justify-center py-12 text-slate-600">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading availability…
+      </div>
+    );
+  } else if (error) {
+    content = (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {error}
+      </div>
+    );
+  } else if (grouped.length === 0) {
+    content = (
+      <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 text-center">
+        <p className="text-sm font-medium text-purple-900 mb-2">
+          No available slots at the moment
+        </p>
+        <p className="text-xs text-purple-700">
+          Click "Notify Me" below to get notified in the app when this tutor adds new availability
+        </p>
+      </div>
+    );
+  } else {
+    content = grouped.map(({ day, items }) => (
+      <div key={day} className="mb-4">
+        <div className="mb-2 text-sm font-semibold text-slate-700">{day}</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {items.map((s) => {
+            const st = new Date(s.startTime);
+            const et = new Date(s.endTime);
+            const label = `${dtTime.format(st)} – ${dtTime.format(et)}`;
+            const key = keyForSlot(s);
+            const active = selectedKey === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setSelectedKey(key)}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                  active
+                    ? 'border-ocean-600 bg-ocean-50 text-ocean-900'
+                    : 'border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <Clock className="h-4 w-4 text-slate-500" />
+                <span>{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ));
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
       <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
@@ -202,53 +282,7 @@ export default function SlotPicker({
 
         {/* Body */}
         <div className="max-h-[70vh] overflow-auto p-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-12 text-slate-600">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading availability…
-            </div>
-          ) : error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          ) : grouped.length === 0 ? (
-            <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 text-center">
-              <p className="text-sm font-medium text-purple-900 mb-2">
-                No available slots at the moment
-              </p>
-              <p className="text-xs text-purple-700">
-                Click "Notify Me" below to get notified in the app when this tutor adds new availability
-              </p>
-            </div>
-          ) : (
-            grouped.map(({ day, items }) => (
-              <div key={day} className="mb-4">
-                <div className="mb-2 text-sm font-semibold text-slate-700">{day}</div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {items.map((s) => {
-                    const st = new Date(s.startTime);
-                    const et = new Date(s.endTime);
-                    const label = `${dtTime.format(st)} – ${dtTime.format(et)}`;
-                    const key = keyForSlot(s);
-                    const active = selectedKey === key;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => setSelectedKey(key)}
-                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
-                          active
-                            ? 'border-ocean-600 bg-ocean-50 text-ocean-900'
-                            : 'border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <Clock className="h-4 w-4" />
-                        <span>{label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))
-          )}
+          {content}
         </div>
 
         {/* Footer */}

@@ -1,6 +1,8 @@
 import api from './apiClient';
 
 export type TutorStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type KycReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type KycApplicationStatus = 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PENDING';
 
 export interface AdminDashboard {
 	totals: {
@@ -67,7 +69,7 @@ export interface KycItem {
 	id: string;
 	docType: string;
 	url: string;
-	status: 'PENDING' | 'APPROVED' | 'REJECTED';
+	status: KycReviewStatus;
 	notes?: string | null;
 	createdAt: string;
 	tutor: { id: string; user: { email: string } };
@@ -75,7 +77,7 @@ export interface KycItem {
 
 export interface KycApplication {
 	id: string;
-	status: 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PENDING';
+	status: KycApplicationStatus;
 	createdAt: string;
 	updatedAt: string;
 	rejectionCount?: number;
