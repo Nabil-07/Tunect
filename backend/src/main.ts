@@ -118,6 +118,7 @@ async function bootstrap() {
       'User-Agent',
       'Cache-Control',
       'Pragma',
+      'Expires',
     ],
     credentials: true,
     optionsSuccessStatus: 204,
@@ -134,7 +135,7 @@ async function bootstrap() {
       res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
       res.header(
         'Access-Control-Allow-Headers',
-        'Content-Type, Authorization, X-Timezone, X-Requested-With, Accept, Origin, User-Agent, Cache-Control, Pragma',
+        'Content-Type, Authorization, X-Timezone, X-Requested-With, Accept, Origin, User-Agent, Cache-Control, Pragma, Expires',
       );
     }
 
