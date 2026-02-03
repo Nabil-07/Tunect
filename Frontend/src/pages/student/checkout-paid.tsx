@@ -8,6 +8,7 @@ declare global {
   interface Window {
     Razorpay?: any;
   }
+  var Razorpay: any;
 }
 
 async function loadRazorpayScript(): Promise<void> {

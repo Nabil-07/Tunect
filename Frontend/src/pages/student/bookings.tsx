@@ -617,6 +617,10 @@ function BookingCard({
     CANCELED: 'bg-red-100 text-red-700',
     PENDING: 'bg-amber-100 text-amber-700',
     PENDING_SLOT: 'bg-amber-100 text-amber-700',
+    WAITING_ROOM: 'bg-blue-100 text-blue-700',
+    LIVE: 'bg-green-100 text-green-700',
+    AUTO_CANCELLED_STUDENT_NO_SHOW: 'bg-red-100 text-red-700',
+    AUTO_CANCELLED_TUTOR_NO_SHOW: 'bg-red-100 text-red-700',
   }[status] ?? 'bg-amber-100 text-amber-700';
 
   return (
