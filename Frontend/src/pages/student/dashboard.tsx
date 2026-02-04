@@ -69,6 +69,8 @@ export default function StudentDashboard() {
     missingFields: string[];
   } | null>(null);
   const [loadingProfileStatus, setLoadingProfileStatus] = useState(true);
+  const [profileStatusFallback, setProfileStatusFallback] = useState(false);
+  const [studentMeData, setStudentMeData] = useState<any | null>(null);
 
   const readSearchHistory = (): TutorSearchHistoryEntry[] => {
     try {
@@ -113,10 +115,16 @@ export default function StudentDashboard() {
       try {
         const { data } = await api.get('/students/me/profile-status');
         if (isMounted) setProfileStatus(data ?? null);
-      } catch (e) {
+        if (isMounted) setProfileStatusFallback(false);
+        if (isMounted) setLoadingProfileStatus(false);
+      } catch (e: any) {
+        const status = e?.response?.status;
+        if (status === 404) {
+          if (isMounted) setProfileStatusFallback(true);
+          return;
+        }
         console.error('Failed to load profile status:', e);
         if (isMounted) setProfileStatus(null);
-      } finally {
         if (isMounted) setLoadingProfileStatus(false);
       }
     })();
@@ -236,6 +244,15 @@ export default function StudentDashboard() {
                   .slice(0, 6)
               : [];
           setSubjectStats(subjects);
+
+          const userData = meRes?.data?.user ?? studentData?.user;
+          setStudentMeData({ ...studentData, user: userData });
+
+          if (profileStatusFallback) {
+            setProfileStatus(computeStudentProfileStatus({ ...studentData, user: userData }));
+            setLoadingProfileStatus(false);
+            setProfileStatusFallback(false);
+          }
         }
       } catch (e) {
         console.error('Failed to load student stats:', e);
@@ -245,6 +262,13 @@ export default function StudentDashboard() {
           if (isMounted && meRes?.student) {
             setHoursStudied(meRes.student.hoursStudied ?? null);
             setSessionsCompleted(meRes.student.sessionsCompleted ?? null);
+            const userData = meRes?.user ?? meRes.student?.user;
+            setStudentMeData({ ...meRes.student, user: userData });
+            if (profileStatusFallback) {
+              setProfileStatus(computeStudentProfileStatus({ ...meRes.student, user: userData }));
+              setLoadingProfileStatus(false);
+              setProfileStatusFallback(false);
+            }
           }
         } catch (e2) {
           console.error('Fallback getMe() also failed:', e2);
@@ -264,6 +288,13 @@ export default function StudentDashboard() {
       isMounted = false;
     };
   }, [authLoading, isAuthenticated, user?.role]);
+
+  useEffect(() => {
+    if (!profileStatusFallback || !studentMeData) return;
+    setProfileStatus(computeStudentProfileStatus(studentMeData));
+    setLoadingProfileStatus(false);
+    setProfileStatusFallback(false);
+  }, [profileStatusFallback, studentMeData]);
 
   // Listen for demo status and token balance changes
   useEffect(() => {
@@ -771,4 +802,46 @@ function clampPercent(v: any): number {
 function toBoundedPercent(v: any): number {
   if (!Number.isFinite(v)) return 0;
   return clampPercent(v);
+}
+
+function computeStudentProfileStatus(student: any) {
+  const totalFields = 5;
+  let completedFields = 0;
+  const missingFields: string[] = [];
+
+  if (student?.user?.name && String(student.user.name).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Full Name');
+  }
+
+  if (student?.user?.email && String(student.user.email).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Email');
+  }
+
+  if (student?.grade && String(student.grade).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Grade/Class');
+  }
+
+  if (student?.timezone && String(student.timezone).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Timezone');
+  }
+
+  if (student?.preferredLanguage && String(student.preferredLanguage).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Preferred Language');
+  }
+
+  return {
+    isComplete: missingFields.length === 0,
+    completionPercentage: Math.round((completedFields / totalFields) * 100),
+    missingFields,
+  };
 }

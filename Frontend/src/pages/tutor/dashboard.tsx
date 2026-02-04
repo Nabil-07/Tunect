@@ -29,6 +29,8 @@ export default function TutorDashboard() {
     missingFields: string[];
   } | null>(null);
   const [loadingProfileStatus, setLoadingProfileStatus] = useState(true);
+  const [profileStatusFallback, setProfileStatusFallback] = useState(false);
+  const [tutorMeData, setTutorMeData] = useState<any | null>(null);
   const [stats, setStats] = useState({
     totalEarnings: 0,
     sessionsCompleted: 0,
@@ -84,6 +86,13 @@ export default function TutorDashboard() {
             monthlyEarnings: res.data.monthlyEarnings || 0,
             activeStudents: res.data.activeStudents || 0
           });
+          setTutorMeData(res.data);
+
+          if (profileStatusFallback) {
+            setProfileStatus(computeTutorProfileStatus(res.data));
+            setLoadingProfileStatus(false);
+            setProfileStatusFallback(false);
+          }
         }
       } catch (error) {
         console.error('Failed to load stats:', error);
@@ -97,10 +106,16 @@ export default function TutorDashboard() {
       try {
         const { data } = await api.get('/tutors/me/profile-status');
         if (isMounted) setProfileStatus(data ?? null);
-      } catch (error) {
+        if (isMounted) setProfileStatusFallback(false);
+        if (isMounted) setLoadingProfileStatus(false);
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 404) {
+          if (isMounted) setProfileStatusFallback(true);
+          return;
+        }
         console.error('Failed to load profile status:', error);
         if (isMounted) setProfileStatus(null);
-      } finally {
         if (isMounted) setLoadingProfileStatus(false);
       }
     })();
@@ -110,6 +125,13 @@ export default function TutorDashboard() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!profileStatusFallback || !tutorMeData) return;
+    setProfileStatus(computeTutorProfileStatus(tutorMeData));
+    setLoadingProfileStatus(false);
+    setProfileStatusFallback(false);
+  }, [profileStatusFallback, tutorMeData]);
 
   const upcomingAvail = useMemo(() => {
     const now = Date.now();
@@ -493,4 +515,72 @@ function ToolCard({
 function clampPercent(v: any): number {
   const n = Number.isFinite(v) ? Number(v) : 0;
   return Math.max(0, Math.min(100, n));
+}
+
+function computeTutorProfileStatus(data: any) {
+  const tutor = data?.tutor ?? data;
+  const user = tutor?.user ?? data?.user;
+  const totalFields = 8;
+  let completedFields = 0;
+  const missingFields: string[] = [];
+
+  if (user?.name && String(user.name).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Full Name');
+  }
+
+  if (tutor?.bio && String(tutor.bio).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Bio/Summary');
+  }
+
+  const subjects = tutor?.subjects ?? tutor?.subject;
+  if (Array.isArray(subjects) ? subjects.length > 0 : Boolean(subjects)) {
+    completedFields++;
+  } else {
+    missingFields.push('Subjects');
+  }
+
+  const languages = tutor?.languages ?? tutor?.language;
+  if (Array.isArray(languages) ? languages.length > 0 : Boolean(languages)) {
+    completedFields++;
+  } else {
+    missingFields.push('Languages');
+  }
+
+  if (tutor?.qualifications && String(tutor.qualifications).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Qualifications');
+  }
+
+  if (tutor?.yearsExperience && Number(tutor.yearsExperience) > 0) {
+    completedFields++;
+  } else {
+    missingFields.push('Years of Experience');
+  }
+
+  if (tutor?.hourlyRate && Number(tutor.hourlyRate) > 0) {
+    completedFields++;
+  } else {
+    missingFields.push('Hourly Rate');
+  }
+
+  const approved =
+    tutor?.status === 'APPROVED' ||
+    tutor?.kycStatus === 'APPROVED' ||
+    tutor?.kyc?.status === 'APPROVED';
+  if (approved) {
+    completedFields++;
+  } else {
+    missingFields.push('KYC Verification');
+  }
+
+  return {
+    isComplete: missingFields.length === 0,
+    completionPercentage: Math.round((completedFields / totalFields) * 100),
+    missingFields,
+  };
 }
