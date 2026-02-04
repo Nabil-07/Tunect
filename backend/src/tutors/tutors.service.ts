@@ -1014,39 +1014,36 @@ export class TutorsService {
 
     const sessionsCompleted = completedBookings.length;
 
-    const platformFeePercent = (hourlyRate?: number | null) => {
-      const rate = Number(hourlyRate ?? 0);
-      if (!Number.isFinite(rate) || rate <= 0) return 20; // Default fallback
-      // Commission rates: 0-399=25%, 400-699=22%, 700+=18%
-      if (rate < 400) return 25;
-      if (rate < 700) return 22;
-      return 18;
-    };
+    // ✅ Get actual earnings from wallet + payouts (source of truth)
+    const wallet = await this.prisma.tutorWallet.findUnique({
+      where: { tutorId },
+    });
+    const unpaidAmount = wallet ? Number(wallet.balance) : 0;
 
-    const totalEarnings = completedBookings.reduce((sum, b) => {
-      const hours = b.startTime && b.endTime
-        ? Math.max(0, (b.endTime.getTime() - b.startTime.getTime()) / 3_600_000)
-        : Number(b.tokensCharged || 0);
-      if (!hours) return sum;
-      const hourlyRate = Number(b.tutor?.hourlyRate ?? 0);
-      const bookingAmount = hours * hourlyRate;
-      const fee = platformFeePercent(hourlyRate);
-      const share = Math.max(0, (bookingAmount * (100 - fee)) / 100);
-      return sum + share;
-    }, 0);
+    const payouts = await this.prisma.tutorPayout.findMany({
+      where: { tutorId },
+    });
+    const totalPaidOut = payouts.reduce((sum, p) => sum + Number(p.amount), 0);
 
-    const monthlyBookings = completedBookings.filter((b) => b.endTime && new Date(b.endTime) >= startOfMonth);
-    const monthlyEarnings = monthlyBookings.reduce((sum, b) => {
-      const hours = b.startTime && b.endTime
-        ? Math.max(0, (b.endTime.getTime() - b.startTime.getTime()) / 3_600_000)
-        : Number(b.tokensCharged || 0);
-      if (!hours) return sum;
-      const hourlyRate = Number(b.tutor?.hourlyRate ?? 0);
-      const bookingAmount = hours * hourlyRate;
-      const fee = platformFeePercent(hourlyRate);
-      const share = Math.max(0, (bookingAmount * (100 - fee)) / 100);
-      return sum + share;
-    }, 0);
+    // Total earnings = unpaid balance + already paid out
+    const totalEarnings = unpaidAmount + totalPaidOut;
+
+    // Monthly earnings = monthly wallet ledger entries + monthly payouts
+    const monthlyLedgerEntries = await this.prisma.tutorWalletLedger.findMany({
+      where: {
+        tutorId,
+        createdAt: { gte: startOfMonth },
+      },
+    });
+    const monthlyLedgerSum = monthlyLedgerEntries.reduce((sum, entry) => sum + Number(entry.delta), 0);
+
+    const monthlyPayouts = payouts.filter((p) => {
+      const paidAt = p.paidAt || p.createdAt;
+      return paidAt >= startOfMonth;
+    });
+    const monthlyPaidOut = monthlyPayouts.reduce((sum, p) => sum + Number(p.amount), 0);
+
+    const monthlyEarnings = monthlyLedgerSum + monthlyPaidOut;
 
     // Get rating and reviews
     const reviews = await this.prisma.review.findMany({

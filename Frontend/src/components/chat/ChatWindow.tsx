@@ -106,7 +106,8 @@ export default function ChatWindow({ conversationId }: ChatWindowProps) {
   };
 
   const getTokenWarning = () => {
-    if (!conversation?.tokenBalance) return null;
+    // Only show token warnings for students, not tutors
+    if (user?.role !== 'STUDENT' || !conversation?.tokenBalance) return null;
 
     if (!conversation.tokenBalance.hasTokens) {
       return (
@@ -122,7 +123,8 @@ export default function ChatWindow({ conversationId }: ChatWindowProps) {
       );
     }
 
-    if (conversation.tokenBalance.balance < 5) {
+    // Show low balance warning when balance <= 2 tokens (for students only)
+    if (conversation.tokenBalance.balance <= 2) {
       return (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 flex items-start gap-2">
           <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />

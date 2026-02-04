@@ -313,9 +313,7 @@ export class MessagesService {
     
     const isStudent = student && convo.student.id === student.id;
     const otherParticipant = isStudent ? convo.tutor : convo.student;
-    const otherParticipantName = otherParticipant?.user?.name || 
-                                  otherParticipant?.user?.email?.split('@')[0] || 
-                                  'Unknown User';
+    const otherParticipantName = otherParticipant?.user?.name || 'Unknown User';
 
     const take = THREAD_PAGE_SIZE;
 
@@ -499,10 +497,7 @@ export class MessagesService {
     const items = page.reduce<Array<Record<string, any>>>((acc, c) => {
       const isStudent = student && c.student.id === student.id;
       const otherParticipant = isStudent ? c.tutor : c.student;
-      const otherParticipantName =
-        otherParticipant?.user?.name ||
-        otherParticipant?.user?.email?.split('@')[0] ||
-        'Unknown User';
+      const otherParticipantName = otherParticipant?.user?.name || 'Unknown User';
 
       const otherUserId = otherParticipant?.userId || otherParticipant?.user?.id || c.id;
       if (seenByOtherUser.has(otherUserId)) return acc;
@@ -648,9 +643,7 @@ export class MessagesService {
     const items = page.map((c) => {
       const isStudent = student && c.student.id === student.id;
       const otherParticipant = isStudent ? c.tutor : c.student;
-      const otherParticipantName = otherParticipant?.user?.name || 
-                                    otherParticipant?.user?.email?.split('@')[0] || 
-                                    'Unknown User';
+      const otherParticipantName = otherParticipant?.user?.name || 'Unknown User';
 
       const isActive = !c.booking || 
                        (c.booking.status !== 'CANCELED' && c.booking.status !== 'COMPLETED');
