@@ -309,8 +309,11 @@ function App() {
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/find-tutors" element={<FindTutors />} />
           <Route path="/become-tutor" element={<BecomeTutor />} />
+          <Route path="/tutors/kyc-submission" element={<Navigate to="/tutor/kyc" replace />} />
+          <Route path="/tutor/kyc-submission" element={<Navigate to="/tutor/kyc" replace />} />
           <Route path="/tutors/:slug" element={<TutorPublicProfile />} />
           {/* Backward compatibility: redirect old /tutor/:id and /tutor?id=123 to /tutors/:slug */}
+          {/* Only match numeric or UUID-like patterns, not dashboard routes */}
           <Route path="/tutor/:id" element={<TutorRedirect />} />
           <Route path="/tutor" element={<TutorRedirect />} />
           <Route path="/support" element={<SupportPage />} />

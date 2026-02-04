@@ -460,12 +460,17 @@ export default function SupportPage() {
                   <>
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-sm font-semibold text-slate-700">{ticketLabel(selectedTicket)}</div>
-                      <button
-                        onClick={handleCloseTicket}
-                        className="rounded-lg border px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                      >
-                        Mark resolved
-                      </button>
+                      {selectedTicket?.status !== 'RESOLVED' && (
+                        <button
+                          onClick={handleCloseTicket}
+                          className="rounded-lg border px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                          Mark resolved
+                        </button>
+                      )}
+                      {selectedTicket?.status === 'RESOLVED' && (
+                        <span className="text-xs font-medium text-green-600">✓ Resolved</span>
+                      )}
                     </div>
                     <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                       Support chat hours: 10:00 AM – 8:00 PM IST
@@ -497,12 +502,14 @@ export default function SupportPage() {
                       <input
                         value={ticketMessage}
                         onChange={(e) => setTicketMessage(e.target.value)}
-                        placeholder="Type a message..."
-                        className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                        placeholder={selectedTicket?.status === 'RESOLVED' ? 'Ticket is resolved' : 'Type a message...'}
+                        disabled={selectedTicket?.status === 'RESOLVED'}
+                        className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
                       />
                       <button
                         onClick={handleSendMessage}
-                        className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-3 py-2 text-sm text-white"
+                        disabled={selectedTicket?.status === 'RESOLVED'}
+                        className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-3 py-2 text-sm text-white disabled:bg-slate-400"
                       >
                         <Send className="h-4 w-4" /> Send
                       </button>
