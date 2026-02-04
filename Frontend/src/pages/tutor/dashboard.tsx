@@ -23,6 +23,12 @@ export default function TutorDashboard() {
   const [loadingAvail, setLoadingAvail] = useState(true);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [profileStatus, setProfileStatus] = useState<{
+    isComplete: boolean;
+    completionPercentage: number;
+    missingFields: string[];
+  } | null>(null);
+  const [loadingProfileStatus, setLoadingProfileStatus] = useState(true);
   const [stats, setStats] = useState({
     totalEarnings: 0,
     sessionsCompleted: 0,
@@ -83,6 +89,19 @@ export default function TutorDashboard() {
         console.error('Failed to load stats:', error);
       } finally {
         if (isMounted) setLoadingStats(false);
+      }
+    })();
+
+    // ✅ Load profile completion status
+    (async () => {
+      try {
+        const { data } = await api.get('/tutors/me/profile-status');
+        if (isMounted) setProfileStatus(data ?? null);
+      } catch (error) {
+        console.error('Failed to load profile status:', error);
+        if (isMounted) setProfileStatus(null);
+      } finally {
+        if (isMounted) setLoadingProfileStatus(false);
       }
     })();
 
@@ -170,6 +189,31 @@ export default function TutorDashboard() {
             Track your teaching, manage sessions, and grow your impact.
           </p>
         </div>
+
+        {!loadingProfileStatus && profileStatus && profileStatus.completionPercentage < 100 && (
+          <div className="rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm sm:text-base font-semibold text-amber-900">
+                  Your profile is only {clampPercent(profileStatus.completionPercentage)}% complete.
+                </p>
+                <p className="text-xs sm:text-sm text-amber-800">Complete your profile to get approved faster.</p>
+              </div>
+              <Link
+                to="/tutor/profile"
+                className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+              >
+                Complete profile
+              </Link>
+            </div>
+            <div className="mt-3 h-2 w-full rounded-full bg-amber-100">
+              <div
+                className="h-2 rounded-full bg-amber-600"
+                style={{ width: `${clampPercent(profileStatus.completionPercentage)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -444,4 +488,9 @@ function ToolCard({
       <p className="text-xs text-slate-600 hidden sm:block">{description}</p>
     </Link>
   );
+}
+
+function clampPercent(v: any): number {
+  const n = Number.isFinite(v) ? Number(v) : 0;
+  return Math.max(0, Math.min(100, n));
 }

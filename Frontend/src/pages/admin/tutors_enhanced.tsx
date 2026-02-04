@@ -17,6 +17,7 @@ export default function AdminTutors() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<TutorSummary | null>(null);
+  const [unbanningUserId, setUnbanningUserId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'ALL' | TutorStatus>('ALL');
   const [page, setPage] = useState(1);
   const pageSize = 100;
@@ -137,6 +138,7 @@ export default function AdminTutors() {
   };
 
   const handleUnban = async (userId: string) => {
+    setUnbanningUserId(userId);
     try {
       await unbanUser(userId);
       // Reload tutors to get updated ban status
@@ -145,6 +147,8 @@ export default function AdminTutors() {
       setError(null);
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to unban user');
+    } finally {
+      setUnbanningUserId(null);
     }
   };
 
@@ -315,10 +319,11 @@ export default function AdminTutors() {
                       </button>
                       {t.user.isBanned && (
                         <button
-                          className="text-green-600 text-sm font-semibold"
+                          className="text-green-600 text-sm font-semibold disabled:text-green-400"
+                          disabled={unbanningUserId === t.user.id}
                           onClick={() => handleUnban(t.user.id)}
                         >
-                          Unblock
+                          {unbanningUserId === t.user.id ? 'Unblocking...' : 'Unblock'}
                         </button>
                       )}
                     </div>

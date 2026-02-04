@@ -13,6 +13,7 @@ export default function AdminStudents() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unbanError, setUnbanError] = useState<string | null>(null);
+  const [unbanningUserId, setUnbanningUserId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -73,6 +74,7 @@ export default function AdminStudents() {
 
   const handleUnban = async (userId: string) => {
     try {
+      setUnbanningUserId(userId);
       await unbanUser(userId);
       // Reload all students to get updated ban status
       let allItems: StudentSummary[] = [];
@@ -99,6 +101,8 @@ export default function AdminStudents() {
       const message = err?.response?.data?.message || 'Failed to unban user';
       setError(message);
       setUnbanError(message);
+    } finally {
+      setUnbanningUserId(null);
     }
   };
 
@@ -479,10 +483,11 @@ export default function AdminStudents() {
                   <td className="px-4 py-3">
                     {(s.user.isBanned || s.user.piiStrikes >= s.user.piiMaxStrikes) && (
                       <button
-                        className="text-green-600 text-sm font-semibold"
+                        className="text-green-600 text-sm font-semibold hover:text-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => handleUnban(s.user.id)}
+                        disabled={unbanningUserId === s.user.id}
                       >
-                        Unblock
+                        {unbanningUserId === s.user.id ? 'Unblocking...' : 'Unblock'}
                       </button>
                     )}
                   </td>

@@ -63,6 +63,12 @@ export default function StudentDashboard() {
   
   const [subjectStats, setSubjectStats] = useState<SubjectStat[]>([]);
   const [showSubjects, setShowSubjects] = useState(false);
+  const [profileStatus, setProfileStatus] = useState<{
+    isComplete: boolean;
+    completionPercentage: number;
+    missingFields: string[];
+  } | null>(null);
+  const [loadingProfileStatus, setLoadingProfileStatus] = useState(true);
 
   const readSearchHistory = (): TutorSearchHistoryEntry[] => {
     try {
@@ -95,10 +101,25 @@ export default function StudentDashboard() {
       setLoadingUnread(false);
       setLoadingReco(false);
       setLoadingStats(false);
+      setLoadingProfileStatus(false);
+      setProfileStatus(null);
       return;
     }
 
     // ✅ Load each API independently - UI renders as data arrives!
+
+    // Load profile completion status
+    (async () => {
+      try {
+        const { data } = await api.get('/students/me/profile-status');
+        if (isMounted) setProfileStatus(data ?? null);
+      } catch (e) {
+        console.error('Failed to load profile status:', e);
+        if (isMounted) setProfileStatus(null);
+      } finally {
+        if (isMounted) setLoadingProfileStatus(false);
+      }
+    })();
     
     // Load token balances
     (async () => {
@@ -325,6 +346,31 @@ export default function StudentDashboard() {
           </h1>
           <p className="mt-2 sm:mt-3 text-base sm:text-lg text-white/90">Let&apos;s continue your learning journey today.</p>
         </div>
+
+        {!loadingProfileStatus && profileStatus && profileStatus.completionPercentage < 100 && (
+          <div className="rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm sm:text-base font-semibold text-amber-900">
+                  Your profile is only {clampPercent(profileStatus.completionPercentage)}% complete.
+                </p>
+                <p className="text-xs sm:text-sm text-amber-800">Complete your profile to unlock the best experience.</p>
+              </div>
+              <Link
+                to="/student/profile"
+                className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+              >
+                Complete profile
+              </Link>
+            </div>
+            <div className="mt-3 h-2 w-full rounded-full bg-amber-100">
+              <div
+                className="h-2 rounded-full bg-amber-600"
+                style={{ width: `${clampPercent(profileStatus.completionPercentage)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Learning snapshot - Responsive */}
         <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">

@@ -263,7 +263,7 @@ export default function Navbar() {
                 </button>
                 {extraOpen && (
                   <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
-                    <Link to="/tutor/kyc-submission" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>KYC Status</Link>
+                    <Link to="/tutor/kyc" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>KYC Status</Link>
                     <Link to="/tutor/recurring-templates" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Recurring Templates</Link>
                     <Link to="/find-tutors" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Find Tutor</Link>
                     <Link to="/become-tutor" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Become a Tutor</Link>
