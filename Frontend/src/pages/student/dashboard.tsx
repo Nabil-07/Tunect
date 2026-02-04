@@ -262,7 +262,7 @@ export default function StudentDashboard() {
           if (isMounted && meRes?.student) {
             setHoursStudied(meRes.student.hoursStudied ?? null);
             setSessionsCompleted(meRes.student.sessionsCompleted ?? null);
-            const userData = meRes?.user ?? meRes.student?.user;
+            const userData = (meRes as any)?.user ?? (meRes as any)?.student?.user;
             setStudentMeData({ ...meRes.student, user: userData });
             if (profileStatusFallback) {
               setProfileStatus(computeStudentProfileStatus({ ...meRes.student, user: userData }));
