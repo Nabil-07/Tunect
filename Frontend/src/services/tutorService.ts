@@ -568,7 +568,19 @@ export async function getMySessions(): Promise<TutorSession[]> {
 }
 
 export async function updateMyProfile(
-  body: Partial<{ name: string; bio: string; subjects: string[]; languages: string[]; hourlyRate: number; country: string }>,
+  body: Partial<{
+    name: string;
+    bio: string;
+    summary: string;
+    subjects: string[];
+    languages: string[];
+    hourlyRate: number;
+    country: string;
+    yearsExperience: number;
+    degrees: string[];
+    qualifications: string;
+    classesTeach: string[];
+  }>,
 ) {
   await api.put('/tutors/me', body);
 }
