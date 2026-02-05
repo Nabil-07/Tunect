@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, Plus, Edit, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import api from '../../lib/apiClient';
+import { useConfirm } from '../../hooks/useConfirm';
 
 type RecurringTemplate = {
   id: string;
@@ -17,6 +18,7 @@ type RecurringTemplate = {
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function RecurringTemplates() {
+  const { confirm, ConfirmDialogComponent } = useConfirm();
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -101,7 +103,14 @@ export default function RecurringTemplates() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this template?')) return;
+    const confirmed = await confirm({
+      title: 'Delete template',
+      message: 'Are you sure you want to delete this template?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await api.delete(`/recurring-templates/${id}`);
@@ -149,6 +158,7 @@ export default function RecurringTemplates() {
 
   return (
     <main className="container-px mx-auto py-8">
+      <ConfirmDialogComponent />
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Recurring Templates</h1>

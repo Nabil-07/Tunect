@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { User, Mail, Phone, MapPin, Calendar, Edit2, Save, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/apiClient';
+import { updateMyStudentProfile, type StudentProfileUpdatePayload } from '../../services/studentService';
 import { useToast } from '../../contexts/ToastContext';
 
 type StudentProfile = {
@@ -28,7 +29,7 @@ export default function StudentProfile() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<StudentProfileUpdatePayload>({
     name: '',
     phone: '',
     bio: '',
@@ -65,7 +66,7 @@ export default function StudentProfile() {
   async function handleSave() {
     try {
       setSaving(true);
-      await api.patch('/students/me', formData);
+      await updateMyStudentProfile(formData);
       showSuccess('Profile updated successfully!');
       setEditing(false);
       loadProfile();

@@ -1020,7 +1020,7 @@ export class TutorsService {
     });
     const unpaidAmount = wallet ? Number(wallet.balance) : 0;
 
-    const payouts = await this.prisma.tutorPayout.findMany({
+    const payouts = await this.prisma.payout.findMany({
       where: { tutorId },
     });
     const totalPaidOut = payouts.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -1059,8 +1059,13 @@ export class TutorsService {
       email: t.user?.email ?? null,
       avatarUrl: t.user?.avatarUrl ?? null,
       bio: t.bio ?? null,
+      summary: t.summary ?? null,
       subjects: t.subjects ?? [],
       languages: t.languages ?? [],
+      degrees: t.degrees ?? [],
+      classesTeach: t.classesTeach ?? [],
+      qualifications: t.qualifications ?? null,
+      yearsExperience: t.yearsExperience ?? null,
       hourlyRate: t.hourlyRate ?? null,
       country: t.country ?? null,
       // Dashboard stats
@@ -1085,8 +1090,13 @@ export class TutorsService {
       email: t.user?.email ?? null,
       avatarUrl: t.user?.avatarUrl ?? null,
       bio: t.bio ?? null,
+      summary: t.summary ?? null,
       subjects: t.subjects ?? [],
       languages: t.languages ?? [],
+      degrees: t.degrees ?? [],
+      classesTeach: t.classesTeach ?? [],
+      qualifications: t.qualifications ?? null,
+      yearsExperience: t.yearsExperience ?? null,
       hourlyRate: t.hourlyRate ?? null,
       country: t.country ?? null,
     };

@@ -28,6 +28,14 @@ export type StudentMe =
     }
   | null;
 
+export type StudentProfileUpdatePayload = {
+  name?: string;
+  phone?: string;
+  bio?: string;
+  timezone?: string;
+  preferredLanguage?: string;
+};
+
 /** Prefer /users/me; also cache profile flags for guards. */
 export async function getMe(): Promise<StudentMe> {
   const t = getAccessToken();
@@ -77,8 +85,12 @@ export async function getNextBooking(): Promise<any | null> {
   }
 }
 
+export async function updateMyStudentProfile(payload: StudentProfileUpdatePayload): Promise<void> {
+  await api.patch('/students/me', payload);
+}
+
 /* Back-compat so old imports don't crash */
 export const getStudentMe = getMe;
 export const getNext = getNextBooking;
 
-export default { getMe, getNextBooking, getStudentMe, getNext };
+export default { getMe, getNextBooking, getStudentMe, getNext, updateMyStudentProfile };
