@@ -20,7 +20,7 @@ type StudentProfile = {
     avatarUrl?: string | null;
     createdAt?: string;
   };
-  student?: { createdAt?: string };
+  student?: { createdAt?: string; grade?: string | null };
 };
 
 export default function StudentProfile() {

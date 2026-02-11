@@ -8,6 +8,7 @@ export type Tutor = {
   id: string;
   name: string;
   email?: string;
+  verified?: boolean;
   subject?: string;
   subjectPrimary?: string;
   subjects?: string[];
@@ -87,6 +88,7 @@ function normalizeTutor(raw: any): Tutor {
     id: raw?.id,
     name,
     email: raw?.email ?? raw?.user?.email,
+    verified: raw?.verified ?? raw?.isVerified ?? false,
     subject,
     subjectPrimary: raw?.subjectPrimary ?? subject,
     subjects: subjectsArr,
