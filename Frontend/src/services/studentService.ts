@@ -1,5 +1,5 @@
 // src/services/studentService.ts
-import { http as api } from '../api/http';
+import api from '../lib/apiClient';
 import { getAccessToken } from '../lib/auth';
 import { getRole } from './authService';
 
@@ -34,6 +34,7 @@ export type StudentProfileUpdatePayload = {
   bio?: string;
   timezone?: string;
   preferredLanguage?: string;
+  grade?: string;
 };
 
 /** Prefer /users/me; also cache profile flags for guards. */
@@ -86,6 +87,12 @@ export async function getNextBooking(): Promise<any | null> {
 }
 
 export async function updateMyStudentProfile(payload: StudentProfileUpdatePayload): Promise<void> {
+  // Debug: verify payload and base URL during save
+  // eslint-disable-next-line no-console
+  console.debug('[studentService] patch /students/me', {
+    baseURL: api.defaults.baseURL,
+    payload,
+  });
   await api.patch('/students/me', payload);
 }
 

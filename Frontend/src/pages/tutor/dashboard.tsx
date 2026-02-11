@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   CalendarDays, 
@@ -29,8 +29,7 @@ export default function TutorDashboard() {
     missingFields: string[];
   } | null>(null);
   const [loadingProfileStatus, setLoadingProfileStatus] = useState(true);
-  const [profileStatusFallback, setProfileStatusFallback] = useState(false);
-  const [tutorMeData, setTutorMeData] = useState<any | null>(null);
+  const profileStatusNeedsFallbackRef = useRef(false);
   const [stats, setStats] = useState({
     totalEarnings: 0,
     sessionsCompleted: 0,
@@ -73,6 +72,27 @@ export default function TutorDashboard() {
       }
     })();
 
+    // ✅ Load profile completion status (fallback to /tutors/me on 404)
+    (async () => {
+      try {
+        const { data } = await api.get('/tutors/me/profile-status');
+        if (!isMounted) return;
+        setProfileStatus(data ?? null);
+        setLoadingProfileStatus(false);
+      } catch (error: any) {
+        const status = error?.response?.status;
+        if (status === 404) {
+          profileStatusNeedsFallbackRef.current = true;
+          return;
+        }
+        console.error('Failed to load profile status:', error);
+        if (isMounted) {
+          setProfileStatus(null);
+          setLoadingProfileStatus(false);
+        }
+      }
+    })();
+
     // ✅ Load tutor stats
     (async () => {
       try {
@@ -86,37 +106,64 @@ export default function TutorDashboard() {
             monthlyEarnings: res.data.monthlyEarnings || 0,
             activeStudents: res.data.activeStudents || 0
           });
-          setTutorMeData(res.data);
-
-          if (profileStatusFallback) {
+          if (profileStatusNeedsFallbackRef.current) {
             setProfileStatus(computeTutorProfileStatus(res.data));
             setLoadingProfileStatus(false);
-            setProfileStatusFallback(false);
+            profileStatusNeedsFallbackRef.current = false;
           }
+        } else if (isMounted) {
+          setLoadingProfileStatus(false);
         }
       } catch (error) {
         console.error('Failed to load stats:', error);
+        if (isMounted) {
+          setProfileStatus(null);
+          setLoadingProfileStatus(false);
+        }
       } finally {
         if (isMounted) setLoadingStats(false);
       }
     })();
 
-    // ✅ Load profile completion status
+    // ✅ Load wallet + payouts to align dashboard earnings with Earnings page
     (async () => {
       try {
-        const { data } = await api.get('/tutors/me/profile-status');
-        if (isMounted) setProfileStatus(data ?? null);
-        if (isMounted) setProfileStatusFallback(false);
-        if (isMounted) setLoadingProfileStatus(false);
-      } catch (error: any) {
-        const status = error?.response?.status;
-        if (status === 404) {
-          if (isMounted) setProfileStatusFallback(true);
-          return;
+        const [walletRes, ledgerRes, payoutsRes] = await Promise.all([
+          api.get('/tutors/me/wallet'),
+          api.get('/tutors/me/ledger', { params: { limit: 200 } }),
+          api.get('/tutors/me/payouts', { params: { limit: 200 } }),
+        ]);
+
+        const unpaidAmount = Number(walletRes?.data?.balance || 0);
+        const payouts = Array.isArray(payoutsRes?.data?.items) ? payoutsRes.data.items : [];
+        const totalPaidOut = payouts.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+        const totalEarnings = unpaidAmount + totalPaidOut;
+
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthlyPaidOut = payouts
+          .filter((p: any) => {
+            const paidAt = p.paidAt || p.createdAt;
+            return paidAt && new Date(paidAt) >= startOfMonth;
+          })
+          .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+
+        const ledgerItems = Array.isArray(ledgerRes?.data?.items) ? ledgerRes.data.items : [];
+        const monthlyLedgerSum = ledgerItems
+          .filter((e: any) => e?.createdAt && new Date(e.createdAt) >= startOfMonth)
+          .reduce((sum: number, e: any) => sum + Number(e.delta || 0), 0);
+
+        const monthlyEarnings = monthlyLedgerSum + monthlyPaidOut;
+
+        if (isMounted) {
+          setStats((prev) => ({
+            ...prev,
+            totalEarnings,
+            monthlyEarnings,
+          }));
         }
-        console.error('Failed to load profile status:', error);
-        if (isMounted) setProfileStatus(null);
-        if (isMounted) setLoadingProfileStatus(false);
+      } catch (error) {
+        console.error('Failed to load earnings summary:', error);
       }
     })();
 
@@ -126,12 +173,6 @@ export default function TutorDashboard() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!profileStatusFallback || !tutorMeData) return;
-    setProfileStatus(computeTutorProfileStatus(tutorMeData));
-    setLoadingProfileStatus(false);
-    setProfileStatusFallback(false);
-  }, [profileStatusFallback, tutorMeData]);
 
   const upcomingAvail = useMemo(() => {
     const now = Date.now();
@@ -519,12 +560,12 @@ function clampPercent(v: any): number {
 
 function computeTutorProfileStatus(data: any) {
   const tutor = data?.tutor ?? data;
-  const user = tutor?.user ?? data?.user;
+  const user = tutor?.user ?? data?.user ?? {};
   const totalFields = 8;
   let completedFields = 0;
   const missingFields: string[] = [];
 
-  if (user?.name && String(user.name).trim()) {
+  if ((user?.name && String(user.name).trim()) || (tutor?.name && String(tutor.name).trim())) {
     completedFields++;
   } else {
     missingFields.push('Full Name');

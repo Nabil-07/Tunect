@@ -13,36 +13,38 @@ export interface TutorProfileStatus {
 }
 
 export function checkStudentProfileCompletion(student: any): StudentProfileStatus {
+  const studentData = student?.student ?? student ?? {};
+  const userData = student?.user ?? studentData?.user ?? {};
   const totalFields = 5;
   let completedFields = 0;
   const missingFields: string[] = [];
 
   // Check mandatory fields
-  if (student.user?.name && student.user.name.trim()) {
+  if (userData?.name && String(userData.name).trim()) {
     completedFields++;
   } else {
     missingFields.push('Full Name');
   }
 
-  if (student.user?.email && student.user.email.trim()) {
+  if (userData?.email && String(userData.email).trim()) {
     completedFields++;
   } else {
     missingFields.push('Email');
   }
 
-  if (student.grade && student.grade.trim()) {
+  if (studentData?.grade && String(studentData.grade).trim()) {
     completedFields++;
   } else {
     missingFields.push('Grade/Class');
   }
 
-  if (student.timezone && student.timezone.trim()) {
+  if (studentData?.timezone && String(studentData.timezone).trim()) {
     completedFields++;
   } else {
     missingFields.push('Timezone');
   }
 
-  if (student.preferredLanguage && student.preferredLanguage.trim()) {
+  if (studentData?.preferredLanguage && String(studentData.preferredLanguage).trim()) {
     completedFields++;
   } else {
     missingFields.push('Preferred Language');
@@ -56,54 +58,60 @@ export function checkStudentProfileCompletion(student: any): StudentProfileStatu
 }
 
 export function checkTutorProfileCompletion(tutor: any): TutorProfileStatus {
+  const tutorData = tutor?.tutor ?? tutor ?? {};
+  const userData = tutor?.user ?? tutorData?.user ?? {};
   const totalFields = 8;
   let completedFields = 0;
   const missingFields: string[] = [];
 
   // Check mandatory fields
-  if (tutor.user?.name && tutor.user.name.trim()) {
+  if ((userData?.name && String(userData.name).trim()) || (tutorData?.name && String(tutorData.name).trim())) {
     completedFields++;
   } else {
     missingFields.push('Full Name');
   }
 
-  if (tutor.bio && tutor.bio.trim()) {
+  if (tutorData?.bio && String(tutorData.bio).trim()) {
     completedFields++;
   } else {
     missingFields.push('Bio/Summary');
   }
 
-  if (tutor.subjects && Array.isArray(tutor.subjects) && tutor.subjects.length > 0) {
+  if (Array.isArray(tutorData?.subjects) && tutorData.subjects.length > 0) {
     completedFields++;
   } else {
     missingFields.push('Subjects');
   }
 
-  if (tutor.languages && Array.isArray(tutor.languages) && tutor.languages.length > 0) {
+  if (Array.isArray(tutorData?.languages) && tutorData.languages.length > 0) {
     completedFields++;
   } else {
     missingFields.push('Languages');
   }
 
-  if (tutor.qualifications && tutor.qualifications.trim()) {
+  if (tutorData?.qualifications && String(tutorData.qualifications).trim()) {
     completedFields++;
   } else {
     missingFields.push('Qualifications');
   }
 
-  if (tutor.yearsExperience && tutor.yearsExperience > 0) {
+  if (tutorData?.yearsExperience && Number(tutorData.yearsExperience) > 0) {
     completedFields++;
   } else {
     missingFields.push('Years of Experience');
   }
 
-  if (tutor.hourlyRate && tutor.hourlyRate > 0) {
+  if (tutorData?.hourlyRate && Number(tutorData.hourlyRate) > 0) {
     completedFields++;
   } else {
     missingFields.push('Hourly Rate');
   }
 
-  if (tutor.status && tutor.status === 'APPROVED') {
+  if (
+    tutorData?.status === 'APPROVED' ||
+    tutorData?.kycStatus === 'APPROVED' ||
+    tutorData?.kyc?.status === 'APPROVED'
+  ) {
     completedFields++;
   } else {
     missingFields.push('KYC Verification');
