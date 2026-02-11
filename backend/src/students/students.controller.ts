@@ -7,6 +7,7 @@ import {
   UseGuards,
   Param,
 } from '@nestjs/common';
+import { IsOptional, IsString } from 'class-validator';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -24,11 +25,23 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { checkStudentProfileCompletion } from '../users/profile-completion';
 
 class UpdateMeDto {
+  @IsOptional()
+  @IsString()
   grade?: string;
+  @IsOptional()
+  @IsString()
   name?: string;
+  @IsOptional()
+  @IsString()
   phone?: string;
+  @IsOptional()
+  @IsString()
   bio?: string;
+  @IsOptional()
+  @IsString()
   timezone?: string;
+  @IsOptional()
+  @IsString()
   preferredLanguage?: string;
 }
 

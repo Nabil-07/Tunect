@@ -39,7 +39,7 @@ function ParticipantList() {
   );
 }
 
-function LivekitStage({ showControls }: { showControls: boolean }) {
+function LivekitStage() {
   const cameraTracks = useTracks(
     [{ source: Track.Source.Camera, withPlaceholder: true }],
     { onlySubscribed: false }
@@ -64,7 +64,6 @@ function LivekitStage({ showControls }: { showControls: boolean }) {
         </GridLayout>
       </div>
       <RoomAudioRenderer />
-      {showControls ? <ControlBar /> : null}
     </div>
   );
 }
@@ -92,50 +91,57 @@ function CallRoomContent({ bookingId }: { bookingId: string }) {
   }, [callStartedAt, room]);
 
   return (
-    <div className="grid h-[calc(100vh-56px)] grid-cols-1 gap-4 p-4 lg:grid-cols-[1fr_320px]">
-      <div className="relative">
-        {!hasBothJoined && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 text-sm text-slate-700">
-            Waiting room: the class will start when both participants join.
-          </div>
-        )}
-        <LivekitStage showControls={hasBothJoined} />
-      </div>
-      <div className="rounded-2xl border bg-white p-4 flex flex-col">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
-          <button
-            type="button"
-            onClick={() => setSideTab("participants")}
-            className={
-              sideTab === "participants"
-                ? "rounded-lg bg-slate-900 px-3 py-1 text-white"
-                : "rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100"
-            }
-          >
-            Participants
-          </button>
-          <button
-            type="button"
-            onClick={() => setSideTab("whiteboard")}
-            className={
-              sideTab === "whiteboard"
-                ? "rounded-lg bg-slate-900 px-3 py-1 text-white"
-                : "rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100"
-            }
-          >
-            Whiteboard
-          </button>
-        </div>
-        <div className="flex-1 min-h-0">
-          {sideTab === "participants" ? (
-            <ParticipantList />
-          ) : (
-            <div className="h-full rounded-xl border">
-              <Whiteboard bookingId={bookingId} className="h-full min-h-[360px]" />
+    <div className="flex h-[calc(100vh-56px)] flex-col gap-4 p-4">
+      <div className="grid flex-1 min-h-0 grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+        <div className="relative min-h-0">
+          {!hasBothJoined && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 text-sm text-slate-700">
+              Waiting room: the class will start when both participants join.
             </div>
           )}
+          <LivekitStage />
+        </div>
+        <div className="rounded-2xl border bg-white p-4 flex flex-col min-h-0">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <button
+              type="button"
+              onClick={() => setSideTab("participants")}
+              className={
+                sideTab === "participants"
+                  ? "rounded-lg bg-slate-900 px-3 py-1 text-white"
+                  : "rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100"
+              }
+            >
+              Participants
+            </button>
+            <button
+              type="button"
+              onClick={() => setSideTab("whiteboard")}
+              className={
+                sideTab === "whiteboard"
+                  ? "rounded-lg bg-slate-900 px-3 py-1 text-white"
+                  : "rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100"
+              }
+            >
+              Whiteboard
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            {sideTab === "participants" ? (
+              <ParticipantList />
+            ) : (
+              <div className="h-full rounded-xl border">
+                <Whiteboard bookingId={bookingId} className="h-full min-h-[360px]" />
+              </div>
+            )}
+          </div>
         </div>
       </div>
+      {hasBothJoined ? (
+        <div className="sticky bottom-0 z-20 rounded-2xl border bg-white/95 p-2 shadow-sm backdrop-blur">
+          <ControlBar />
+        </div>
+      ) : null}
     </div>
   );
 }

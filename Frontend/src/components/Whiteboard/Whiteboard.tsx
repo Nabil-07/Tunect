@@ -21,6 +21,7 @@ interface WhiteboardProps {
 export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = false, realtime = false, className }) => {
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingScene, setPendingScene] = useState<{ elements: readonly ExcalidrawElement[]; appState: AppState } | null>(null);
   const apiAvailableRef = useRef<boolean | null>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -43,6 +44,12 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
     // LiveKit-based realtime sync can be added later via data channels.
   }, [realtime]);
 
+  useEffect(() => {
+    if (!excalidrawAPI || !pendingScene) return;
+    excalidrawAPI.updateScene(pendingScene);
+    setPendingScene(null);
+  }, [excalidrawAPI, pendingScene]);
+
   const loadWhiteboardData = async () => {
     try {
       const token = readToken();
@@ -60,11 +67,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
       const contentType = response.headers.get('content-type') || '';
       if (response.ok && contentType.includes('application/json')) {
         const data = await response.json();
-        if (data && excalidrawAPI) {
-          excalidrawAPI.updateScene({
+        if (data) {
+          const scene = {
             elements: data.elements || [],
             appState: data.appState || {},
-          });
+          };
+          if (excalidrawAPI) {
+            excalidrawAPI.updateScene(scene);
+          } else {
+            setPendingScene(scene);
+          }
         }
       } else {
         console.warn('Whiteboard API not available, starting with empty board');

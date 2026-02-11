@@ -1,4 +1,5 @@
 import { http as api } from '../api/http';
+import apiClient from '../lib/apiClient';
 import { getTutorAvailability } from './bookingsService';
 
 /* ---------- Types ---------- */
@@ -542,7 +543,7 @@ export async function saveAvailabilityForMonth(
 /* ========== Tutor profile & KYC ========== */
 
 export async function getMyProfile(): Promise<any> {
-  const { data } = await api.get('/tutors/me');
+  const { data } = await apiClient.get('/tutors/me');
   return data;
 }
 
@@ -550,6 +551,7 @@ export async function getMyProfile(): Promise<any> {
 export type TutorSession = {
   id: string;
   studentName: string;
+  studentGrade?: string | null;
   subject: string;
   startTime: string; // ISO
   endTime: string;   // ISO

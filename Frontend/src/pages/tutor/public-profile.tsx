@@ -114,6 +114,41 @@ export default function TutorPublicProfile() { // NOSONAR
     isVerified: boolean;
   } | null>(null);
 
+  const deriveAvailabilityInfo = (slots: Array<{ startTime?: string; endTime?: string }>, verified?: boolean) => {
+    const now = new Date();
+    const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const activeDays = new Set<string>();
+    let weeklyMinutes = 0;
+
+    const validSlots = slots
+      .filter((s) => s?.startTime && s?.endTime)
+      .map((s) => ({ start: new Date(s.startTime as string), end: new Date(s.endTime as string) }))
+      .filter((s) => !Number.isNaN(s.start.getTime()) && !Number.isNaN(s.end.getTime()));
+
+    validSlots.forEach((slot) => {
+      if (slot.start >= now && slot.start <= weekEnd) {
+        activeDays.add(slot.start.toISOString().split('T')[0]);
+        const mins = Math.max(0, (slot.end.getTime() - slot.start.getTime()) / (1000 * 60));
+        weeklyMinutes += mins;
+      }
+    });
+
+    const lastActive = validSlots.length
+      ? validSlots.reduce((latest, cur) => (cur.start > latest ? cur.start : latest), validSlots[0].start)
+      : null;
+
+    const consistencyPercentage = Math.round((activeDays.size / 7) * 100);
+    const weeklyHours = Math.round((weeklyMinutes / 60) * 10) / 10;
+
+    return {
+      lastActive: lastActive ? lastActive.toISOString() : null,
+      consistencyPercentage,
+      weeklyHours,
+      isFeatured: false,
+      isVerified: !!verified,
+    };
+  };
+
   const days = useMemo(() => {
     const start = startOfMonth(month);
     const end = endOfMonth(month);
@@ -233,10 +268,16 @@ export default function TutorPublicProfile() { // NOSONAR
           fetchReviews(t.id);
           // Fetch token balance for students
           fetchTokenBalance(t.id);
-          // Fetch availability info
-          api.get(`/tutors/${t.id}/availability-info`)
-            .then(res => setAvailabilityInfo(res.data))
-            .catch(() => {}); // Silently fail - availability info is optional
+          // Fetch availability info from slots to avoid preprod 404s
+          api
+            .get(`/availability/tutors/${t.id}`)
+            .then((res) => {
+              const slots = Array.isArray(res.data) ? res.data : [];
+              setAvailabilityInfo(deriveAvailabilityInfo(slots, t?.verified));
+            })
+            .catch(() => {
+              setAvailabilityInfo(deriveAvailabilityInfo([], t?.verified));
+            });
         }
 
         // Redirect to slug-based URL if not already using slug

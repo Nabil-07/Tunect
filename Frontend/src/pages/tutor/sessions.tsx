@@ -11,6 +11,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 type Session = {
   id: string;
   studentName?: string;
+  studentGrade?: string | null;
   subject?: string;
   startTime: string;
   endTime: string;
@@ -218,6 +219,11 @@ export default function MySessions() {
                   {!isGroup && session.studentName && (
                     <p className="text-sm text-slate-700 flex items-center gap-2">
                       <Users className="h-4 w-4" /> Student: {session.studentName}
+                    </p>
+                  )}
+                  {!isGroup && session.studentGrade && (
+                    <p className="text-sm text-slate-700 flex items-center gap-2">
+                      <Users className="h-4 w-4" /> Class: {session.studentGrade}
                     </p>
                   )}
                   {isGroup && (

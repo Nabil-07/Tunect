@@ -1,5 +1,5 @@
 // src/pages/student/dashboard.tsx
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarClock,
   BadgeIndianRupee,
@@ -69,8 +69,7 @@ export default function StudentDashboard() {
     missingFields: string[];
   } | null>(null);
   const [loadingProfileStatus, setLoadingProfileStatus] = useState(true);
-  const [profileStatusFallback, setProfileStatusFallback] = useState(false);
-  const [studentMeData, setStudentMeData] = useState<any | null>(null);
+  const profileStatusNeedsFallbackRef = useRef(false);
 
   const readSearchHistory = (): TutorSearchHistoryEntry[] => {
     try {
@@ -110,25 +109,27 @@ export default function StudentDashboard() {
 
     // ✅ Load each API independently - UI renders as data arrives!
 
-    // Load profile completion status
+    // Load profile completion status (fallback to /students/me on 404)
     (async () => {
       try {
         const { data } = await api.get('/students/me/profile-status');
-        if (isMounted) setProfileStatus(data ?? null);
-        if (isMounted) setProfileStatusFallback(false);
-        if (isMounted) setLoadingProfileStatus(false);
+        if (!isMounted) return;
+        setProfileStatus(data ?? null);
+        setLoadingProfileStatus(false);
       } catch (e: any) {
         const status = e?.response?.status;
         if (status === 404) {
-          if (isMounted) setProfileStatusFallback(true);
+          profileStatusNeedsFallbackRef.current = true;
           return;
         }
         console.error('Failed to load profile status:', e);
-        if (isMounted) setProfileStatus(null);
-        if (isMounted) setLoadingProfileStatus(false);
+        if (isMounted) {
+          setProfileStatus(null);
+          setLoadingProfileStatus(false);
+        }
       }
     })();
-    
+
     // Load token balances
     (async () => {
       try {
@@ -246,13 +247,13 @@ export default function StudentDashboard() {
           setSubjectStats(subjects);
 
           const userData = meRes?.data?.user ?? studentData?.user;
-          setStudentMeData({ ...studentData, user: userData });
-
-          if (profileStatusFallback) {
+          if (profileStatusNeedsFallbackRef.current) {
             setProfileStatus(computeStudentProfileStatus({ ...studentData, user: userData }));
             setLoadingProfileStatus(false);
-            setProfileStatusFallback(false);
+            profileStatusNeedsFallbackRef.current = false;
           }
+        } else if (isMounted) {
+          setLoadingProfileStatus(false);
         }
       } catch (e) {
         console.error('Failed to load student stats:', e);
@@ -263,15 +264,15 @@ export default function StudentDashboard() {
             setHoursStudied(meRes.student.hoursStudied ?? null);
             setSessionsCompleted(meRes.student.sessionsCompleted ?? null);
             const userData = (meRes as any)?.user ?? (meRes as any)?.student?.user;
-            setStudentMeData({ ...meRes.student, user: userData });
-            if (profileStatusFallback) {
+            if (profileStatusNeedsFallbackRef.current) {
               setProfileStatus(computeStudentProfileStatus({ ...meRes.student, user: userData }));
               setLoadingProfileStatus(false);
-              setProfileStatusFallback(false);
+              profileStatusNeedsFallbackRef.current = false;
             }
           }
         } catch (e2) {
           console.error('Fallback getMe() also failed:', e2);
+          if (isMounted) setLoadingProfileStatus(false);
         }
       } finally {
         if (isMounted) setLoadingStats(false);
@@ -289,12 +290,6 @@ export default function StudentDashboard() {
     };
   }, [authLoading, isAuthenticated, user?.role]);
 
-  useEffect(() => {
-    if (!profileStatusFallback || !studentMeData) return;
-    setProfileStatus(computeStudentProfileStatus(studentMeData));
-    setLoadingProfileStatus(false);
-    setProfileStatusFallback(false);
-  }, [profileStatusFallback, studentMeData]);
 
   // Listen for demo status and token balance changes
   useEffect(() => {

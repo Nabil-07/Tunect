@@ -11,6 +11,7 @@ type StudentProfile = {
   bio?: string | null;
   timezone?: string | null;
   preferredLanguage?: string | null;
+  grade?: string | null;
   user: {
     id: string;
     name: string | null;
@@ -35,6 +36,7 @@ export default function StudentProfile() {
     bio: '',
     timezone: '',
     preferredLanguage: '',
+    grade: '',
   });
 
   useEffect(() => {
@@ -54,6 +56,7 @@ export default function StudentProfile() {
           bio: data.bio ?? '',
           timezone: data.timezone ?? '',
           preferredLanguage: data.preferredLanguage ?? '',
+          grade: data.student?.grade ?? data.grade ?? '',
         });
       }
     } catch (err: any) {
@@ -85,6 +88,7 @@ export default function StudentProfile() {
         bio: profile.bio ?? '',
         timezone: profile.timezone ?? '',
         preferredLanguage: profile.preferredLanguage ?? '',
+        grade: profile.student?.grade ?? profile.grade ?? '',
       });
     }
     setEditing(false);
@@ -222,6 +226,27 @@ export default function StudentProfile() {
             ) : (
               <p className="text-slate-800 px-4 py-2 bg-slate-50 rounded-lg">
                 {formData.phone || 'Not set'}
+              </p>
+            )}
+          </div>
+
+          {/* Grade */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              <Calendar className="inline h-4 w-4 mr-2" />
+              Grade/Class
+            </label>
+            {editing ? (
+              <input
+                type="text"
+                value={formData.grade}
+                onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., Grade 8"
+              />
+            ) : (
+              <p className="text-slate-800 px-4 py-2 bg-slate-50 rounded-lg">
+                {formData.grade || 'Not set'}
               </p>
             )}
           </div>

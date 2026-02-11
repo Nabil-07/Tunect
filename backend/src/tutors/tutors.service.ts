@@ -925,6 +925,7 @@ export class TutorsService {
         student: {
           select: {
             id: true,
+            grade: true,
             user: { select: { name: true, email: true, avatarUrl: true } },
           },
         },
@@ -961,6 +962,7 @@ export class TutorsService {
       return {
         id: booking.id,
         studentName,
+        studentGrade: booking.student?.grade ?? null,
         subject,
         startTime: booking.startTime!.toISOString(),
         endTime: booking.endTime!.toISOString(),
@@ -1058,6 +1060,7 @@ export class TutorsService {
       name: t.user?.name ?? null,
       email: t.user?.email ?? null,
       avatarUrl: t.user?.avatarUrl ?? null,
+      status: t.status ?? null,
       bio: t.bio ?? null,
       summary: t.summary ?? null,
       subjects: t.subjects ?? [],
@@ -1089,6 +1092,7 @@ export class TutorsService {
       name: t.user?.name ?? null,
       email: t.user?.email ?? null,
       avatarUrl: t.user?.avatarUrl ?? null,
+      status: t.status ?? null,
       bio: t.bio ?? null,
       summary: t.summary ?? null,
       subjects: t.subjects ?? [],
