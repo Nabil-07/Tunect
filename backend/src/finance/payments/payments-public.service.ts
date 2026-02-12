@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma, TokenReason } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as crypto from 'node:crypto';
@@ -23,6 +24,32 @@ export class PaymentsPublicService {
 
   private resolveTutorPricePerToken(hourlyRate: number): number {
     return Math.ceil(hourlyRate / TOKENS_PER_HOUR);
+  }
+
+  private async resolveStudentId(userId: string): Promise<string> {
+    let student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (student) return student.id;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true },
+    });
+
+    if (!user) throw new NotFoundException(`User not found: ${userId}`);
+    if (user.role !== 'STUDENT') {
+      throw new BadRequestException(`User ${user.email} is not a student`);
+    }
+
+    student = await this.prisma.student.create({
+      data: { userId, tokens: 0 },
+      select: { id: true },
+    });
+
+    return student.id;
   }
 
   async createOrder(
@@ -126,14 +153,14 @@ export class PaymentsPublicService {
   }
 
   async verifyPayment(
-    studentId: string,
+    userId: string,
     dto: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string },
   ) {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = dto;
 
     // Find payment by Razorpay order ID
     const payment = await this.prisma.payment.findFirst({
-      where: { providerOrderId: razorpay_order_id, userId: studentId },
+      where: { providerOrderId: razorpay_order_id, userId },
     });
 
     if (!payment) {
@@ -157,40 +184,72 @@ export class PaymentsPublicService {
       throw new BadRequestException('Payment metadata missing tutor ID');
     }
 
-    // Update payment status
-    await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        providerPaymentId: razorpay_payment_id,
-        providerSignature: razorpay_signature,
-        status: 'SUCCEEDED',
-      },
-    });
+    const studentId = await this.resolveStudentId(userId);
+    const tokensPurchased = Number(payment.tokensPurchased ?? 0);
+    if (!Number.isFinite(tokensPurchased) || tokensPurchased <= 0) {
+      throw new BadRequestException('Invalid token amount on payment');
+    }
+
+    const amountInMinor = Number(payment.amountInMinor ?? 0);
+    const pricePerToken = tokensPurchased > 0
+      ? amountInMinor / 100 / tokensPurchased
+      : 0;
 
     // Credit tokens to student via token ledger
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + 60); // 60 day expiry
 
-    // Create ledger entry
-    await this.prisma.tokenLedger.create({
-      data: {
-        studentId,
-        tutorId,
-        delta: payment.tokensPurchased,
-        reason: 'BOOKING', // Using BOOKING as the closest reason; payment info is in metadata
-        expiresAt: expiryDate,
-        paymentId: payment.id,
-      },
-    });
-
-    // Update student token balance
-    await this.prisma.student.update({
-      where: { id: studentId },
-      data: {
-        tokens: {
-          increment: payment.tokensPurchased,
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          providerPaymentId: razorpay_payment_id,
+          providerSignature: razorpay_signature,
+          status: 'SUCCEEDED',
         },
-      },
+      });
+
+      const existingLedger = await tx.tokenLedger.findFirst({
+        where: { paymentId: payment.id, studentId },
+        select: { id: true },
+      });
+
+      if (!existingLedger) {
+        await tx.tokenLedger.create({
+          data: {
+            studentId,
+            tutorId,
+            delta: new Prisma.Decimal(tokensPurchased.toString()),
+            reason: TokenReason.PURCHASED,
+            expiresAt: expiryDate,
+            paymentId: payment.id,
+          },
+        });
+
+        await tx.student.update({
+          where: { id: studentId },
+          data: { tokens: { increment: tokensPurchased } },
+        });
+
+        await tx.tutorTokenBalance.upsert({
+          where: {
+            studentId_tutorId: {
+              studentId,
+              tutorId,
+            },
+          },
+          update: {
+            balance: { increment: tokensPurchased },
+            pricePerToken: new Prisma.Decimal(pricePerToken.toString()),
+          },
+          create: {
+            studentId,
+            tutorId,
+            balance: new Prisma.Decimal(tokensPurchased.toString()),
+            pricePerToken: new Prisma.Decimal(pricePerToken.toString()),
+          },
+        });
+      }
     });
 
     return {
