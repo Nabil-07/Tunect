@@ -615,7 +615,7 @@ export class StudentsService {
           where: {
             studentId: studentIdToUse,
             tutorId: b.tutorId,
-            reason: 'PURCHASED' as TokenReason, // Only purchased tokens expire
+            reason: TokenReason.PURCHASED, // Only purchased tokens expire
             expiresAt: { not: null },
             delta: { gt: 0 }, // Only count added tokens
           },

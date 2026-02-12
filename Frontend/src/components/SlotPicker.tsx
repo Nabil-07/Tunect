@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, CalendarDays, Clock, Loader2, RotateCw, X } from 'lucide-react';
 import { assignSlot, getTutorAvailability, listBookings } from '../services/bookingsService';
-import api from '../lib/apiClient';
+import { http as api } from '../api/http';
 import { addToWaitlist } from '../services/waitlistService';
 import NotificationModal from './common/NotificationModal';
 
