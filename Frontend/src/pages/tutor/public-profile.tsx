@@ -253,6 +253,12 @@ export default function TutorPublicProfile() { // NOSONAR
   }, [user?.role]);
 
   useEffect(() => {
+    if (tutor?.id) {
+      fetchTokenBalance(tutor.id);
+    }
+  }, [tutor?.id, fetchTokenBalance]);
+
+  useEffect(() => {
     let mounted = true;
     (async () => {
       try {
@@ -266,8 +272,6 @@ export default function TutorPublicProfile() { // NOSONAR
         // Fetch reviews and availability info after tutor is loaded
         if (t?.id) {
           fetchReviews(t.id);
-          // Fetch token balance for students
-          fetchTokenBalance(t.id);
           // Fetch availability info from slots to avoid preprod 404s
           api
             .get(`/availability/tutors/${t.id}`)
