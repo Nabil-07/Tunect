@@ -12,7 +12,11 @@ type AvatarUploadResponse = {
 function shouldUseDirectMultipartUpload() {
   if (globalThis.window === undefined) return false;
   const host = globalThis.window.location.hostname;
-  return host === 'localhost' || host === '127.0.0.1';
+  const env = (import.meta.env.VITE_ENV || '').toString().toLowerCase();
+  const isPreprodHost = host.endsWith('.preprod.tunectnow.com');
+  const ua = globalThis.window.navigator?.userAgent || '';
+  const isSafari = /safari/i.test(ua) && !/chrome|chromium|android|crios|fxios|edg/i.test(ua);
+  return host === 'localhost' || host === '127.0.0.1' || env === 'preprod' || isPreprodHost || isSafari;
 }
 
 function validateAvatarFile(file: File) {
@@ -87,7 +91,10 @@ export async function uploadMyAvatar(file: File): Promise<AvatarUploadResponse> 
     const message = String(error?.message || '').toLowerCase();
 
     const isPresignEndpointFailure = requestUrl.includes('/uploads/presign') && (responseStatus === 404 || responseStatus >= 500);
-    const isS3PutTransportFailure = message.includes('failed to fetch') || message.includes('network');
+    const isS3PutTransportFailure =
+      message.includes('failed to fetch') ||
+      message.includes('network') ||
+      message.includes('load failed');
 
     if (!isPresignEndpointFailure && !isS3PutTransportFailure) {
       throw error;
