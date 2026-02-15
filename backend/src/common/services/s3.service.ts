@@ -26,6 +26,8 @@ export class S3Service {
     if (this.isEnabled) {
       this.s3Client = new S3Client({
         region: this.region,
+        requestChecksumCalculation: 'WHEN_REQUIRED',
+        responseChecksumValidation: 'WHEN_REQUIRED',
         credentials: {
           accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID') || '',
           secretAccessKey: this.configService.get<string>('AWS_SECRET_ACCESS_KEY') || '',
