@@ -55,7 +55,7 @@ export class UploadsService {
       allowedMimeTypes: new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']),
     },
     'study-materials': {
-      maxBytes: 25 * 1024 * 1024,
+      maxBytes: 5 * 1024 * 1024,
       allowedMimeTypes: new Set([
         'application/pdf',
         'application/msword',

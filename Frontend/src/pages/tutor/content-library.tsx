@@ -30,6 +30,8 @@ type TutorProfile = {
 };
 
 const SUBJECT_CLASS_SEPARATOR = ' | ';
+const MAX_STUDY_MATERIAL_BYTES = 5 * 1024 * 1024;
+const MAX_STUDY_MATERIAL_MB = 5;
 
 const splitSubjectAndClass = (raw?: string) => {
   const value = (raw || '').trim();
@@ -161,6 +163,46 @@ export default function ContentLibrary() {
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const handleFileSelection = (file: File | null) => {
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    if (file.type !== 'application/pdf') {
+      setError('Only PDF files are allowed');
+      setSelectedFile(null);
+      return;
+    }
+
+    if (file.size > MAX_STUDY_MATERIAL_BYTES) {
+      setError(`File size exceeds ${MAX_STUDY_MATERIAL_MB}MB limit. Please upload a smaller PDF.`);
+      setSelectedFile(null);
+      return;
+    }
+
+    setError(null);
+    setSelectedFile(file);
+  };
+
+  const shouldFallbackToMultipart = (uploadErr: any) => {
+    const responseStatus = Number(uploadErr?.response?.status || 0);
+    const requestUrl = String(uploadErr?.config?.url || '').toLowerCase();
+    const message = String(uploadErr?.message || '').toLowerCase();
+
+    const isPresignEndpointFailure =
+      requestUrl.includes('/uploads/presign') &&
+      (responseStatus === 404 || responseStatus >= 500);
+
+    const isS3PutFailure =
+      message.includes('upload failed with status') ||
+      message.includes('failed to fetch') ||
+      message.includes('networkerror') ||
+      message.includes('network error');
+
+    return isPresignEndpointFailure || isS3PutFailure;
+  };
 
   useEffect(() => {
     loadTutorProfile();
@@ -339,6 +381,9 @@ export default function ContentLibrary() {
           if (mimeType !== 'application/pdf') {
             throw new Error('Only PDF files are allowed');
           }
+          if (selectedFile.size > MAX_STUDY_MATERIAL_BYTES) {
+            throw new Error(`File size exceeds ${MAX_STUDY_MATERIAL_MB}MB limit. Please upload a smaller PDF.`);
+          }
 
           try {
             const presignRes = await api.post('/uploads/presign', {
@@ -362,7 +407,7 @@ export default function ContentLibrary() {
             nextFileKey = presignRes.data.key;
             nextFileType = mimeType;
           } catch (uploadErr: any) {
-            if (isLocalhostRuntime) {
+            if (isLocalhostRuntime || shouldFallbackToMultipart(uploadErr)) {
               await updateWithMultipart({
                 id: editingId,
                 title: formData.title,
@@ -399,6 +444,9 @@ export default function ContentLibrary() {
         if (mimeType !== 'application/pdf') {
           throw new Error('Only PDF files are allowed');
         }
+        if (selectedFile.size > MAX_STUDY_MATERIAL_BYTES) {
+          throw new Error(`File size exceeds ${MAX_STUDY_MATERIAL_MB}MB limit. Please upload a smaller PDF.`);
+        }
 
         let createdMaterial: any;
 
@@ -418,13 +466,7 @@ export default function ContentLibrary() {
               subject: materialSubject || undefined,
             });
           } catch (uploadErr: any) {
-            const responseStatus = Number(uploadErr?.response?.status || 0);
-            const requestUrl = String(uploadErr?.config?.url || '').toLowerCase();
-            const isPresignEndpointFailure =
-              requestUrl.includes('/uploads/presign') &&
-              (responseStatus === 404 || responseStatus >= 500);
-
-            if (isPresignEndpointFailure) {
+            if (shouldFallbackToMultipart(uploadErr)) {
               createdMaterial = await uploadWithMultipart({
                 file: selectedFile,
                 title: formData.title,
@@ -708,9 +750,10 @@ export default function ContentLibrary() {
                   type="file"
                   accept="application/pdf"
                   required={!editingId}
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  onChange={(e) => handleFileSelection(e.target.files?.[0] || null)}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                 />
+                <p className="mt-1 text-xs text-slate-500">Max file size: 5MB (PDF only)</p>
                 {editingId && (
                   <div className="mt-1 space-y-1">
                     {editingMaterialFileUrl && (
