@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Bot, Send, User, Users, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -380,7 +380,7 @@ export default function SupportPage() {
     return false;
   }, [selectedTicket, tickets.length, firstContactTicketId, messages, user?.id]);
 
-  let tokenBalancesSection: JSX.Element;
+  let tokenBalancesSection: ReactNode;
   if (loadingBalances) {
     tokenBalancesSection = <p className="text-slate-500">Loading...</p>;
   } else if (tokenBalances.length === 0) {
