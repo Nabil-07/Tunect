@@ -68,6 +68,19 @@ const isLocalhostRuntime = (() => {
   return host === 'localhost' || host === '127.0.0.1';
 })();
 
+const shouldUseMultipartUpload = (() => {
+  if (globalThis.window === undefined) {
+    return false;
+  }
+
+  const host = globalThis.window.location.hostname;
+  const env = (import.meta.env.VITE_ENV || '').toString().toLowerCase();
+  const isPreprodHost = host.endsWith('.preprod.tunectnow.com');
+  const ua = globalThis.window.navigator?.userAgent || '';
+  const isSafari = /safari/i.test(ua) && !/chrome|chromium|android|crios|fxios|edg/i.test(ua);
+  return isLocalhostRuntime || env === 'preprod' || isPreprodHost || isSafari;
+})();
+
 const expandClassOptions = (rawOptions: string[]): string[] => {
   const expanded: string[] = [];
 
@@ -199,7 +212,8 @@ export default function ContentLibrary() {
       message.includes('upload failed with status') ||
       message.includes('failed to fetch') ||
       message.includes('networkerror') ||
-      message.includes('network error');
+      message.includes('network error') ||
+      message.includes('load failed');
 
     return isPresignEndpointFailure || isS3PutFailure;
   };
@@ -385,6 +399,22 @@ export default function ContentLibrary() {
             throw new Error(`File size exceeds ${MAX_STUDY_MATERIAL_MB}MB limit. Please upload a smaller PDF.`);
           }
 
+          if (shouldUseMultipartUpload) {
+            await updateWithMultipart({
+              id: editingId,
+              title: formData.title,
+              description: formData.description,
+              subject: materialSubject || undefined,
+              file: selectedFile,
+            });
+
+            setSuccess('Material updated successfully!');
+            resetForm();
+            await loadMaterials();
+            setTimeout(() => setSuccess(null), 3000);
+            return;
+          }
+
           try {
             const presignRes = await api.post('/uploads/presign', {
               useCase: 'study-materials',
@@ -450,7 +480,7 @@ export default function ContentLibrary() {
 
         let createdMaterial: any;
 
-        if (isLocalhostRuntime) {
+        if (shouldUseMultipartUpload) {
           createdMaterial = await uploadWithMultipart({
             file: selectedFile,
             title: formData.title,
