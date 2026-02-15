@@ -3,17 +3,17 @@ import {
   IsISO8601,
   IsOptional,
   IsString,
-  IsUUID,
   ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsCuid } from '../../common/validators/is-cuid.decorator';
 
 export class CreateBookingDto {
   @ApiProperty({
     example: 'cmjr15hyl0004hxqk8svmw3tf',
     description: 'ID of the tutor (CUID)',
   })
-  @IsString()
+  @IsCuid({ allowLegacyUuid: true })
   tutorId!: string;
 
   @ApiPropertyOptional({
@@ -21,7 +21,7 @@ export class CreateBookingDto {
     description:
       'ID of the student (CUID). Optional — if omitted, it is derived from the current JWT user.',
   })
-  @IsString()
+  @IsCuid({ allowLegacyUuid: true })
   @IsOptional()
   studentId?: string;
 

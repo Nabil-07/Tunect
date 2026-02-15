@@ -39,6 +39,7 @@ type User = {
   email: string;
   role?: RoleApi | string;
   name?: string;
+  avatarUrl?: string | null;
   isDirector?: boolean;
   isBanned?: boolean;
   bannedScope?: string | null;
@@ -47,6 +48,12 @@ type User = {
   piiStrikes?: number;
   piiMaxStrikes?: number;
   messagingBlocked?: boolean;
+  terms?: {
+    currentVersion?: number;
+    acceptedForCurrentRole?: boolean;
+    student?: { accepted: boolean; version: number | null; acceptedAt: string | null };
+    tutor?: { accepted: boolean; version: number | null; acceptedAt: string | null };
+  };
   student?: { id: string } | null;
   tutor?: { id: string } | null;
 } | null;

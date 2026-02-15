@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { extractAuditInfo } from '../common/audit-helper';
 import { Request } from 'express';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
+import { BookingStatus } from '@prisma/client';
 
 @Injectable()
 export class RefundsService {
@@ -26,6 +27,14 @@ export class RefundsService {
     tokenAmount: number,
     reason?: string,
   ) {
+    if (!Number.isFinite(tokenAmount) || tokenAmount <= 0) {
+      throw new BadRequestException('Token amount must be greater than 0');
+    }
+
+    if (fromTutorId === toTutorId) {
+      throw new BadRequestException('From and To tutor cannot be the same');
+    }
+
     // Verify student has tokens with fromTutor
     const balance = await this.prisma.tutorTokenBalance.findUnique({
       where: {
@@ -40,6 +49,14 @@ export class RefundsService {
       throw new BadRequestException('Insufficient tokens with this tutor');
     }
 
+    // Transfer must move full tutor balance to avoid stale assignment with previous tutor
+    const availableBalance = Number(balance.balance);
+    if (Math.abs(availableBalance - Number(tokenAmount)) > 0.000001) {
+      throw new BadRequestException(
+        `Transfer must be for full available balance (${availableBalance.toFixed(2)} tokens)`,
+      );
+    }
+
     // Verify tutors exist
     const [fromTutor, toTutor] = await Promise.all([
       this.prisma.tutor.findUnique({ where: { id: fromTutorId } }),
@@ -48,6 +65,30 @@ export class RefundsService {
 
     if (!fromTutor || !toTutor) {
       throw new NotFoundException('Tutor not found');
+    }
+
+    const purchasePricePerToken = Number(balance.pricePerToken);
+    const toTutorRate = Number(toTutor.hourlyRate || 0);
+    if (!Number.isFinite(toTutorRate) || toTutorRate <= 0) {
+      throw new BadRequestException('Target tutor pricing is invalid');
+    }
+    if (toTutorRate > purchasePricePerToken) {
+      throw new BadRequestException(
+        `Target tutor rate (₹${toTutorRate}) exceeds purchase rate cap (₹${purchasePricePerToken})`,
+      );
+    }
+
+    const existingPending = await this.prisma.tokenTransferRequest.findFirst({
+      where: {
+        studentId,
+        fromTutorId,
+        status: 'PENDING',
+      },
+      select: { id: true },
+    });
+
+    if (existingPending) {
+      throw new BadRequestException('A transfer request for this tutor is already pending');
     }
 
     // Create transfer request
@@ -108,6 +149,12 @@ export class RefundsService {
         student: {
           include: { user: true },
         },
+        fromTutor: {
+          include: { user: true },
+        },
+        toTutor: {
+          include: { user: true },
+        },
       },
     });
 
@@ -122,6 +169,34 @@ export class RefundsService {
     if (approved) {
       // Transfer tokens
       await this.prisma.$transaction(async (tx) => {
+        const fromBalance = await tx.tutorTokenBalance.findUnique({
+          where: {
+            studentId_tutorId: {
+              studentId: request.studentId,
+              tutorId: request.fromTutorId,
+            },
+          },
+        });
+
+        if (!fromBalance || Number(fromBalance.balance) < Number(request.tokenAmount)) {
+          throw new BadRequestException('Insufficient source balance to process transfer');
+        }
+
+        const purchasePricePerToken = Number(fromBalance.pricePerToken);
+        const latestToTutor = await tx.tutor.findUnique({
+          where: { id: request.toTutorId },
+          select: { hourlyRate: true },
+        });
+        const latestToTutorRate = Number(latestToTutor?.hourlyRate || 0);
+        if (!Number.isFinite(latestToTutorRate) || latestToTutorRate <= 0) {
+          throw new BadRequestException('Target tutor pricing is invalid');
+        }
+        if (latestToTutorRate > purchasePricePerToken) {
+          throw new BadRequestException(
+            `Target tutor rate (₹${latestToTutorRate}) exceeds purchase rate cap (₹${purchasePricePerToken})`,
+          );
+        }
+
         // Deduct from fromTutor balance
         await tx.tutorTokenBalance.update({
           where: {
@@ -162,16 +237,6 @@ export class RefundsService {
             },
           });
         } else {
-          // Get price per token from fromTutor balance
-          const fromBalance = await tx.tutorTokenBalance.findUnique({
-            where: {
-              studentId_tutorId: {
-                studentId: request.studentId,
-                tutorId: request.fromTutorId,
-              },
-            },
-          });
-
           await tx.tutorTokenBalance.create({
             data: {
               studentId: request.studentId,
@@ -181,6 +246,34 @@ export class RefundsService {
             },
           });
         }
+
+        // Reassign any unscheduled bookings from old tutor to new tutor.
+        // This ensures future slot assignment happens only with the new tutor.
+        await tx.booking.updateMany({
+          where: {
+            studentId: request.studentId,
+            tutorId: request.fromTutorId,
+            OR: [
+              { status: BookingStatus.PENDING_SLOT },
+              { status: BookingStatus.PENDING, startTime: null },
+            ],
+          },
+          data: {
+            tutorId: request.toTutorId,
+          },
+        });
+
+        // Move waitlist requests as well so old tutor can no longer allocate new slots for this pending path.
+        await tx.waitlist.updateMany({
+          where: {
+            studentId: request.studentId,
+            tutorId: request.fromTutorId,
+            status: 'WAITING',
+          },
+          data: {
+            tutorId: request.toTutorId,
+          },
+        });
       });
 
       // Notify student
@@ -188,7 +281,7 @@ export class RefundsService {
         userId: request.student.userId,
         type: NotificationType.SYSTEM,
         title: 'Token Transfer Approved',
-        message: `Your request to transfer ${request.tokenAmount} tokens has been approved.`,
+        message: `Your request to transfer ${request.tokenAmount} tokens has been approved. New unscheduled bookings are now assigned to ${request.toTutor.user?.name || 'the selected tutor'}.`,
       });
     } else {
       // Notify student of rejection
@@ -213,7 +306,7 @@ export class RefundsService {
 
     // Audit log
     const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
-    await this.audit.log({
+    this.audit.log({
       adminId,
       action: approved ? 'TOKEN_TRANSFER_APPROVED' : 'TOKEN_TRANSFER_REJECTED',
       entityType: 'TOKEN_TRANSFER_REQUEST' as any,
@@ -396,7 +489,7 @@ export class RefundsService {
 
     // Audit log
     const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
-    await this.audit.log({
+    this.audit.log({
       adminId,
       action: approved ? 'REFUND_APPROVED' : 'REFUND_REJECTED',
       entityType: 'REFUND_REQUEST' as any,

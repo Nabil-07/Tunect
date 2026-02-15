@@ -152,7 +152,7 @@ interface ReceiptModalProps {
   onClose: () => void;
 }
 
-function ReceiptModal({ transaction, onClose }: ReceiptModalProps) {
+function ReceiptModal({ transaction, onClose }: Readonly<ReceiptModalProps>) {
   const formatAmount = (amountInMinor: number, currency: string) => {
     const amount = amountInMinor / 100;
     if (currency === 'INR') return `₹${amount.toFixed(2)}`;
@@ -209,10 +209,10 @@ function ReceiptModal({ transaction, onClose }: ReceiptModalProps) {
           <div className="max-w-md mx-auto bg-white">
             <div className="text-center mb-8">
               <div className="text-4xl font-bold text-blue-600 mb-2">TUNECT</div>
-              <p className="text-sm text-slate-700 font-semibold">Premium Learning Platform</p>
+              <p className="text-sm text-slate-700 font-semibold">Tunect Private Limited</p>
               <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-                Email: support@tunect.com<br/>
-                Website: www.tunect.com
+                Email: support@tunectnow.com<br/>
+                Website: www.tunectnow.com
               </p>
             </div>
 
@@ -269,7 +269,7 @@ function ReceiptModal({ transaction, onClose }: ReceiptModalProps) {
 
             <div className="border-t-2 border-slate-300 pt-6 text-center text-xs text-slate-700">
               <p className="font-semibold mb-2">Thank you for your purchase!</p>
-              <p className="mb-4">For support, contact us at support@tunect.com</p>
+              <p className="mb-4">For support, contact us at support@tunectnow.com</p>
               <p className="text-slate-500 text-xs italic">This receipt is valid without a signature</p>
             </div>
           </div>

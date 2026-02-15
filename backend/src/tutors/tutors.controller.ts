@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Put,
   Query,
@@ -241,6 +242,8 @@ export class TutorsController {
   }
 
   @ApiOperation({ summary: 'Get tutor activity info (last active, frequency)' })
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  @Header('Pragma', 'no-cache')
   @Get(':id/activity')
   getActivity(@Param('id') tutorId: string) {
     return this.svc.getActivityInfo(tutorId);

@@ -14,6 +14,7 @@ import {
   Clock,
   AlertCircle,
   ArrowRight,
+  Settings,
 } from 'lucide-react';
 import { fetchDashboard, type AdminDashboard } from '../../services/adminService';
 
@@ -53,6 +54,7 @@ export default function AdminDashboard() {
     { icon: TrendingUp, label: 'Analytics', description: 'Platform insights & trends', to: '/admin/analytics', color: 'amber' },
     { icon: FileText, label: 'Refunds', description: 'Refund requests management', to: '/admin/refund-requests', color: 'orange' },
     { icon: BarChart4, label: 'Audit Log', description: 'System activity & changes', to: '/admin/audit', color: 'slate' },
+    { icon: Settings, label: 'Policy Config', description: 'Edit terms and rule settings', to: '/admin/policy-config', color: 'indigo' },
     { icon: BookMarked, label: 'Blogs', description: 'Content management', to: '/admin/blogs', color: 'rose' },
     { icon: AlertCircle, label: 'KYC Verification', description: 'Review tutor documents', to: '/admin/kyc-verification', color: 'red', badge: stats.pendingKyc > 0 ? stats.pendingKyc : undefined },
     { icon: Headphones, label: 'Support', description: 'Customer support portal', to: '/support', color: 'cyan' },
@@ -72,6 +74,12 @@ export default function AdminDashboard() {
       cyan: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', icon: 'text-cyan-600' },
     };
     return colors[color] || colors.indigo;
+  };
+
+  const getRoleBadgeClass = (role: string) => {
+    if (role === 'STUDENT') return 'bg-blue-100 text-blue-700';
+    if (role === 'TUTOR') return 'bg-indigo-100 text-indigo-700';
+    return 'bg-purple-100 text-purple-700';
   };
 
   return (
@@ -180,11 +188,7 @@ export default function AdminDashboard() {
                   <div className="font-semibold text-slate-900 text-sm">{u.email}</div>
                   <div className="text-xs text-slate-500 mt-0.5">{new Date(u.createdAt).toLocaleDateString()}</div>
                 </div>
-                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                  u.role === 'STUDENT' ? 'bg-blue-100 text-blue-700' :
-                  u.role === 'TUTOR' ? 'bg-indigo-100 text-indigo-700' :
-                  'bg-purple-100 text-purple-700'
-                }`}>
+                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${getRoleBadgeClass(u.role)}`}>
                   {u.role}
                 </span>
               </div>

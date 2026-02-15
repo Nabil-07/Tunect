@@ -1,6 +1,6 @@
 // src/pages/student/session-notes.tsx
 import { useEffect, useState } from 'react';
-import { FileText, BookOpen, Clock, User, Star } from 'lucide-react';
+import { FileText, BookOpen, Clock, User, Star, Download, ExternalLink } from 'lucide-react';
 import apiClient from '../../services/apiClient';
 
 interface SessionNote {
@@ -24,8 +24,20 @@ interface SessionNote {
   };
 }
 
+interface SharedMaterial {
+  id: string;
+  title: string;
+  description?: string;
+  fileUrl: string;
+  fileType: string;
+  subject?: string;
+  tutorName?: string;
+  sharedAt?: string;
+}
+
 export default function SessionNotes() {
   const [notes, setNotes] = useState<SessionNote[]>([]);
+  const [sharedMaterials, setSharedMaterials] = useState<SharedMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'recent'>('all');
 
@@ -35,13 +47,115 @@ export default function SessionNotes() {
 
   const loadNotes = async () => {
     try {
-      const res = await apiClient.get('/session-notes/my-notes');
-      setNotes(res.data || []);
+      const [notesRes, materialsRes] = await Promise.all([
+        apiClient.get('/session-notes/my-notes'),
+        apiClient.get('/study-materials/shared-with-me'),
+      ]);
+
+      setNotes(notesRes.data || []);
+      setSharedMaterials(materialsRes.data || []);
     } catch (error) {
       console.error('Failed to load session notes:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenMaterial = async (material: SharedMaterial) => {
+    const resolveMaterialUrl = async (rawUrl: string) => {
+      const value = String(rawUrl || '').trim();
+      if (!value) {
+        return value;
+      }
+
+      const resolveOpenRouteHost = (urlValue: string) => {
+        try {
+          const parsed = new URL(urlValue, globalThis.window?.location?.origin || 'http://localhost');
+          if (!parsed.pathname.startsWith('/uploads/open/')) {
+            return parsed.toString();
+          }
+
+          const configuredApiBase = String(import.meta.env.VITE_API_URL || '').trim();
+          const isLocalRuntime =
+            typeof window !== 'undefined' &&
+            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+          const fallbackApiBase = isLocalRuntime ? 'http://localhost:3000' : parsed.origin;
+          const effectiveApiBase = configuredApiBase || fallbackApiBase;
+          const apiBase = new URL(effectiveApiBase);
+
+          if (parsed.origin !== apiBase.origin) {
+            return `${apiBase.origin}${parsed.pathname}${parsed.search}`;
+          }
+
+          return parsed.toString();
+        } catch {
+          return urlValue;
+        }
+      };
+
+      const normalizedUrl = resolveOpenRouteHost(value);
+      if (!normalizedUrl.includes('/uploads/open/')) {
+        return normalizedUrl;
+      }
+
+      const decodeKeyFromOpenUrl = (urlValue: string) => {
+        try {
+          const parsed = new URL(urlValue, globalThis.window?.location?.origin || 'http://localhost');
+          const marker = '/uploads/open/';
+          const markerIndex = parsed.pathname.indexOf(marker);
+          if (markerIndex < 0) {
+            return '';
+          }
+
+          const token = parsed.pathname.slice(markerIndex + marker.length);
+          const payloadPart = token.split('.')[0] || '';
+          if (!payloadPart) {
+            return '';
+          }
+
+          const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+          const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+          const payloadText = atob(padded);
+          const payload = JSON.parse(payloadText) as { key?: string };
+          return String(payload?.key || '');
+        } catch {
+          return '';
+        }
+      };
+
+      const key = decodeKeyFromOpenUrl(normalizedUrl);
+      if (!key) {
+        return normalizedUrl;
+      }
+
+      try {
+        const presignRes = await apiClient.post('/uploads/presign-get', {
+          key,
+          expiresIn: 600,
+        });
+
+        const downloadUrl = String(
+          presignRes?.data?.downloadUrl || presignRes?.data?.url || '',
+        ).trim();
+
+        return downloadUrl || normalizedUrl;
+      } catch {
+        return normalizedUrl;
+      }
+    };
+
+    try {
+      await apiClient.post(`/study-materials/${material.id}/download`);
+    } catch (error) {
+      console.error('Failed to track material download', error);
+    }
+
+    const finalUrl = await resolveMaterialUrl(material.fileUrl);
+    if (!finalUrl) {
+      return;
+    }
+
+    window.open(finalUrl, '_blank', 'noopener,noreferrer');
   };
 
   const filteredNotes = filter === 'recent'
@@ -92,6 +206,57 @@ export default function SessionNotes() {
           </button>
         </div>
       </div>
+
+      {sharedMaterials.length > 0 && (
+        <div className="rounded-2xl border bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-slate-800 mb-4">Shared Study Materials</h2>
+          <div className="space-y-3">
+            {sharedMaterials.map((material) => (
+              <div
+                key={material.id}
+                className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex items-start justify-between gap-4"
+              >
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-slate-900">{material.title}</h3>
+                  {material.description && (
+                    <p className="text-sm text-slate-600 mt-1">{material.description}</p>
+                  )}
+                  <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-2">
+                    {material.subject && (
+                      <span className="rounded-full bg-white px-2 py-0.5 border border-slate-200">
+                        {material.subject}
+                      </span>
+                    )}
+                    <span className="rounded-full bg-white px-2 py-0.5 border border-slate-200">
+                      {(material.fileType || 'FILE').toUpperCase()}
+                    </span>
+                    {material.tutorName && (
+                      <span>Tutor: {material.tutorName}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => handleOpenMaterial(material)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-ocean-700 px-3 py-2 text-xs font-semibold text-white hover:bg-ocean-800"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View
+                  </button>
+                  <button
+                    onClick={() => handleOpenMaterial(material)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Notes List */}
       {filteredNotes.length === 0 ? (

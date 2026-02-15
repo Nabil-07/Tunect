@@ -16,8 +16,11 @@ import {
 } from 'lucide-react';
 import { getAvailability, type AvailabilitySlot, getMySessions, type TutorSession } from '../../services/tutorService';
 import api from '../../lib/apiClient';
+import { useAuth } from '../../contexts/AuthContext';
+import RoleTermsFirstLoginModal from '../../components/RoleTermsFirstLoginModal';
 
 export default function TutorDashboard() {
+  const { user, setUser, logout } = useAuth() as any;
   const [avail, setAvail] = useState<AvailabilitySlot[]>([]);
   const [sessions, setSessions] = useState<TutorSession[]>([]);
   const [loadingAvail, setLoadingAvail] = useState(true);
@@ -38,6 +41,8 @@ export default function TutorDashboard() {
     monthlyEarnings: 0,
     activeStudents: 0
   });
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsSubmitting, setTermsSubmitting] = useState(false);
 
   useEffect(() => {
     let isMounted = true; // Cleanup flag
@@ -173,6 +178,31 @@ export default function TutorDashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    const role = String(user?.role || '').toUpperCase();
+    if (role !== 'TUTOR') return;
+    const accepted = !!user?.terms?.tutor?.accepted;
+    setShowTermsModal(!accepted);
+  }, [user?.role, user?.terms?.tutor?.accepted]);
+
+  const handleAcceptTerms = async () => {
+    try {
+      setTermsSubmitting(true);
+      await api.post('/users/me/terms/accept', { version: 1 });
+      const { data } = await api.get('/users/me');
+      setUser(data ?? user);
+      setShowTermsModal(false);
+    } catch (error) {
+      console.error('Failed to accept tutor terms:', error);
+    } finally {
+      setTermsSubmitting(false);
+    }
+  };
+
+  const handleDeclineTerms = () => {
+    logout();
+  };
+
 
   const upcomingAvail = useMemo(() => {
     const now = Date.now();
@@ -241,6 +271,14 @@ export default function TutorDashboard() {
   }, [sessions]);
 
   return (
+    <>
+      <RoleTermsFirstLoginModal
+        open={showTermsModal}
+        role="TUTOR"
+        submitting={termsSubmitting}
+        onAccept={handleAcceptTerms}
+        onDecline={handleDeclineTerms}
+      />
     <div className="min-h-screen bg-slate-50">
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-6 sm:space-y-8 max-w-7xl">
         {/* Hero */}
@@ -489,6 +527,7 @@ export default function TutorDashboard() {
         </section>
       </div>
     </div>
+    </>
   );
 }
 

@@ -155,7 +155,9 @@ export default function Navbar() {
 
   const displayName = getDisplayName();
   const avatarSeed = displayName || 'U';
-  const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
+  const avatarUrl =
+    user?.avatarUrl ||
+    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(avatarSeed)}`;
 
   const handleLogout = useCallback(() => {
     try {

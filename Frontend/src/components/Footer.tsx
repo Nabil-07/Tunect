@@ -35,11 +35,13 @@ export default function Footer() {
           <div>
             <div className="flex items-center gap-3">
               {/* Tunect Logo */}
-              <img 
-                src="/tunect_logo_hd.png" 
-                alt="Tunect Logo" 
-                className="h-12 w-12 rounded-2xl shadow-[0_8px_20px_-10px_rgba(16,185,129,.6)] ring-1 ring-white/10 object-contain bg-white/5 p-1"
-              />
+              <div className="rounded-2xl bg-white px-3 py-2 ring-1 ring-white/20 shadow-[0_8px_20px_-10px_rgba(16,185,129,.5)]">
+                <img
+                  src="/tunect_logo_hd.png"
+                  alt="Tunect Logo"
+                  className="h-8 w-24 object-contain"
+                />
+              </div>
               <span className="text-2xl font-semibold tracking-tight">Tunect</span>
             </div>
 
@@ -94,7 +96,7 @@ export default function Footer() {
                 <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-blue-600 text-white text-[10px] font-bold">
                   RP
                 </span>
-                Razorpay
+                <span>Razorpay</span>
               </a>
             </div>
           </div>

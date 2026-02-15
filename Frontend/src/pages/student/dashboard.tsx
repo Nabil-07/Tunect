@@ -31,12 +31,15 @@ import {
   Skeleton,
 } from '../../components/skeletons';
 import api from '../../lib/apiClient';
+import RoleTermsFirstLoginModal from '../../components/RoleTermsFirstLoginModal';
 
 type SubjectStat = { name: string; progress: number }; // 0..100
 
 export default function StudentDashboard() {
-  const { user, loading: authLoading, isAuthenticated } = useAuth() as any;
+  const { user, setUser, logout, loading: authLoading, isAuthenticated } = useAuth() as any;
   const nav = useNavigate();
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsSubmitting, setTermsSubmitting] = useState(false);
 
   // ✅ Global page loader (shows on initial mount)
   const [initialLoading, setInitialLoading] = useState(true);
@@ -290,6 +293,32 @@ export default function StudentDashboard() {
     };
   }, [authLoading, isAuthenticated, user?.role]);
 
+  useEffect(() => {
+    if (authLoading || isAuthenticated === false) return;
+    const role = String(user?.role || '').toUpperCase();
+    if (role !== 'STUDENT') return;
+    const accepted = !!user?.terms?.student?.accepted;
+    setShowTermsModal(!accepted);
+  }, [authLoading, isAuthenticated, user?.role, user?.terms?.student?.accepted]);
+
+  const handleAcceptTerms = async () => {
+    try {
+      setTermsSubmitting(true);
+      await api.post('/users/me/terms/accept', { version: 1 });
+      const { data } = await api.get('/users/me');
+      setUser(data ?? user);
+      setShowTermsModal(false);
+    } catch (error) {
+      console.error('Failed to accept student terms:', error);
+    } finally {
+      setTermsSubmitting(false);
+    }
+  };
+
+  const handleDeclineTerms = () => {
+    logout();
+  };
+
 
   // Listen for demo status and token balance changes
   useEffect(() => {
@@ -363,6 +392,14 @@ export default function StudentDashboard() {
   const hasSubjects = subjectStats.length > 0;
 
   return (
+    <>
+    <RoleTermsFirstLoginModal
+      open={showTermsModal}
+      role="STUDENT"
+      submitting={termsSubmitting}
+      onAccept={handleAcceptTerms}
+      onDecline={handleDeclineTerms}
+    />
     <div className="min-h-screen bg-slate-50">
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-6 sm:space-y-8 lg:space-y-10 max-w-7xl">
         {/* Hero - Responsive */}
@@ -701,6 +738,7 @@ export default function StudentDashboard() {
         </section>
       </div>
     </div>
+    </>
   );
 }
 

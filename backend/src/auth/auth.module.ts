@@ -11,6 +11,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 
 // Notifications
 import { NotificationsModule } from '../notifications/notifications.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 // ✅ NEW
 import { GoogleStrategy } from './google.strategy';
@@ -21,6 +22,7 @@ import { GoogleStrategy } from './google.strategy';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     PrismaModule,
     NotificationsModule,
+    UploadsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (cfg: ConfigService) => ({

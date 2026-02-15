@@ -1,9 +1,7 @@
-
 import * as dotenv from 'dotenv';
-dotenv.config({ path: '.env.preprod' });
+dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || process.env.ENV_FILE || '.env' });
 
-import { webcrypto } from 'crypto';
-
+import { webcrypto } from 'node:crypto';
 if (!(globalThis as any).crypto) {
   (globalThis as any).crypto = webcrypto;
 }
@@ -19,40 +17,15 @@ import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
 import compression from 'compression';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import type { ServerOptions } from 'socket.io';
 import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 import { buildCspDirectives } from './common/csp.config';
 
-class CorsSocketIoAdapter extends IoAdapter {
-  constructor(private readonly appRef: any, private readonly origins: string[]) {
-    super(appRef);
-  }
-
-  override createIOServer(port: number, options?: ServerOptions) {
-    const cors = {
-      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-        if (!origin || isAllowedOrigin(origin)) {
-          callback(null, true);
-          return;
-        }
-        callback(new Error('Not allowed by CORS'));
-      },
-      credentials: true,
-    };
-    const { path, ...rest } = options || {};
-    const opts: Partial<ServerOptions> = {
-      ...rest,
-      ...(path ? { path } : {}),
-      cors,
-      allowEIO3: true,
-    };
-    return super.createIOServer(port, opts);
-  }
-}
-
+/* =========================
+   ALLOWED ORIGINS
+========================= */
 const allowedOrigins = [
   'https://tn-internal-7f3a.preprod.tunectnow.com',
   'http://tn-internal-7f3a.preprod.tunectnow.com',
@@ -63,9 +36,39 @@ const allowedOrigins = [
 
 function isAllowedOrigin(origin: string) {
   if (allowedOrigins.includes(origin)) return true;
-  return origin.includes('.preprod.tunectnow.com');
+  return origin.endsWith('.preprod.tunectnow.com');
 }
 
+/* =========================
+   SOCKET.IO CORS ADAPTER
+========================= */
+class CorsSocketIoAdapter extends IoAdapter {
+  constructor(private readonly appRef: any) {
+    super(appRef);
+  }
+
+  override createIOServer(port: number, options?: ServerOptions) {
+    const cors = {
+      origin: (origin: string | undefined, callback: Function) => {
+        if (!origin || isAllowedOrigin(origin)) {
+          return callback(null, true);
+        }
+        callback(new Error('Not allowed by CORS'));
+      },
+      credentials: true,
+    };
+
+    return super.createIOServer(port, {
+      ...(options || {}),
+      cors,
+      allowEIO3: true,
+    });
+  }
+}
+
+/* =========================
+   BOOTSTRAP
+========================= */
 async function bootstrap() {
   if (process.env.SENTRY_DSN) {
     Sentry.init({
@@ -74,113 +77,101 @@ async function bootstrap() {
       tracesSampleRate: 0.2,
       integrations: [nodeProfilingIntegration()],
     });
-    process.on('unhandledRejection', (reason) => Sentry.captureException(reason));
-    process.on('uncaughtException', (err) => Sentry.captureException(err));
+
+    process.on('unhandledRejection', (r) => Sentry.captureException(r));
+    process.on('uncaughtException', (e) => Sentry.captureException(e));
   }
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
+
   const cfg = app.get(ConfigService);
 
-  // Global Socket.IO adapter with explicit CORS to match frontend origins
-  app.useWebSocketAdapter(new CorsSocketIoAdapter(app, allowedOrigins));
+  /* =========================
+     SOCKET.IO
+  ========================= */
+  app.useWebSocketAdapter(new CorsSocketIoAdapter(app));
 
-  // ⚡ GZIP Compression - reduces response size by 70-90%
-  app.use(compression({
-    threshold: 1024, // Only compress responses > 1KB
-    level: 6, // Balanced compression (1=fast, 9=best compression)
-  }));
+  /* =========================
+     COMPRESSION
+  ========================= */
+  app.use(
+    compression({
+      threshold: 1024,
+      level: 6,
+    }),
+  );
 
-  // Enable CORS FIRST before other middleware to ensure preflight requests are handled
+  /* =========================
+     ✅ SINGLE SOURCE CORS
+  ========================= */
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) {
-        return callback(null, true);
-      }
-      // Check if origin is in allowed list
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      // For preprod, allow any *.preprod.tunectnow.com subdomain
-      if (origin.includes('.preprod.tunectnow.com')) {
+      if (!origin || isAllowedOrigin(origin)) {
         return callback(null, true);
       }
       callback(new Error('Not allowed by CORS'));
     },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
-      'Content-Type',
       'Authorization',
-      'X-Timezone',
-      'X-Requested-With',
+      'Content-Type',
       'Accept',
       'Origin',
-      'User-Agent',
-      'Cache-Control',
-      'Pragma',
-      'Expires',
+      'X-Requested-With',
+      'X-Timezone',
     ],
-    credentials: true,
     optionsSuccessStatus: 204,
-    preflightContinue: false,
   });
 
-  // Explicitly respond to preflight requests with CORS headers
-  app.use((req: any, res: any, next: any) => {
-    const origin = req.headers?.origin;
-    if (origin && isAllowedOrigin(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-      res.header('Vary', 'Origin');
-      res.header('Access-Control-Allow-Credentials', 'true');
-      res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-      res.header(
-        'Access-Control-Allow-Headers',
-        'Content-Type, Authorization, X-Timezone, X-Requested-With, Accept, Origin, User-Agent, Cache-Control, Pragma, Expires',
-      );
-    }
-
-    if (req.method === 'OPTIONS') {
-      return res.status(204).send();
-    }
-    return next();
-  });
-
-  // Serve static files for uploads
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
-    prefix: '/uploads',
-  });
-
+  /* =========================
+     SECURITY HEADERS
+  ========================= */
   const isProd = process.env.NODE_ENV === 'production';
   const cspDirectives = buildCspDirectives({ config: cfg, isProd });
-  app.use(helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-    contentSecurityPolicy: {
-      useDefaults: true,
-      directives: cspDirectives,
-    },
-  }));
 
-  // Parse the short-lived "remember_oauth" cookie during Google OAuth callback
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: cspDirectives,
+      },
+    }),
+  );
+
+  /* =========================
+     PARSERS
+  ========================= */
   app.use(cookieParser(process.env.COOKIE_SECRET || 'dev-cookie'));
 
-  // Keep raw body ONLY for Razorpay webhook
   app.use('/payments/razorpay/webhook', bodyParser.raw({ type: 'application/json' }));
   app.use(bodyParser.json({ limit: '1mb' }));
   app.use(bodyParser.urlencoded({ extended: true }));
 
+  /* =========================
+     VALIDATION
+  ========================= */
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: false,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
     }),
   );
 
+  /* =========================
+     PREPROD GUARD
+  ========================= */
   if ((cfg.get<string>('APP_ENV') || '').toLowerCase() === 'preprod') {
     app.useGlobalGuards(app.get(PreprodInternalGuard));
   }
 
+  /* =========================
+     SWAGGER
+  ========================= */
   if (!isProd) {
     const { SwaggerModule, DocumentBuilder } = await import('@nestjs/swagger');
     const config = new DocumentBuilder()
@@ -189,6 +180,7 @@ async function bootstrap() {
       .setVersion('1.0')
       .addBearerAuth()
       .build();
+
     const doc = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('docs', app, doc);
   }
@@ -196,15 +188,12 @@ async function bootstrap() {
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 
-  const port = Number(process.env.PORT) || 80;
+  const port = Number(process.env.PORT) || 3000;
   await app.listen(port, '0.0.0.0');
 
-  const base = `http://localhost:${port}`;
-  console.log(`\n🚀 Server running at: ${base}`);
-  console.log(`💓 Health:          ${base}/health`);
-  console.log(`📊 Metrics:         ${base}/admin/metrics (ADMIN only, in-memory)`);
-  if (!isProd) console.log(`📘 Swagger:         ${base}/docs`);
+  console.log(`🚀 Server running on http://localhost:${port}`);
+  console.log(`💓 Health: /health`);
+  if (!isProd) console.log(`📘 Swagger: /docs`);
 }
 
 bootstrap();
-

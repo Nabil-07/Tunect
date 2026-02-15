@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/apiClient';
 import { getMyProfile, updateMyProfile } from '../../services/tutorService';
+import { uploadMyAvatar } from '../../services/avatarUploadService';
+import { me as fetchMe } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
 import { getCountries } from '../../utils/countryData';
 import { formatCurrency, getUsdRates } from '../../utils/currency';
 import { SUBJECT_OPTIONS } from '../../constants/subjects';
 import { LANGUAGE_OPTIONS } from '../../constants/languages';
+import AvatarUploadModal from '../../components/AvatarUploadModal';
 
 type ProfileData = {
   name: string;
@@ -23,6 +27,7 @@ type ProfileData = {
 };
 
 export default function Profile() {
+  const { user: authUser, setUser } = useAuth();
   const [data, setData] = useState<ProfileData>({ 
     name: '', 
     bio: '', 
@@ -46,47 +51,51 @@ export default function Profile() {
   const [showLanguageOptions, setShowLanguageOptions] = useState(false);
   const [degreeInput, setDegreeInput] = useState('');
   const [classInput, setClassInput] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
 
   const countries = useMemo(() => getCountries(), []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        getUsdRates().then(setRates).catch(() => {});
-        const raw = (await getMyProfile().catch(async () => {
-          const { data } = await api.get('/profiles/me');
-          return {
-            name: data?.user?.name ?? '',
-            email: data?.user?.email ?? '',
-            bio: data?.tutor?.bio ?? '',
-            subjects: data?.tutor?.subjects ?? [],
-            languages: data?.tutor?.languages ?? [],
-            hourlyRate: data?.tutor?.hourlyRate ?? undefined,
-            country: data?.tutor?.country ?? undefined,
-            avatarUrl: data?.user?.avatarUrl ?? null,
-          } as ProfileData;
-        })) as any;
+  const loadProfile = async () => {
+    try {
+      const raw = (await getMyProfile().catch(async () => {
+        const { data } = await api.get('/profiles/me');
+        return {
+          name: data?.user?.name ?? '',
+          email: data?.user?.email ?? '',
+          bio: data?.tutor?.bio ?? '',
+          subjects: data?.tutor?.subjects ?? [],
+          languages: data?.tutor?.languages ?? [],
+          hourlyRate: data?.tutor?.hourlyRate ?? undefined,
+          country: data?.tutor?.country ?? undefined,
+          avatarUrl: data?.user?.avatarUrl ?? null,
+        } as ProfileData;
+      })) as any;
 
-        const next: ProfileData = {
-          name: raw?.name ?? raw?.user?.name ?? '',
-          email: raw?.email ?? raw?.user?.email ?? undefined,
-          bio: raw?.bio ?? raw?.tutor?.bio ?? '',
-          summary: raw?.summary ?? raw?.tutor?.summary ?? '',
-          subjects: Array.isArray(raw?.subjects) ? raw.subjects : raw?.tutor?.subjects ?? [],
-          languages: Array.isArray(raw?.languages) ? raw.languages : raw?.tutor?.languages ?? [],
-          hourlyRate: Number.isFinite(raw?.hourlyRate) ? Number(raw.hourlyRate) : raw?.tutor?.hourlyRate,
-          country: raw?.country ?? undefined,
-          avatarUrl: raw?.avatarUrl ?? raw?.user?.avatarUrl ?? null,
-          yearsExperience: raw?.yearsExperience ?? raw?.tutor?.yearsExperience ?? undefined,
-          degrees: Array.isArray(raw?.degrees) ? raw.degrees : raw?.tutor?.degrees ?? [],
-          qualifications: raw?.qualifications ?? raw?.tutor?.qualifications ?? '',
-          classesTeach: Array.isArray(raw?.classesTeach) ? raw.classesTeach : raw?.tutor?.classesTeach ?? [],
-        };
-        setData(next);
-      } catch (e) {
-        console.error(e);
-      }
-    })();
+      const next: ProfileData = {
+        name: raw?.name ?? raw?.user?.name ?? '',
+        email: raw?.email ?? raw?.user?.email ?? undefined,
+        bio: raw?.bio ?? raw?.tutor?.bio ?? '',
+        summary: raw?.summary ?? raw?.tutor?.summary ?? '',
+        subjects: Array.isArray(raw?.subjects) ? raw.subjects : raw?.tutor?.subjects ?? [],
+        languages: Array.isArray(raw?.languages) ? raw.languages : raw?.tutor?.languages ?? [],
+        hourlyRate: Number.isFinite(raw?.hourlyRate) ? Number(raw.hourlyRate) : raw?.tutor?.hourlyRate,
+        country: raw?.country ?? undefined,
+        avatarUrl: raw?.avatarUrl ?? raw?.user?.avatarUrl ?? null,
+        yearsExperience: raw?.yearsExperience ?? raw?.tutor?.yearsExperience ?? undefined,
+        degrees: Array.isArray(raw?.degrees) ? raw.degrees : raw?.tutor?.degrees ?? [],
+        qualifications: raw?.qualifications ?? raw?.tutor?.qualifications ?? '',
+        classesTeach: Array.isArray(raw?.classesTeach) ? raw.classesTeach : raw?.tutor?.classesTeach ?? [],
+      };
+      setData(next);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    getUsdRates().then(setRates).catch(() => {});
+    void loadProfile();
   }, []);
 
   const selectedSubjects = data.subjects ?? [];
@@ -149,6 +158,27 @@ export default function Profile() {
       ...prev,
       languages: (prev.languages ?? []).filter((l) => l !== language),
     }));
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    try {
+      setUploadingAvatar(true);
+      await uploadMyAvatar(file);
+      await loadProfile();
+
+      const freshMe = await fetchMe();
+      const resolved = (freshMe as any)?.user ?? freshMe ?? null;
+      if (resolved) {
+        setUser(resolved as any);
+      }
+
+      setToast('Profile image updated successfully! ✓');
+    } catch (error: any) {
+      setToast(error?.response?.data?.message || error?.message || 'Failed to upload profile image');
+    } finally {
+      setUploadingAvatar(false);
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   const handleSave = async () => {
@@ -226,7 +256,9 @@ export default function Profile() {
     .join('')
     .toUpperCase();
   const avatar =
-    data.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(initials)}`;
+    authUser?.avatarUrl ||
+    data.avatarUrl ||
+    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(initials)}`;
 
   const hourlyInInr = Number.isFinite(data.hourlyRate as any)
     ? Number(data.hourlyRate)
@@ -249,6 +281,16 @@ export default function Profile() {
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-semibold truncate">{data.name || 'Your Name'}</h1>
             <p className="text-white/90 text-sm truncate">{data.email || '--'}</p>
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setAvatarModalOpen(true)}
+                disabled={uploadingAvatar}
+                className="rounded-md bg-white/20 px-3 py-1.5 text-sm font-medium hover:bg-white/30 disabled:opacity-60"
+              >
+                {uploadingAvatar ? 'Uploading...' : 'Change Photo'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -710,6 +752,13 @@ export default function Profile() {
           {toast}
         </div>
       )}
+
+      <AvatarUploadModal
+        open={avatarModalOpen}
+        uploading={uploadingAvatar}
+        onClose={() => setAvatarModalOpen(false)}
+        onUpload={handleAvatarUpload}
+      />
     </div>
   );
 }

@@ -3,7 +3,11 @@ import { User, Mail, Phone, MapPin, Calendar, Edit2, Save, X } from 'lucide-reac
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/apiClient';
 import { updateMyStudentProfile, type StudentProfileUpdatePayload } from '../../services/studentService';
+import { uploadMyAvatar } from '../../services/avatarUploadService';
+import { me as fetchMe } from '../../services/authService';
 import { useToast } from '../../contexts/ToastContext';
+import AvatarUploadModal from '../../components/AvatarUploadModal';
+import { decryptObject } from '../../utils/decryption';
 
 type StudentProfile = {
   id: string;
@@ -24,12 +28,14 @@ type StudentProfile = {
 };
 
 export default function StudentProfile() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, setUser } = useAuth();
   const { showSuccess, showError } = useToast();
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [formData, setFormData] = useState<StudentProfileUpdatePayload>({
     name: '',
     phone: '',
@@ -47,16 +53,17 @@ export default function StudentProfile() {
     try {
       setLoading(true);
       const { data } = await api.get<StudentProfile>('/students/me');
-      setProfile(data);
+      const decrypted = await decryptObject(data, ['user.phone', 'user.avatarUrl']);
+      setProfile(decrypted);
 
-      if (data?.user) {
+      if (decrypted?.user) {
         setFormData({
-          name: data.user.name ?? authUser?.name ?? '',
-          phone: data.user.phone ?? '',
-          bio: data.bio ?? '',
-          timezone: data.timezone ?? '',
-          preferredLanguage: data.preferredLanguage ?? '',
-          grade: data.student?.grade ?? data.grade ?? '',
+          name: decrypted.user.name ?? authUser?.name ?? '',
+          phone: decrypted.user.phone ?? '',
+          bio: decrypted.bio ?? '',
+          timezone: decrypted.timezone ?? '',
+          preferredLanguage: decrypted.preferredLanguage ?? '',
+          grade: decrypted.student?.grade ?? decrypted.grade ?? '',
         });
       }
     } catch (err: any) {
@@ -93,6 +100,31 @@ export default function StudentProfile() {
     }
     setEditing(false);
   }
+
+  async function handleAvatarUpload(file: File) {
+    try {
+      setUploadingAvatar(true);
+      await uploadMyAvatar(file);
+      await loadProfile();
+
+      const freshMe = await fetchMe();
+      const resolved = (freshMe as any)?.user ?? freshMe ?? null;
+      if (resolved) {
+        setUser(resolved as any);
+      }
+
+      showSuccess('Profile image updated successfully!');
+    } catch (err: any) {
+      showError(err?.response?.data?.message || err?.message || 'Failed to upload profile image');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
+  const avatarInitial = (formData.name || authUser?.name)?.charAt(0)?.toUpperCase()
+    || authUser?.email?.charAt(0)?.toUpperCase()
+    || 'S';
+  const resolvedAvatarUrl = profile?.user?.avatarUrl ?? authUser?.avatarUrl ?? null;
 
   if (loading) {
     return (
@@ -158,11 +190,17 @@ export default function StudentProfile() {
         {/* Avatar Section */}
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-8 py-12">
           <div className="flex items-center gap-6">
-            <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center text-blue-600 font-bold text-3xl shadow-lg">
-              {(formData.name || authUser?.name)?.charAt(0)?.toUpperCase() ||
-                authUser?.email?.charAt(0)?.toUpperCase() ||
-                'S'}
-            </div>
+            {resolvedAvatarUrl ? (
+              <img
+                src={resolvedAvatarUrl}
+                alt="Profile"
+                className="w-24 h-24 rounded-full object-cover shadow-lg border-2 border-white/70"
+              />
+            ) : (
+              <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center text-blue-600 font-bold text-3xl shadow-lg">
+                {avatarInitial}
+              </div>
+            )}
             <div className="text-white">
               <h2 className="text-2xl font-bold mb-1">
                 {formData.name || authUser?.name || 'Student'}
@@ -170,6 +208,16 @@ export default function StudentProfile() {
               <p className="text-blue-100">
                 {profile.user?.email || authUser?.email || 'No email'}
               </p>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setAvatarModalOpen(true)}
+                  disabled={uploadingAvatar}
+                  className="rounded-md bg-white/20 px-3 py-1.5 text-sm font-medium hover:bg-white/30 disabled:opacity-60"
+                >
+                  {uploadingAvatar ? 'Uploading...' : 'Change Photo'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -370,6 +418,13 @@ export default function StudentProfile() {
           <p className="text-2xl font-bold text-purple-900">Student</p>
         </div>
       </div>
+
+      <AvatarUploadModal
+        open={avatarModalOpen}
+        uploading={uploadingAvatar}
+        onClose={() => setAvatarModalOpen(false)}
+        onUpload={handleAvatarUpload}
+      />
     </div>
   );
 }

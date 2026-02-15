@@ -3,9 +3,10 @@ import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, UploadsModule],
   controllers: [StudentsController],
   providers: [StudentsService, PrismaService],
   exports: [StudentsService],

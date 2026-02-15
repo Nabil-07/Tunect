@@ -12,7 +12,7 @@ export default function Privacy() {
               <Shield className="h-16 w-16" />
             </div>
             <h1 className="text-5xl font-bold mb-4">Privacy Policy</h1>
-            <p className="text-xl text-white/90">Last Updated: December 24, 2025</p>
+            <p className="text-xl text-white/90">Last Updated: February 15, 2026</p>
             <p className="text-lg text-white/80 mt-4">
               Your privacy is important to us. This policy explains how Tunect collects, uses, 
               protects, and shares your personal information.
@@ -77,7 +77,7 @@ export default function Privacy() {
             <ul className="list-disc pl-6 space-y-2 text-slate-600">
               <li>Social media login data (if you choose to sign in via Google, Facebook, etc.)</li>
               <li>Payment processing information from Razorpay and other payment gateways</li>
-              <li>Video conferencing data from integrated services (Google Meet, etc.)</li>
+              <li>Real-time class/session infrastructure data from Tunect’s integrated LiveKit stack</li>
             </ul>
           </PolicySection>
 
@@ -93,7 +93,7 @@ export default function Privacy() {
               <li><strong>Matching:</strong> Recommend tutors to students based on preferences, history, and learning goals</li>
               <li><strong>Quality Assurance:</strong> Verify tutor qualifications, monitor session quality, prevent fraud</li>
               <li><strong>Platform Improvement:</strong> Analyze usage patterns, fix bugs, develop new features</li>
-              <li><strong>Legal Compliance:</strong> Meet regulatory requirements, resolve disputes, enforce our terms</li>
+              <li><strong>Legal Compliance:</strong> Meet regulatory requirements, resolve disputes, enforce our terms and platform policies (including demerit/penalty and suspension rules where applicable)</li>
               <li><strong>Safety & Security:</strong> Protect against fraud, abuse, and security threats</li>
             </ul>
           </PolicySection>
@@ -117,7 +117,7 @@ export default function Privacy() {
               <li>Payment processors (Razorpay) for transaction handling</li>
               <li>Cloud hosting providers (AWS, Google Cloud) for data storage</li>
               <li>Email and SMS services for notifications</li>
-              <li>Video conferencing platforms for live sessions</li>
+              <li>LiveKit infrastructure and related providers for real-time in-platform classes</li>
               <li>Analytics tools to understand platform usage</li>
             </ul>
 
@@ -242,7 +242,8 @@ export default function Privacy() {
             <div className="bg-slate-100 rounded-xl p-6">
               <p className="text-slate-700"><strong>Official:</strong> <a href="mailto:official@tunectnow.com" className="text-ocean-700 hover:underline">official@tunectnow.com</a></p>
               <p className="text-slate-700 mt-2"><strong>Support:</strong> <a href="mailto:support@tunectnow.com" className="text-ocean-700 hover:underline">support@tunectnow.com</a></p>
-              <p className="text-slate-700 mt-2"><strong>Address:</strong> Tunect Technologies Pvt. Ltd., [Your Business Address]</p>
+              <p className="text-slate-700 mt-2"><strong>Business Name:</strong> Tunect Private Limited</p>
+              <p className="text-slate-700 mt-2"><strong>CIN:</strong> U85500BR2026PTC081390</p>
             </div>
           </PolicySection>
 
@@ -268,7 +269,7 @@ export default function Privacy() {
   );
 }
 
-function QuickPoint({ icon, text }: { icon: React.ReactNode; text: string }) {
+function QuickPoint({ icon, text }: Readonly<{ icon: React.ReactNode; text: string }>) {
   return (
     <div className="flex items-start gap-3">
       <div className="mt-1">{icon}</div>
@@ -277,7 +278,7 @@ function QuickPoint({ icon, text }: { icon: React.ReactNode; text: string }) {
   );
 }
 
-function PolicySection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function PolicySection({ icon, title, children }: Readonly<{ icon: React.ReactNode; title: string; children: React.ReactNode }>) {
   return (
     <div className="rounded-2xl border bg-white p-8 shadow-sm">
       <div className="flex items-center gap-3 mb-6">

@@ -3,6 +3,7 @@ import { TutorStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TrendingTutorDto } from './dto/trending-tutor.dto';
 import { Cacheable } from '../common/cache.decorator';
+import { UploadsService } from '../uploads/uploads.service';
 
 export type TutorPublic = {
   id: string;
@@ -86,10 +87,29 @@ function normalizeTutor(row: any): TutorPublic { // NOSONAR
 export class TutorsService {
   private readonly logger = new Logger(TutorsService.name);
   
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uploadsService: UploadsService,
+  ) {}
 
   private normalizeValue(value?: string | null): string {
     return (value || '').trim().toLowerCase();
+  }
+
+  private async withReadableAvatar(tutor: TutorPublic): Promise<TutorPublic> {
+    if (!tutor?.avatarUrl) {
+      return tutor;
+    }
+
+    const readableAvatarUrl = await this.uploadsService.toReadableReference(tutor.avatarUrl);
+    return {
+      ...tutor,
+      avatarUrl: readableAvatarUrl,
+    };
+  }
+
+  private async withReadableAvatars(tutors: TutorPublic[]): Promise<TutorPublic[]> {
+    return Promise.all(tutors.map((tutor) => this.withReadableAvatar(tutor)));
   }
 
   private parseSearches(raw?: string): Array<{
@@ -280,7 +300,9 @@ export class TutorsService {
       };
     });
 
-    return { items: rowsWithReviews.map(normalizeTutor), total, page, pageSize };
+    const normalizedItems = rowsWithReviews.map(normalizeTutor);
+    const items = await this.withReadableAvatars(normalizedItems);
+    return { items, total, page, pageSize };
   }
 
   async getRecommendedForStudent(
@@ -468,7 +490,8 @@ export class TutorsService {
 
       scored.sort((a, b) => b.score - a.score);
 
-      const items = scored.slice(0, pageSize).map((s) => normalizeTutor(s.tutor));
+      const normalizedItems = scored.slice(0, pageSize).map((s) => normalizeTutor(s.tutor));
+      const items = await this.withReadableAvatars(normalizedItems);
       return { items, total: items.length, page: 1, pageSize };
     } catch (error: any) {
       this.logger.error(`[getRecommendedForStudent] Error:`, error?.message);
@@ -745,7 +768,9 @@ export class TutorsService {
 
       const pagedRows = shouldSortByRating ? sortedRows.slice(skip, skip + pageSize) : sortedRows;
 
-      return { items: pagedRows.map(normalizeTutor), total: finalTotal, page, pageSize };
+      const normalizedItems = pagedRows.map(normalizeTutor);
+      const items = await this.withReadableAvatars(normalizedItems);
+      return { items, total: finalTotal, page, pageSize };
     } catch (error: any) {
       this.logger.error(`[search] Error in search method:`, error);
       this.logger.error(`[search] Error message:`, error?.message);
@@ -777,7 +802,7 @@ export class TutorsService {
         ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
         : null;
       const reviewCount = ratings.length;
-      return normalizeTutor({ ...byId, rating: avgRating, reviewCount });
+      return this.withReadableAvatar(normalizeTutor({ ...byId, rating: avgRating, reviewCount }));
     }
 
     // Then try by tutorTid
@@ -795,7 +820,7 @@ export class TutorsService {
         ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
         : null;
       const reviewCount = ratings.length;
-      return normalizeTutor({ ...byTid, rating: avgRating, reviewCount });
+      return this.withReadableAvatar(normalizeTutor({ ...byTid, rating: avgRating, reviewCount }));
     }
 
     // Finally try finding by ID ending with the provided string (for slug-based lookups)
@@ -820,7 +845,7 @@ export class TutorsService {
         ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
         : null;
       const reviewCount = ratings.length;
-      return normalizeTutor({ ...byIdEnding, rating: avgRating, reviewCount });
+      return this.withReadableAvatar(normalizeTutor({ ...byIdEnding, rating: avgRating, reviewCount }));
     }
 
     // Last resort: try finding by tutorTid if the input looks like it might be a TID
@@ -844,7 +869,7 @@ export class TutorsService {
           ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length 
           : null;
         const reviewCount = ratings.length;
-        return normalizeTutor({ ...byTidFallback, rating: avgRating, reviewCount });
+        return this.withReadableAvatar(normalizeTutor({ ...byTidFallback, rating: avgRating, reviewCount }));
       }
     }
 
@@ -879,7 +904,7 @@ export class TutorsService {
 
     const ratingMap = new Map(ratings.map(r => [r.tutorId, r._avg.rating ?? 4.7]));
 
-    return tutors.map<TrendingTutorDto>((t) => {
+    const trendingTutors = await Promise.all(tutors.map(async (t) => {
       const avg = ratingMap.get(t.id) ?? 4.7;
 
       const fallbackName = t.user?.email
@@ -889,6 +914,10 @@ export class TutorsService {
             .replace(/^\w/, (c) => c.toUpperCase())
         : 'Tutor';
 
+      const img = t.user?.avatarUrl
+        ? await this.uploadsService.toReadableReference(t.user.avatarUrl)
+        : undefined;
+
       return {
         id: t.id,
         name: t.user?.name ?? fallbackName,
@@ -896,10 +925,12 @@ export class TutorsService {
         country: t.country ?? undefined,
         rating: Math.round(avg * 100) / 100,
         hourly: t.hourlyRate,
-        img: t.user?.avatarUrl ?? undefined,
+        img,
         badges: [],
       };
-    });
+    }));
+
+    return trendingTutors;
   }
 
   // ---------- SESSIONS FOR LOGGED-IN TUTOR ----------
@@ -1056,10 +1087,14 @@ export class TutorsService {
       ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
       : 0;
 
+    const readableAvatarUrl = t.user?.avatarUrl
+      ? await this.uploadsService.toReadableReference(t.user.avatarUrl, t.userId, 'TUTOR')
+      : null;
+
     return {
       name: t.user?.name ?? null,
       email: t.user?.email ?? null,
-      avatarUrl: t.user?.avatarUrl ?? null,
+      avatarUrl: readableAvatarUrl,
       status: t.status ?? null,
       bio: t.bio ?? null,
       summary: t.summary ?? null,
@@ -1088,10 +1123,14 @@ export class TutorsService {
     });
     if (!t) throw new NotFoundException('Tutor not found for logged-in user');
 
+    const readableAvatarUrl = t.user?.avatarUrl
+      ? await this.uploadsService.toReadableReference(t.user.avatarUrl, userId, 'TUTOR')
+      : null;
+
     return {
       name: t.user?.name ?? null,
       email: t.user?.email ?? null,
-      avatarUrl: t.user?.avatarUrl ?? null,
+      avatarUrl: readableAvatarUrl,
       status: t.status ?? null,
       bio: t.bio ?? null,
       summary: t.summary ?? null,
@@ -1179,30 +1218,77 @@ export class TutorsService {
 
   // ---------- TUTOR ACTIVITY INFO ----------
   async getActivityInfo(tutorId: string) {
+    const incomingTutorId = tutorId?.trim();
+    const incomingTutorIdLower = incomingTutorId.toLowerCase();
+
+    const resolvedTutor = await this.prisma.tutor.findFirst({
+      where: {
+        OR: [
+          { id: incomingTutorId },
+          { tutorTid: incomingTutorId },
+          { id: { endsWith: incomingTutorId } },
+          { id: { endsWith: incomingTutorIdLower } },
+          { tutorTid: incomingTutorIdLower },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (!resolvedTutor) {
+      throw new NotFoundException('Tutor not found');
+    }
+
+    const resolvedTutorId = resolvedTutor.id;
+
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    // Get last active date (last booking or slot creation)
-    const [lastBooking, lastSlot] = await Promise.all([
+    // Get latest activity anchors (all-time for lastActive, 30 days for frequency)
+    const [lastBooking, lastSlot, tutorMeta] = await Promise.all([
       this.prisma.booking.findFirst({
         where: {
-          tutorId,
-          createdAt: { gte: thirtyDaysAgo },
+          tutorId: resolvedTutorId,
         },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
       this.prisma.availabilitySlot.findFirst({
         where: {
-          tutorId,
-          createdAt: { gte: thirtyDaysAgo },
+          tutorId: resolvedTutorId,
         },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
+      this.prisma.tutor.findUnique({
+        where: { id: resolvedTutorId },
+        select: {
+          lastActiveDate: true,
+          lastAvailabilityUpdate: true,
+          updatedAt: true,
+          user: {
+            select: {
+              updatedAt: true,
+            },
+          },
+        },
+      }),
     ]);
-    
-    const lastActive = lastBooking?.createdAt || lastSlot?.createdAt || null;
+
+    const lastActiveCandidates = [
+      lastBooking?.createdAt ?? null,
+      lastSlot?.createdAt ?? null,
+      tutorMeta?.lastActiveDate ?? null,
+      tutorMeta?.lastAvailabilityUpdate ?? null,
+      tutorMeta?.updatedAt ?? null,
+      tutorMeta?.user?.updatedAt ?? null,
+    ].filter((value): value is Date => value instanceof Date);
+
+    const lastActive = lastActiveCandidates.length
+      ? lastActiveCandidates.reduce(
+          (latest, current) => (current.getTime() > latest.getTime() ? current : latest),
+          lastActiveCandidates[0],
+        )
+      : null;
     
     // Calculate activity frequency (days active in last 30 days)
     const activeDays = new Set<string>();
@@ -1210,7 +1296,7 @@ export class TutorsService {
     // Count days from bookings
     const bookings = await this.prisma.booking.findMany({
       where: {
-        tutorId,
+        tutorId: resolvedTutorId,
         createdAt: { gte: thirtyDaysAgo },
       },
       select: { createdAt: true },
@@ -1223,7 +1309,7 @@ export class TutorsService {
     // Count days from slots
     const slots = await this.prisma.availabilitySlot.findMany({
       where: {
-        tutorId,
+        tutorId: resolvedTutorId,
         createdAt: { gte: thirtyDaysAgo },
       },
       select: { createdAt: true },

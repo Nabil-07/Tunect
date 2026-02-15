@@ -60,6 +60,8 @@ import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 import { EncryptResponseInterceptor } from './common/interceptors/encrypt-response.interceptor';
 import { MetricsInterceptor } from './metrics/metrics.interceptor';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { UploadsModule } from './uploads/uploads.module';
+import { PolicyConfigModule } from './policy-config/policy-config.module';
 
 @Module({
   imports: [
@@ -68,6 +70,8 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60, limit: 120 }]),
     PrismaModule,
     CommonModule,
+    UploadsModule,
+    PolicyConfigModule,
     HealthModule,
     MetricsModule,
 

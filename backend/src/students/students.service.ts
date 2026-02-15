@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
+import { UploadsService } from '../uploads/uploads.service';
+import { EncryptionService } from '../common/services/encryption.service';
 
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
@@ -10,7 +12,11 @@ function toNum(v: unknown): number {
 
 @Injectable()
 export class StudentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uploadsService: UploadsService,
+    private readonly encryptionService: EncryptionService,
+  ) {}
 
   /**
    * Helper method to ensure student profile exists, auto-creating if needed
@@ -171,6 +177,14 @@ export class StudentsService {
       sessionsCompleted: completedCount,
     };
 
+    const readableAvatarUrl = user.avatarUrl
+      ? await this.uploadsService.toReadableReference(user.avatarUrl, user.id, user.role ?? undefined)
+      : null;
+
+    const encryptedAvatarUrl = readableAvatarUrl
+      ? this.encryptionService.encrypt(readableAvatarUrl)
+      : readableAvatarUrl;
+
     return {
       id: student.id,
       userId: user.id,
@@ -182,7 +196,7 @@ export class StudentsService {
         name: user.name ?? null,
         email: user.email,
         phone: user.phone ?? null,
-        avatarUrl: user.avatarUrl ?? null,
+        avatarUrl: encryptedAvatarUrl,
         createdAt: user.createdAt,
       },
       student: studentPayload,

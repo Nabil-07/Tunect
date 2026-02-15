@@ -21,6 +21,7 @@ import { WaitlistService } from '../waitlist/waitlist.service';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { ChatTriggersService } from '../messages/chat-triggers.service';
 import { BansService } from '../bans/bans.service';
+import { UploadsService } from '../uploads/uploads.service';
 
 const TOKENS_PER_HOUR = Number(process.env.TOKENS_PER_HOUR ?? 1);
 const MIN_BLOCK_MINUTES = 15;
@@ -37,6 +38,7 @@ export class BookingsService {
     private readonly waitlistService: WaitlistService,
     private readonly chatTriggers: ChatTriggersService,
     private readonly bans: BansService,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   /**
@@ -104,9 +106,10 @@ export class BookingsService {
     if (overlap) throw new BadRequestException('You already have a booking overlapping this time.');
   }
 
-  private async ensureWithinAvailabilitySlot(tutorId: string, start: Date, end: Date) {
+  private async ensureWithinAvailabilitySlot(tutorId: string, start: Date, end: Date, tx?: any) {
+    const prisma = tx || this.prisma;
     // Check explicit availability slots
-    const slot = await this.prisma.availabilitySlot.findFirst({
+    const slot = await prisma.availabilitySlot.findFirst({
       where: { tutorId, startTime: { lte: start }, endTime: { gte: end } },
       select: { id: true },
     });
@@ -119,7 +122,7 @@ export class BookingsService {
     const endHour = end.getHours();
     const endMin = end.getMinutes();
     
-    const templates = await this.prisma.recurringTemplate.findMany({
+    const templates = await prisma.recurringTemplate.findMany({
       where: {
         tutorId,
         isActive: true,
@@ -1235,10 +1238,12 @@ export class BookingsService {
         }
       }
 
-      // Edge Case Fix: Check overlaps within transaction to prevent race conditions
-      await this.ensureWithinAvailabilitySlot(booking.tutorId, start, end);
-      await this.ensureNoTutorOverlap(booking.tutorId, start, end, bookingId, tx);
-      await this.ensureNoStudentOverlap(booking.studentId, start, end, bookingId, tx);
+      // Edge Case Fix: Check availability/overlaps within transaction to prevent race conditions
+      await Promise.all([
+        this.ensureWithinAvailabilitySlot(booking.tutorId, start, end, tx),
+        this.ensureNoTutorOverlap(booking.tutorId, start, end, bookingId, tx),
+        this.ensureNoStudentOverlap(booking.studentId, start, end, bookingId, tx),
+      ]);
 
       // ✅ For paid bookings awaiting slot (PENDING or PENDING_SLOT), ensure tokens are truly deducted now
       const cost = this.requiredTokens(start, end, TOKENS_PER_HOUR);
@@ -1325,6 +1330,9 @@ export class BookingsService {
       });
 
       return updatedBooking!;
+    }, {
+      maxWait: 10_000,
+      timeout: 15_000,
     }).then(async (booking) => {
       // After transaction commits, trigger side effects
       await this.ensureLivekitMeeting(bookingId);
@@ -1559,12 +1567,20 @@ export class BookingsService {
       },
     });
 
-    return participants.map((p) => ({
-      id: p.student.id,
-      name: p.student.user?.name ?? p.student.user?.email?.split('@')[0],
-      email: p.student.user?.email,
-      avatarUrl: p.student.user?.avatarUrl,
-    }));
+    return Promise.all(
+      participants.map(async (p) => ({
+        id: p.student.id,
+        name: p.student.user?.name ?? p.student.user?.email?.split('@')[0],
+        email: p.student.user?.email,
+        avatarUrl: p.student.user?.avatarUrl
+          ? await this.uploadsService.toReadableReference(
+              p.student.user.avatarUrl,
+              p.student.userId,
+              Role.STUDENT,
+            )
+          : p.student.user?.avatarUrl,
+      }))
+    );
   }
 
   async convertToGroupSession(

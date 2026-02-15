@@ -9,10 +9,12 @@ export class CreateMaterialDto {
   description?: string;
 
   @IsString()
-  fileUrl!: string;
+  @IsOptional()
+  fileUrl?: string;
 
   @IsString()
-  fileType!: string;
+  @IsOptional()
+  fileType?: string;
 
   @IsString()
   @IsOptional()

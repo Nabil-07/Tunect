@@ -207,6 +207,32 @@ export default function TutorPublicProfile() { // NOSONAR
     }
   }, [id]);
 
+  const fetchAvailabilityInfo = async (tutorId: string, verified?: boolean) => {
+    try {
+      const res = await api.get(`/tutors/${tutorId}/availability-info`);
+      const info = res?.data;
+      if (info && typeof info === 'object') {
+        setAvailabilityInfo({
+          lastActive: info.lastActive ?? null,
+          consistencyPercentage: Number(info.consistencyPercentage ?? 0),
+          weeklyHours: Number(info.weeklyHours ?? 0),
+          isFeatured: Boolean(info.isFeatured),
+          isVerified: Boolean(info.isVerified),
+        });
+        return;
+      }
+      throw new Error('Invalid availability info response');
+    } catch {
+      try {
+        const res = await api.get(`/availability/tutors/${tutorId}`);
+        const slots = Array.isArray(res.data) ? res.data : [];
+        setAvailabilityInfo(deriveAvailabilityInfo(slots, verified));
+      } catch {
+        setAvailabilityInfo(deriveAvailabilityInfo([], verified));
+      }
+    }
+  };
+
   // Fetch reviews for tutor
   const fetchReviews = useCallback(async (tutorId: string) => {
     if (!tutorId) return;
@@ -272,16 +298,7 @@ export default function TutorPublicProfile() { // NOSONAR
         // Fetch reviews and availability info after tutor is loaded
         if (t?.id) {
           fetchReviews(t.id);
-          // Fetch availability info from slots to avoid preprod 404s
-          api
-            .get(`/availability/tutors/${t.id}`)
-            .then((res) => {
-              const slots = Array.isArray(res.data) ? res.data : [];
-              setAvailabilityInfo(deriveAvailabilityInfo(slots, t?.verified));
-            })
-            .catch(() => {
-              setAvailabilityInfo(deriveAvailabilityInfo([], t?.verified));
-            });
+          void fetchAvailabilityInfo(t.id, t?.verified);
         }
 
         // Redirect to slug-based URL if not already using slug

@@ -1,11 +1,18 @@
 // src/users/users.controller.ts
-import { Body, Controller, Get, Patch, UseGuards, Req, Param } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Patch, Post, UseGuards, Req, Param, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
+import { FinalizeAvatarDto } from './dto/finalize-avatar.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { IsOptional, IsString, Length } from 'class-validator';
+
+class AcceptTermsDto {
+  @IsOptional()
+  version?: number;
+}
 
 class ChangePasswordDto {
   @IsOptional()
@@ -17,6 +24,13 @@ class ChangePasswordDto {
   @Length(6, 200)
   newPassword!: string;
 }
+
+const MAX_AVATAR_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const AVATAR_ALLOWED_MIMES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -41,6 +55,39 @@ export class UsersController {
     return this.users.updateMe(userId, body);
   }
 
+  @Post('me/avatar')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: {
+      fileSize: MAX_AVATAR_FILE_SIZE_BYTES,
+    },
+    fileFilter: (_req, file, cb) => {
+      if (AVATAR_ALLOWED_MIMES.has(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new BadRequestException('Unsupported avatar file type'), false);
+      }
+    },
+  }))
+  async uploadAvatar(@Req() req: any, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Avatar file is required');
+    }
+    const userId: string = req.user?.sub ?? req.user?.id;
+    return this.users.uploadAvatar(userId, file);
+  }
+
+  @Post('me/avatar/finalize')
+  async finalizeAvatar(@Req() req: any, @Body() dto: FinalizeAvatarDto) {
+    const userId: string = req.user?.sub ?? req.user?.id;
+    const userRole: string | undefined = req.user?.role;
+    const keyOrUrl = dto.key ?? dto.avatarKey ?? dto.avatarUrl;
+    if (!keyOrUrl) {
+      throw new BadRequestException('avatar key/url is required');
+    }
+    return this.users.finalizeAvatarUpload(userId, keyOrUrl, userRole);
+  }
+
   @Patch('me/password')
   async changePassword(
     @Req() req: any,
@@ -48,6 +95,16 @@ export class UsersController {
   ) {
     const userId: string = req.user?.sub ?? req.user?.id;
     return this.users.changePassword(userId, body.currentPassword, body.newPassword);
+  }
+
+  @Post('me/terms/accept')
+  async acceptTerms(
+    @Req() req: any,
+    @Body() body: AcceptTermsDto,
+  ) {
+    const userId: string = req.user?.sub ?? req.user?.id;
+    const userRole: string | undefined = req.user?.role;
+    return this.users.acceptTermsForCurrentRole(userId, userRole, req, body?.version);
   }
 
   // Admin-only routes

@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsISO8601, IsUUID, IsOptional, IsNumber } from 'class-validator';
+import { IsISO8601, IsOptional, IsNumber } from 'class-validator';
+import { IsCuid } from '../../common/validators/is-cuid.decorator';
 
 export class CreateSlotDto {
   @ApiProperty({ example: '2025-08-12T16:00:00.000Z' })
@@ -10,8 +11,8 @@ export class CreateSlotDto {
   @IsISO8601()
   endTime!: string;
 
-  @ApiProperty({ example: 'uuid-of-tutor', required: false })
-  @IsUUID()
+  @ApiProperty({ example: 'cmjr15hyl0004hxqk8svmw3tf', required: false, description: 'Tutor ID (canonical CUID; legacy UUID accepted temporarily)' })
+  @IsCuid({ allowLegacyUuid: true })
   @IsOptional()
   tutorId?: string; // only required if admin can add for other tutors
 

@@ -8,17 +8,22 @@ import { TokenLedgerService } from '../tokens/token-ledger.service';
 import { AuditService } from '../audit/audit.service';
 import { extractAuditInfo } from '../common/audit-helper';
 import { Request } from 'express';
+import { PolicyConfigService } from '../policy-config/policy-config.service';
+import type { PolicyConfig } from '../policy-config/default-policy-config';
 
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
   private readonly cache = new Map<string, { value: unknown; expiresAt: number }>();
   private readonly cacheTtlMs = 30_000;
+  private readonly studentTermsAction = 'TERMS_ACCEPTED_STUDENT';
+  private readonly tutorTermsAction = 'TERMS_ACCEPTED_TUTOR';
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: TokenLedgerService,
     private readonly audit: AuditService,
+    private readonly policyConfig: PolicyConfigService,
   ) {}
 
   private getFromCache<T>(key: string): T | undefined {
@@ -34,6 +39,48 @@ export class AdminService {
 
   private setCache(key: string, value: unknown) {
     this.cache.set(key, { value, expiresAt: Date.now() + this.cacheTtlMs });
+  }
+
+  private parseTermsVersion(afterData: unknown): number | null {
+    if (!afterData || typeof afterData !== 'object') return null;
+    const value = (afterData as any)?.version;
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value);
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return Math.floor(parsed);
+    }
+    return null;
+  }
+
+  private async getLatestTermsByUserIds(userIds: string[]) {
+    if (!userIds.length) return new Map<string, { accepted: boolean; version: number | null; acceptedAt: Date | null }>();
+
+    const rows = await this.prisma.auditLog.findMany({
+      where: {
+        adminId: { in: userIds },
+        entityType: AuditEntityType.USER,
+        action: { in: [this.studentTermsAction, this.tutorTermsAction] },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        adminId: true,
+        action: true,
+        createdAt: true,
+        afterData: true,
+      },
+    });
+
+    const map = new Map<string, { accepted: boolean; version: number | null; acceptedAt: Date | null }>();
+    for (const row of rows) {
+      const key = `${row.adminId}:${row.action}`;
+      if (map.has(key)) continue;
+      map.set(key, {
+        accepted: true,
+        version: this.parseTermsVersion(row.afterData),
+        acceptedAt: row.createdAt,
+      });
+    }
+    return map;
   }
 
   // ---------- Dashboard ----------
@@ -142,6 +189,7 @@ export class AdminService {
         })
       : [];
     const strikeMap = new Map(strikeCounts.map((row) => [row.userId, row._count._all]));
+    const latestTermsMap = await this.getLatestTermsByUserIds(tutorUserIds);
 
     const enriched = items.map((item) => ({
       ...item,
@@ -149,6 +197,11 @@ export class AdminService {
         ...item.user,
         piiStrikes: strikeMap.get(item.user.id) ?? 0,
         piiMaxStrikes: 3,
+        terms: latestTermsMap.get(`${item.user.id}:${this.tutorTermsAction}`) ?? {
+          accepted: false,
+          version: null,
+          acceptedAt: null,
+        },
       },
     }));
 
@@ -216,6 +269,7 @@ export class AdminService {
         })
       : [];
     const studentStrikeMap = new Map(studentStrikeCounts.map((row) => [row.userId, row._count._all]));
+    const latestTermsMap = await this.getLatestTermsByUserIds(studentUserIds);
 
     const enriched = items.map((item) => ({
       ...item,
@@ -223,6 +277,11 @@ export class AdminService {
         ...item.user,
         piiStrikes: studentStrikeMap.get(item.user.id) ?? 0,
         piiMaxStrikes: 3,
+        terms: latestTermsMap.get(`${item.user.id}:${this.studentTermsAction}`) ?? {
+          accepted: false,
+          version: null,
+          acceptedAt: null,
+        },
       },
     }));
 
@@ -761,5 +820,13 @@ export class AdminService {
     });
 
     return { ok: true, message: 'User has been unbanned successfully', strikesCleared: latestViolation ? 1 : 0 };
+  }
+
+  async getPolicyConfig() {
+    return this.policyConfig.getAdminConfig();
+  }
+
+  async updatePolicyConfig(partial: Partial<PolicyConfig>, adminId: string, req?: Request) {
+    return this.policyConfig.updateConfig(partial, adminId, req);
   }
 }

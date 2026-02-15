@@ -301,6 +301,7 @@ export default function AdminStudents() {
                 <th className="px-4 py-3 text-left">Student</th>
                 <th className="px-4 py-3 text-left">Grade</th>
                 <th className="px-4 py-3 text-left">Tokens</th>
+                <th className="px-4 py-3 text-left">Terms</th>
                 <th className="px-4 py-3 text-left">Account Status</th>
                 <th className="px-4 py-3 text-left">Created</th>
                 <th className="px-4 py-3 text-left">Actions</th>
@@ -308,7 +309,7 @@ export default function AdminStudents() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {Array.from({ length: 10 }).map((_, i) => (
-                <TableRowSkeleton key={i} columns={6} />
+                <TableRowSkeleton key={i} columns={7} />
               ))}
             </tbody>
           </table>
@@ -335,6 +336,9 @@ export default function AdminStudents() {
                     <span>Tokens</span>
                     <SortIcon field="tokens" />
                   </div>
+                </th>
+                <th className="px-4 py-3 text-left">
+                  <span>Terms</span>
                 </th>
                 <th className="px-4 py-3 text-left">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('accountStatus')}>
@@ -429,6 +433,7 @@ export default function AdminStudents() {
                   />
                 </th>
                 <th className="px-4 py-2"></th>
+                <th className="px-4 py-2"></th>
                 <th className="px-4 py-2">
                   <select
                     className="w-full text-xs border rounded px-2 py-1"
@@ -440,6 +445,7 @@ export default function AdminStudents() {
                     <option value="BLOCKED">Blocked</option>
                   </select>
                 </th>
+                <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -458,6 +464,23 @@ export default function AdminStudents() {
                   </td>
                   <td className="px-4 py-3 text-slate-700">{s.grade || '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{s.tokens}</td>
+                  <td className="px-4 py-3">
+                    {s.user.terms?.accepted ? (
+                      <div className="flex flex-col gap-1 text-xs text-slate-700">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full font-medium bg-emerald-100 text-emerald-800 w-fit">
+                          Accepted
+                        </span>
+                        <span>v{s.user.terms.version ?? '—'}</span>
+                        <span className="text-slate-500">
+                          {s.user.terms.acceptedAt ? new Date(s.user.terms.acceptedAt).toLocaleDateString() : '—'}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        Pending
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
                       {s.user.isBanned ? (

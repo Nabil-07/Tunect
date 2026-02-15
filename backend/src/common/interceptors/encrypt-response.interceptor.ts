@@ -40,14 +40,21 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     'email',
     'phone',
     'address',
+    'avatarUrl',
+    'avatar',
     'user.email',
     'user.phone',
+    'user.avatarUrl',
     'tutor.user.email',
     'tutor.user.phone',
+    'tutor.user.avatarUrl',
     'tutor.email', // Flattened structure (e.g., booking details)
+    'tutor.avatarUrl',
     'student.user.email',
     'student.user.phone',
+    'student.user.avatarUrl',
     'student.email', // Flattened structure (e.g., booking details)
+    'student.avatarUrl',
   ];
 
   // Public endpoints that return PII about other users - always encrypt

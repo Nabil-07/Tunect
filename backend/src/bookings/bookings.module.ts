@@ -7,9 +7,10 @@ import { GoogleMeetModule } from '../google-meet/google-meet.module';
 import { WaitlistModule } from '../waitlist/waitlist.module';
 import { MessagesModule } from '../messages/messages.module';
 import { BansModule } from '../bans/bans.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
-  imports: [PrismaModule, GoogleMeetModule, WaitlistModule, MessagesModule, BansModule],
+  imports: [PrismaModule, GoogleMeetModule, WaitlistModule, MessagesModule, BansModule, UploadsModule],
   controllers: [BookingsController],
   providers: [BookingsService, NotificationsService],
   exports: [BookingsService],

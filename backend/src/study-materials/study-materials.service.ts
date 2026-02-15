@@ -1,14 +1,17 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../common/services/s3.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
+import { FinalizeMaterialDto } from './dto/finalize-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
+import { UploadsService } from '../uploads/uploads.service';
 
 @Injectable()
 export class StudyMaterialsService {
   constructor(
-    private prisma: PrismaService,
-    private s3Service: S3Service,
+    private readonly prisma: PrismaService,
+    private readonly s3Service: S3Service,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   async create(userId: string, dto: CreateMaterialDto, file?: Express.Multer.File) {
@@ -31,7 +34,7 @@ export class StudyMaterialsService {
       );
     }
 
-    return this.prisma.studyMaterial.create({
+    const created = await this.prisma.studyMaterial.create({
       data: {
         tutorId: tutor.id,
         title: dto.title,
@@ -42,6 +45,39 @@ export class StudyMaterialsService {
         isPublic: dto.isPublic ?? false,
       },
     });
+
+    return this.decorateMaterialUrl(created);
+  }
+
+  async finalize(userId: string, dto: FinalizeMaterialDto) {
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!tutor) {
+      throw new NotFoundException('Tutor profile not found');
+    }
+
+    const key = await this.uploadsService.assertKeyAllowedForUseCase({
+      userId,
+      useCase: 'study-materials',
+      keyOrUrl: dto.key,
+    });
+
+    const created = await this.prisma.studyMaterial.create({
+      data: {
+        tutorId: tutor.id,
+        title: dto.title,
+        description: dto.description,
+        fileUrl: this.uploadsService.toStoredReference(key),
+        fileType: dto.fileType || this.inferFileTypeFromKey(key),
+        subject: dto.subject,
+        isPublic: dto.isPublic ?? false,
+      },
+    });
+
+    return this.decorateMaterialUrl(created);
   }
 
   async findTutorMaterials(userId: string) {
@@ -53,14 +89,27 @@ export class StudyMaterialsService {
       return [];
     }
 
-    return this.prisma.studyMaterial.findMany({
+    const items = await this.prisma.studyMaterial.findMany({
       where: { tutorId: tutor.id },
+      include: {
+        _count: {
+          select: {
+            access: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
+
+    const decorated = await this.decorateMaterialUrls(items);
+    return decorated.map((item: any) => ({
+      ...item,
+      sharedWithCount: item?._count?.access || 0,
+    }));
   }
 
   async findPublicMaterials(subject?: string) {
-    return this.prisma.studyMaterial.findMany({
+    const items = await this.prisma.studyMaterial.findMany({
       where: {
         isPublic: true,
         ...(subject && { subject }),
@@ -79,6 +128,8 @@ export class StudyMaterialsService {
       orderBy: { downloads: 'desc' },
       take: 50,
     });
+
+    return this.decorateMaterialUrls(items);
   }
 
   async findOne(materialId: string) {
@@ -101,10 +152,10 @@ export class StudyMaterialsService {
       throw new NotFoundException('Study material not found');
     }
 
-    return material;
+    return this.decorateMaterialUrl(material);
   }
 
-  async update(materialId: string, userId: string, dto: UpdateMaterialDto) {
+  async update(materialId: string, userId: string, dto: UpdateMaterialDto, file?: Express.Multer.File) {
     const material = await this.prisma.studyMaterial.findUnique({
       where: { id: materialId },
       include: { tutor: true },
@@ -118,15 +169,34 @@ export class StudyMaterialsService {
       throw new ForbiddenException('You can only update your own materials');
     }
 
-    return this.prisma.studyMaterial.update({
+    let nextFileUrl: string | undefined;
+    let nextFileType: string | undefined;
+
+    if (file) {
+      nextFileUrl = await this.s3Service.uploadFile(file.buffer, file.originalname, 'study-materials');
+      nextFileType = file.mimetype || dto.fileType;
+    } else if (dto.key) {
+      const key = await this.uploadsService.assertKeyAllowedForUseCase({
+        userId,
+        useCase: 'study-materials',
+        keyOrUrl: dto.key,
+      });
+      nextFileUrl = this.uploadsService.toStoredReference(key);
+      nextFileType = dto.fileType;
+    }
+
+    const updated = await this.prisma.studyMaterial.update({
       where: { id: materialId },
       data: {
         title: dto.title,
         description: dto.description,
-        isPublic: dto.isPublic,
         subject: dto.subject,
+        fileUrl: nextFileUrl,
+        fileType: nextFileType,
       },
     });
+
+    return this.decorateMaterialUrl(updated);
   }
 
   async delete(materialId: string, userId: string) {
@@ -149,7 +219,7 @@ export class StudyMaterialsService {
   }
 
   async incrementDownload(materialId: string) {
-    return this.prisma.studyMaterial.update({
+    const updated = await this.prisma.studyMaterial.update({
       where: { id: materialId },
       data: {
         downloads: {
@@ -157,5 +227,189 @@ export class StudyMaterialsService {
         },
       },
     });
+
+    return this.decorateMaterialUrl(updated);
+  }
+
+  async getShareableStudents(userId: string) {
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!tutor) {
+      throw new NotFoundException('Tutor profile not found');
+    }
+
+    const balances = await this.prisma.tutorTokenBalance.findMany({
+      where: { tutorId: tutor.id, balance: { gt: 0 } },
+      select: {
+        studentId: true,
+        balance: true,
+        student: {
+          select: {
+            id: true,
+            grade: true,
+            user: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return balances
+      .map((entry) => ({
+        id: entry.student.id,
+        name: entry.student.user?.name || entry.student.user?.email || 'Student',
+        email: entry.student.user?.email || null,
+        grade: entry.student.grade || null,
+        tokenBalance: Number(entry.balance),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getShareTargets(materialId: string, userId: string) {
+    const material = await this.prisma.studyMaterial.findUnique({
+      where: { id: materialId },
+      include: { tutor: true },
+    });
+
+    if (!material) {
+      throw new NotFoundException('Study material not found');
+    }
+
+    if (material.tutor.userId !== userId) {
+      throw new ForbiddenException('You can only share your own materials');
+    }
+
+    const [eligibleStudents, existingAccess] = await Promise.all([
+      this.getShareableStudents(userId),
+      this.prisma.materialAccess.findMany({
+        where: { materialId },
+        select: { studentId: true },
+      }),
+    ]);
+
+    return {
+      eligibleStudents,
+      sharedStudentIds: existingAccess.map((entry) => entry.studentId),
+    };
+  }
+
+  async shareWithStudents(materialId: string, userId: string, studentIds: string[]) {
+    const material = await this.prisma.studyMaterial.findUnique({
+      where: { id: materialId },
+      include: { tutor: true },
+    });
+
+    if (!material) {
+      throw new NotFoundException('Study material not found');
+    }
+
+    if (material.tutor.userId !== userId) {
+      throw new ForbiddenException('You can only share your own materials');
+    }
+
+    const uniqueStudentIds = Array.from(
+      new Set((studentIds || []).map((id) => String(id || '').trim()).filter(Boolean)),
+    );
+
+    const eligibleStudents = await this.getShareableStudents(userId);
+    const eligibleIdSet = new Set(eligibleStudents.map((entry) => entry.id));
+
+    const invalidIds = uniqueStudentIds.filter((id) => !eligibleIdSet.has(id));
+    if (invalidIds.length > 0) {
+      throw new BadRequestException('One or more selected students are not eligible for sharing');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.materialAccess.deleteMany({ where: { materialId } });
+
+      if (uniqueStudentIds.length > 0) {
+        await tx.materialAccess.createMany({
+          data: uniqueStudentIds.map((studentId) => ({ materialId, studentId })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    return {
+      success: true,
+      sharedStudentIds: uniqueStudentIds,
+    };
+  }
+
+  async findSharedWithStudent(userId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!student) {
+      return [];
+    }
+
+    const accessRows = await this.prisma.materialAccess.findMany({
+      where: { studentId: student.id },
+      orderBy: { accessedAt: 'desc' },
+      include: {
+        studyMaterial: {
+          include: {
+            tutor: {
+              include: {
+                user: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const items = accessRows.map((row) => ({
+      ...row.studyMaterial,
+      sharedAt: row.accessedAt,
+      tutorName: row.studyMaterial.tutor.user?.name || 'Tutor',
+    }));
+
+    return this.decorateMaterialUrls(items);
+  }
+
+  private inferFileTypeFromKey(key: string): string {
+    const extension = key.split('.').pop()?.toLowerCase();
+    if (!extension) {
+      return 'FILE';
+    }
+
+    const map: Record<string, string> = {
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      txt: 'text/plain',
+    };
+
+    return map[extension] || 'FILE';
+  }
+
+  private async decorateMaterialUrl<T extends { fileUrl: string }>(item: T): Promise<T> {
+    return {
+      ...item,
+      fileUrl: await this.uploadsService.toReadableReference(item.fileUrl),
+    };
+  }
+
+  private async decorateMaterialUrls<T extends { fileUrl: string }>(items: T[]): Promise<T[]> {
+    return Promise.all(items.map((item) => this.decorateMaterialUrl(item)));
   }
 }
