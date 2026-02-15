@@ -26,8 +26,11 @@ export interface TutorTokenBalance {
   id: string;
   tutorId: string;
   balance: number;
+  pricePerToken: number;
+  hourlyRate?: number;
   tutor: {
     id: string;
+    hourlyRate?: number;
     user: {
       name: string | null;
       email: string;

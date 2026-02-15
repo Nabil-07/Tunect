@@ -7,9 +7,10 @@ import { TutorWalletController } from './tutor-wallet.controller';
 import { TutorWalletService } from './tutor-wallet.service';
 import { AvailabilityTrackingService } from '../availability/availability-tracking.service';
 import { AvailabilityModule } from '../availability/availability.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
-  imports: [AvailabilityModule],
+  imports: [AvailabilityModule, UploadsModule],
   controllers: [TutorsController, TutorWalletController],
   providers: [TutorsService, TutorWalletService, PrismaService],
   exports: [TutorsService],

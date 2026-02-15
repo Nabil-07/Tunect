@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -17,6 +18,29 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { AssignmentsService } from './assignments.service';
 import { CreateAssignmentDto, UpdateAssignmentDto, SubmitAssignmentDto, GradeAssignmentDto } from './dto/assignment.dto';
 
+const MAX_ASSIGNMENT_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const ASSIGNMENT_ALLOWED_MIMES = new Set([
+  'application/pdf',
+  'text/plain',
+  'image/jpeg',
+  'image/png',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+const assignmentUploadOptions = {
+  limits: {
+    fileSize: MAX_ASSIGNMENT_FILE_SIZE_BYTES,
+  },
+  fileFilter: (_req: any, file: Express.Multer.File, cb: (error: Error | null, acceptFile: boolean) => void) => {
+    if (ASSIGNMENT_ALLOWED_MIMES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new BadRequestException('Unsupported assignment file type') as any, false);
+    }
+  },
+};
+
 @ApiTags('assignments')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -27,7 +51,7 @@ export class AssignmentsController {
   @Post()
   @ApiOperation({ summary: 'Create assignment (Tutor)' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', assignmentUploadOptions))
   create(
     @CurrentUser('id') userId: string,
     @Body() dto: CreateAssignmentDto,
@@ -67,7 +91,7 @@ export class AssignmentsController {
   @Post(':id/submit')
   @ApiOperation({ summary: 'Submit assignment (Student)' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', assignmentUploadOptions))
   submit(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,

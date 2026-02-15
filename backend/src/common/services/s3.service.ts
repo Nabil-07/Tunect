@@ -7,7 +7,7 @@ import {
   GetObjectCommand 
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { v4 as uuidv4 } from 'uuid';
+import { createId } from '@paralleldrive/cuid2';
 
 @Injectable()
 export class S3Service {
@@ -16,8 +16,9 @@ export class S3Service {
   private readonly bucketName: string;
   private readonly region: string;
   private readonly isEnabled: boolean;
+  private readonly allowedTopLevelPrefixes = new Set(['avatars', 'kyc', 'certificates', 'study-materials', 'test']);
 
-  constructor(private configService: ConfigService) {
+  constructor(private readonly configService: ConfigService) {
     this.bucketName = this.configService.get<string>('AWS_S3_BUCKET_NAME') || '';
     this.region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
     this.isEnabled = this.configService.get<string>('ENABLE_S3') === 'true';
@@ -40,7 +41,7 @@ export class S3Service {
    * Upload a file to S3
    * @param file - File buffer
    * @param originalName - Original filename
-   * @param folder - Folder path in S3 (e.g., 'assignments', 'study-materials')
+   * @param folder - Folder path in S3 (canonical top-level prefixes: avatars/, kyc/, certificates/, test/)
    * @returns S3 URL or mock URL if S3 is disabled
    */
   async uploadFile(
@@ -48,15 +49,20 @@ export class S3Service {
     originalName: string,
     folder: string,
   ): Promise<string> {
+    const normalizedFolder = this.normalizeFolder(folder);
+    const fileExtension = originalName.includes('.')
+      ? originalName.split('.').pop()?.toLowerCase()
+      : undefined;
+    const cuid = createId();
+    const keySuffix = fileExtension ? `${cuid}.${fileExtension}` : cuid;
+    const fileName = `${normalizedFolder}/${keySuffix}`;
+
     if (!this.isEnabled) {
       // Mock URL for testing without S3
-      const mockUrl = `https://mock-s3.tunect.local/${folder}/${uuidv4()}-${originalName}`;
+      const mockUrl = `https://mock-s3.tunect.local/${fileName}`;
       this.logger.warn(`S3 disabled. Returning mock URL: ${mockUrl}`);
       return mockUrl;
     }
-
-    const fileExtension = originalName.split('.').pop();
-    const fileName = `${folder}/${uuidv4()}.${fileExtension}`;
 
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
@@ -79,6 +85,62 @@ export class S3Service {
     }
   }
 
+  async createPresignedPutUrl(key: string, contentType: string, expiresIn = 900): Promise<string> {
+    if (!this.isEnabled) {
+      return `https://mock-s3.tunect.local/${key}`;
+    }
+
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+      ContentType: contentType,
+    });
+
+    if (!this.s3Client) {
+      throw new Error('S3 client not initialized');
+    }
+
+    return getSignedUrl(this.s3Client, command, { expiresIn });
+  }
+
+  async createPresignedGetUrlForKey(key: string, expiresIn = 600): Promise<string> {
+    if (!this.isEnabled) {
+      return `https://mock-s3.tunect.local/${key}`;
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+    });
+
+    if (!this.s3Client) {
+      throw new Error('S3 client not initialized');
+    }
+
+    return getSignedUrl(this.s3Client, command, { expiresIn });
+  }
+
+  async getObjectByKey(key: string) {
+    if (!this.isEnabled) {
+      throw new Error('S3 is disabled');
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+    });
+
+    if (!this.s3Client) {
+      throw new Error('S3 client not initialized');
+    }
+
+    return this.s3Client.send(command);
+  }
+
+  toObjectUrl(key: string): string {
+    return `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
+  }
+
   /**
    * Delete a file from S3
    * @param fileUrl - Full S3 URL
@@ -90,7 +152,7 @@ export class S3Service {
     }
 
     try {
-      const key = this.extractKeyFromUrl(fileUrl);
+      const key = this.extractKeyFromReference(fileUrl);
       const command = new DeleteObjectCommand({
         Bucket: this.bucketName,
         Key: key,
@@ -118,7 +180,7 @@ export class S3Service {
     }
 
     try {
-      const key = this.extractKeyFromUrl(fileUrl);
+      const key = this.extractKeyFromReference(fileUrl);
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: key,
@@ -136,11 +198,25 @@ export class S3Service {
   }
 
   /**
-   * Extract S3 key from full URL
+   * Extract S3 key from full URL or return key as-is
    */
-  private extractKeyFromUrl(fileUrl: string): string {
-    const url = new URL(fileUrl);
-    return url.pathname.substring(1); // Remove leading slash
+  extractKeyFromReference(reference: string): string {
+    const value = String(reference || '').trim();
+    if (!value) {
+      throw new Error('Invalid S3 reference');
+    }
+
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      const url = new URL(value);
+      return url.pathname.substring(1);
+    }
+
+    return value.replace(/^\/+/, '');
+  }
+
+  isLikelyObjectKey(reference: string): boolean {
+    const value = String(reference || '').trim();
+    return !!value && !value.startsWith('http://') && !value.startsWith('https://');
   }
 
   /**
@@ -163,5 +239,19 @@ export class S3Service {
     };
 
     return contentTypes[extension?.toLowerCase() || ''] || 'application/octet-stream';
+  }
+
+  private normalizeFolder(folder: string): string {
+    const cleaned = String(folder || '')
+      .trim()
+      .replaceAll(/(?:^\/+|\/+?$)/g, '')
+      .replaceAll(/\/{2,}/g, '/');
+
+    const [topLevel] = cleaned.split('/');
+    if (topLevel && this.allowedTopLevelPrefixes.has(topLevel)) {
+      return cleaned;
+    }
+
+    return cleaned ? `test/${cleaned}` : 'test';
   }
 }

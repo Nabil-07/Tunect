@@ -1,8 +1,7 @@
 // src/pages/tutor/content-library.tsx
 import { useState, useEffect } from 'react';
-import { Upload, FileText, Trash2, Edit, Eye, EyeOff, Download } from 'lucide-react';
+import { Upload, FileText, Trash2, Edit, EyeOff, Download, Share2 } from 'lucide-react';
 import api from '../../lib/apiClient';
-import { SUBJECT_OPTIONS } from '../../constants/subjects';
 
 type StudyMaterial = {
   id: string;
@@ -11,10 +10,127 @@ type StudyMaterial = {
   fileUrl: string;
   fileType: string;
   subject?: string;
-  isPublic: boolean;
   downloads: number;
+  sharedWithCount?: number;
   createdAt: string;
   updatedAt: string;
+};
+
+type ShareableStudent = {
+  id: string;
+  name: string;
+  email?: string | null;
+  grade?: string | null;
+  tokenBalance: number;
+};
+
+type TutorProfile = {
+  subjects?: string[];
+  classesTeach?: string[];
+};
+
+const SUBJECT_CLASS_SEPARATOR = ' | ';
+
+const splitSubjectAndClass = (raw?: string) => {
+  const value = (raw || '').trim();
+  if (!value) {
+    return { subject: '', classLevel: '' };
+  }
+
+  const [subject, classLevel] = value.split(SUBJECT_CLASS_SEPARATOR).map((part) => part.trim());
+  return {
+    subject: subject || value,
+    classLevel: classLevel || '',
+  };
+};
+
+const combineSubjectAndClass = (subject?: string, classLevel?: string) => {
+  const trimmedSubject = (subject || '').trim();
+  const trimmedClass = (classLevel || '').trim();
+
+  if (!trimmedSubject) {
+    return '';
+  }
+
+  return trimmedClass
+    ? `${trimmedSubject}${SUBJECT_CLASS_SEPARATOR}${trimmedClass}`
+    : trimmedSubject;
+};
+
+const isLocalhostRuntime = (() => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1';
+})();
+
+const expandClassOptions = (rawOptions: string[]): string[] => {
+  const expanded: string[] = [];
+
+  rawOptions.forEach((option) => {
+    const value = String(option || '').trim();
+    if (!value) {
+      return;
+    }
+
+    const rangeMatch = value.match(/(\d{1,2})\s*(?:-|to)\s*(\d{1,2})/i);
+    if (rangeMatch) {
+      const start = Number(rangeMatch[1]);
+      const end = Number(rangeMatch[2]);
+
+      if (Number.isFinite(start) && Number.isFinite(end) && start <= end && end - start <= 12) {
+        for (let current = start; current <= end; current += 1) {
+          expanded.push(`Grade ${current}`);
+        }
+        return;
+      }
+    }
+
+    const singleGradeMatch = value.match(/(?:grade|class)\s*(\d{1,2})/i);
+    if (singleGradeMatch) {
+      expanded.push(`Grade ${Number(singleGradeMatch[1])}`);
+      return;
+    }
+
+    expanded.push(value);
+  });
+
+  return Array.from(new Set(expanded));
+};
+
+const getArrayFromPayload = <T,>(payload: any, keys: string[]): T[] => {
+  if (Array.isArray(payload)) {
+    return payload as T[];
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+
+  for (const key of keys) {
+    const value = payload[key];
+    if (Array.isArray(value)) {
+      return value as T[];
+    }
+  }
+
+  const nestedData = payload.data;
+  if (Array.isArray(nestedData)) {
+    return nestedData as T[];
+  }
+
+  if (nestedData && typeof nestedData === 'object') {
+    for (const key of keys) {
+      const value = nestedData[key];
+      if (Array.isArray(value)) {
+        return value as T[];
+      }
+    }
+  }
+
+  return [];
 };
 
 export default function ContentLibrary() {
@@ -26,24 +142,95 @@ export default function ContentLibrary() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    fileUrl: '',
-    fileType: 'pdf',
     subject: '',
-    isPublic: true,
+    classLevel: '',
   });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [subjectOptions, setSubjectOptions] = useState<string[]>([]);
+  const [classOptions, setClassOptions] = useState<string[]>([]);
+  const [sharingMaterialId, setSharingMaterialId] = useState<string | null>(null);
+  const [shareableStudents, setShareableStudents] = useState<ShareableStudent[]>([]);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [sharingLoading, setSharingLoading] = useState(false);
+  const [sharingSearch, setSharingSearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [editingMaterialFileUrl, setEditingMaterialFileUrl] = useState<string | null>(null);
+  const [editingMaterialFileName, setEditingMaterialFileName] = useState<string>('');
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
+    loadTutorProfile();
     loadMaterials();
   }, []);
+
+  const extractFileName = (fileUrl?: string) => {
+    const value = String(fileUrl || '').trim();
+    if (!value) {
+      return '';
+    }
+
+    const decodeKeyFromSignedUrl = (urlValue: string) => {
+      try {
+        const parsed = new URL(urlValue, globalThis.window?.location?.origin || 'http://localhost');
+        const marker = '/uploads/open/';
+        const index = parsed.pathname.indexOf(marker);
+        if (index < 0) {
+          return '';
+        }
+
+        const token = parsed.pathname.slice(index + marker.length);
+        const payloadPart = token.split('.')[0] || '';
+        if (!payloadPart) {
+          return '';
+        }
+
+        const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+        const payloadText = atob(padded);
+        const payload = JSON.parse(payloadText) as { key?: string };
+        return String(payload?.key || '');
+      } catch {
+        return '';
+      }
+    };
+
+    const keyFromSignedUrl = decodeKeyFromSignedUrl(value);
+    if (keyFromSignedUrl) {
+      return decodeURIComponent(keyFromSignedUrl.split('/').filter(Boolean).pop() || '');
+    }
+
+    try {
+      const url = new URL(value);
+      const pathname = decodeURIComponent(url.pathname || '');
+      const lastSegment = pathname.split('/').filter(Boolean).pop() || '';
+      return lastSegment;
+    } catch {
+      const normalized = decodeURIComponent(value.split('?')[0] || value);
+      return normalized.split('/').filter(Boolean).pop() || normalized;
+    }
+  };
+
+  const loadTutorProfile = async () => {
+    try {
+      const res = await api.get('/tutors/me');
+      const profile: TutorProfile = res.data?.tutor || res.data || {};
+      setSubjectOptions(Array.isArray(profile.subjects) ? profile.subjects : []);
+      setClassOptions(expandClassOptions(Array.isArray(profile.classesTeach) ? profile.classesTeach : []));
+    } catch {
+      setSubjectOptions([]);
+      setClassOptions([]);
+    }
+  };
 
   const loadMaterials = async () => {
     try {
       setLoading(true);
       const res = await api.get('/study-materials/my');
-      setMaterials(res.data || []);
+      setMaterials(getArrayFromPayload<StudyMaterial>(res.data, ['materials', 'items']));
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load materials');
     } finally {
@@ -51,51 +238,324 @@ export default function ContentLibrary() {
     }
   };
 
+  const uploadWithMultipart = async (params: {
+    file: File;
+    title: string;
+    description: string;
+    subject?: string;
+  }) => {
+    const form = new FormData();
+    form.append('file', params.file);
+    form.append('title', params.title);
+    if (params.description) {
+      form.append('description', params.description);
+    }
+    if (params.subject) {
+      form.append('subject', params.subject);
+    }
+    form.append('fileType', 'application/pdf');
+
+    const res = await api.post('/study-materials', form);
+
+    return res.data;
+  };
+
+  const uploadWithPresign = async (params: {
+    file: File;
+    title: string;
+    description: string;
+    subject?: string;
+  }) => {
+    const mimeType = params.file.type || 'application/pdf';
+    const presignRes = await api.post('/uploads/presign', {
+      useCase: 'study-materials',
+      mimeType,
+      size: params.file.size,
+    });
+
+    const uploadResponse = await fetch(presignRes.data.uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': mimeType,
+      },
+      body: params.file,
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Upload failed with status ${uploadResponse.status}`);
+    }
+
+    const createdMaterial = await api.post('/study-materials/finalize', {
+      key: presignRes.data.key,
+      title: params.title,
+      description: params.description,
+      fileType: mimeType,
+      subject: params.subject || undefined,
+    });
+
+    return createdMaterial.data;
+  };
+
+  const updateWithMultipart = async (params: {
+    id: string;
+    title: string;
+    description: string;
+    subject?: string;
+    file?: File;
+  }) => {
+    const form = new FormData();
+    form.append('title', params.title);
+    if (params.description) {
+      form.append('description', params.description);
+    }
+    if (params.subject) {
+      form.append('subject', params.subject);
+    }
+    if (params.file) {
+      form.append('file', params.file);
+      form.append('fileType', 'application/pdf');
+    }
+
+    const res = await api.put(`/study-materials/${params.id}`, form);
+
+    return res.data;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setUploading(true);
 
     try {
+      const materialSubject = combineSubjectAndClass(formData.subject, formData.classLevel);
+
       if (editingId) {
-        await api.patch(`/study-materials/${editingId}`, formData);
+        let nextFileKey: string | undefined;
+        let nextFileType: string | undefined;
+
+        if (selectedFile) {
+          const mimeType = selectedFile.type || 'application/pdf';
+          if (mimeType !== 'application/pdf') {
+            throw new Error('Only PDF files are allowed');
+          }
+
+          try {
+            const presignRes = await api.post('/uploads/presign', {
+              useCase: 'study-materials',
+              mimeType,
+              size: selectedFile.size,
+            });
+
+            const uploadResponse = await fetch(presignRes.data.uploadUrl, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': mimeType,
+              },
+              body: selectedFile,
+            });
+
+            if (!uploadResponse.ok) {
+              throw new Error(`Upload failed with status ${uploadResponse.status}`);
+            }
+
+            nextFileKey = presignRes.data.key;
+            nextFileType = mimeType;
+          } catch (uploadErr: any) {
+            if (isLocalhostRuntime) {
+              await updateWithMultipart({
+                id: editingId,
+                title: formData.title,
+                description: formData.description,
+                subject: materialSubject || undefined,
+                file: selectedFile,
+              });
+
+              setSuccess('Material updated successfully!');
+              resetForm();
+              await loadMaterials();
+              setTimeout(() => setSuccess(null), 3000);
+              return;
+            }
+
+            throw uploadErr;
+          }
+        }
+
+        await api.put(`/study-materials/${editingId}`, {
+          title: formData.title,
+          description: formData.description,
+          subject: materialSubject || undefined,
+          key: nextFileKey,
+          fileType: nextFileType,
+        });
         setSuccess('Material updated successfully!');
       } else {
-        await api.post('/study-materials', formData);
+        if (!selectedFile) {
+          throw new Error('Please select a PDF file to upload');
+        }
+
+        const mimeType = selectedFile.type || 'application/pdf';
+        if (mimeType !== 'application/pdf') {
+          throw new Error('Only PDF files are allowed');
+        }
+
+        let createdMaterial: any;
+
+        if (isLocalhostRuntime) {
+          createdMaterial = await uploadWithMultipart({
+            file: selectedFile,
+            title: formData.title,
+            description: formData.description,
+            subject: materialSubject || undefined,
+          });
+        } else {
+          try {
+            createdMaterial = await uploadWithPresign({
+              file: selectedFile,
+              title: formData.title,
+              description: formData.description,
+              subject: materialSubject || undefined,
+            });
+          } catch (uploadErr: any) {
+            const responseStatus = Number(uploadErr?.response?.status || 0);
+            const requestUrl = String(uploadErr?.config?.url || '').toLowerCase();
+            const isPresignEndpointFailure =
+              requestUrl.includes('/uploads/presign') &&
+              (responseStatus === 404 || responseStatus >= 500);
+
+            if (isPresignEndpointFailure) {
+              createdMaterial = await uploadWithMultipart({
+                file: selectedFile,
+                title: formData.title,
+                description: formData.description,
+                subject: materialSubject || undefined,
+              });
+            } else {
+              throw uploadErr;
+            }
+          }
+        }
+
         setSuccess('Material uploaded successfully!');
+
+        if (createdMaterial?.id) {
+          setSharingMaterialId(createdMaterial.id);
+        }
       }
       
       resetForm();
-      loadMaterials();
+      await loadMaterials();
+
+      if (!editingId) {
+        const latest = await api.get('/study-materials/my');
+        const latestMaterials = getArrayFromPayload<StudyMaterial>(latest?.data, ['materials', 'items']);
+        const newestId = latestMaterials[0]?.id;
+        if (newestId) {
+          await handleOpenShare(newestId);
+        }
+      }
+
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to save material');
+    } finally {
+      setUploading(false);
     }
   };
 
   const handleEdit = (material: StudyMaterial) => {
     setEditingId(material.id);
+    const parsed = splitSubjectAndClass(material.subject);
     setFormData({
       title: material.title,
       description: material.description || '',
-      fileUrl: material.fileUrl,
-      fileType: material.fileType,
-      subject: material.subject || '',
-      isPublic: material.isPublic,
+      subject: parsed.subject,
+      classLevel: parsed.classLevel,
     });
+    setSelectedFile(null);
+    setEditingMaterialFileUrl(material.fileUrl || null);
+    setEditingMaterialFileName(extractFileName(material.fileUrl));
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this material?')) return;
+  const openDeleteModal = (material: StudyMaterial) => {
+    setDeleteTarget({ id: material.id, title: material.title });
+  };
+
+  const handleViewCurrentFile = () => {
+    const openUrl = async () => {
+      if (!editingMaterialFileUrl) {
+        return;
+      }
+
+      const resolveViewUrl = (rawUrl: string) => {
+        try {
+          const parsed = new URL(rawUrl, globalThis.window?.location?.origin || 'http://localhost');
+          if (!parsed.pathname.startsWith('/uploads/open/')) {
+            return parsed.toString();
+          }
+
+          const configuredApiBase = String(import.meta.env.VITE_API_URL || '').trim();
+          const fallbackApiBase = isLocalhostRuntime ? 'http://localhost:3000' : parsed.origin;
+          const effectiveApiBase = configuredApiBase || fallbackApiBase;
+
+          const apiBase = new URL(effectiveApiBase);
+          if (parsed.origin !== apiBase.origin) {
+            return `${apiBase.origin}${parsed.pathname}${parsed.search}`;
+          }
+
+          return parsed.toString();
+        } catch {
+          return rawUrl;
+        }
+      };
+
+      const finalViewUrl = resolveViewUrl(editingMaterialFileUrl);
+
+      if (finalViewUrl.includes('/uploads/open/')) {
+        try {
+          const response = await fetch(finalViewUrl, { method: 'GET' });
+          if (!response.ok) {
+            throw new Error(`Failed to open file (${response.status})`);
+          }
+
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, '_blank', 'noopener,noreferrer');
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+          return;
+        } catch {
+          setError('Unable to open file right now. Upload proxy route is unavailable.');
+          return;
+        }
+      }
+
+      window.open(finalViewUrl, '_blank', 'noopener,noreferrer');
+    };
+
+    void openUrl();
+  };
+
+  const closeDeleteModal = () => {
+    if (deleting) return;
+    setDeleteTarget(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget?.id) return;
 
     try {
-      await api.delete(`/study-materials/${id}`);
+      setDeleting(true);
+      await api.delete(`/study-materials/${deleteTarget.id}`);
       setSuccess('Material deleted successfully!');
-      loadMaterials();
+      await loadMaterials();
+      setDeleteTarget(null);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to delete material');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -103,14 +563,77 @@ export default function ContentLibrary() {
     setFormData({
       title: '',
       description: '',
-      fileUrl: '',
-      fileType: 'pdf',
       subject: '',
-      isPublic: true,
+      classLevel: '',
     });
+    setSelectedFile(null);
     setEditingId(null);
+    setEditingMaterialFileUrl(null);
+    setEditingMaterialFileName('');
     setShowForm(false);
   };
+
+  const handleOpenShare = async (materialId: string) => {
+    try {
+      setSharingLoading(true);
+      setSharingMaterialId(materialId);
+      setSharingSearch('');
+      const res = await api.get(`/study-materials/${materialId}/share-targets`);
+      setShareableStudents(getArrayFromPayload<ShareableStudent>(res.data, ['eligibleStudents', 'students', 'items']));
+      setSelectedStudentIds(getArrayFromPayload<string>(res.data, ['sharedStudentIds', 'selectedStudentIds', 'studentIds']));
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to load students for sharing');
+      setSharingMaterialId(null);
+    } finally {
+      setSharingLoading(false);
+    }
+  };
+
+  const handleSelectAllStudents = () => {
+    setSelectedStudentIds(shareableStudents.map((student) => student.id));
+  };
+
+  const handleClearStudents = () => {
+    setSelectedStudentIds([]);
+  };
+
+  const toggleStudentSelection = (studentId: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId],
+    );
+  };
+
+  const handleSaveShare = async () => {
+    if (!sharingMaterialId) return;
+
+    try {
+      setSharingLoading(true);
+      await api.post(`/study-materials/${sharingMaterialId}/share`, {
+        studentIds: selectedStudentIds,
+      });
+      setSuccess('Sharing updated successfully!');
+      setSharingMaterialId(null);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to update sharing');
+    } finally {
+      setSharingLoading(false);
+    }
+  };
+
+  const filteredStudents = shareableStudents.filter((student) => {
+    const q = sharingSearch.trim().toLowerCase();
+    if (!q) {
+      return true;
+    }
+
+    return [student.name, student.email || '', student.grade || '']
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  });
 
   return (
     <main className="container-px mx-auto py-8">
@@ -179,38 +702,41 @@ export default function ContentLibrary() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  File URL *
+                  PDF File {!editingId && '*'}
                 </label>
                 <input
-                  type="url"
-                  required
-                  value={formData.fileUrl}
-                  onChange={(e) => setFormData({ ...formData, fileUrl: e.target.value })}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                  placeholder="https://example.com/file.pdf"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  File Type *
-                </label>
-                <select
-                  required
-                  value={formData.fileType}
-                  onChange={(e) => setFormData({ ...formData, fileType: e.target.value })}
+                  type="file"
+                  accept="application/pdf"
+                  required={!editingId}
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                >
-                  <option value="pdf">PDF</option>
-                  <option value="doc">Word Document</option>
-                  <option value="ppt">PowerPoint</option>
-                  <option value="video">Video</option>
-                  <option value="other">Other</option>
-                </select>
+                />
+                {editingId && (
+                  <div className="mt-1 space-y-1">
+                    {editingMaterialFileUrl && (
+                      <p className="text-xs text-slate-600">
+                        Current file: <span className="font-medium">{editingMaterialFileName || 'PDF file'}</span>
+                        {' '}
+                        <button
+                          type="button"
+                          onClick={handleViewCurrentFile}
+                          className="font-semibold text-emerald-700 hover:underline"
+                        >
+                          View
+                        </button>
+                      </p>
+                    )}
+                    {selectedFile ? (
+                      <p className="text-xs text-emerald-700">New file selected: {selectedFile.name}</p>
+                    ) : (
+                      <p className="text-xs text-slate-500">Leave empty to keep the existing file.</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Subject
@@ -221,7 +747,7 @@ export default function ContentLibrary() {
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                 >
                   <option value="">No specific subject</option>
-                  {SUBJECT_OPTIONS.map((s) => (
+                  {subjectOptions.map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>
@@ -229,27 +755,50 @@ export default function ContentLibrary() {
                 </select>
               </div>
 
-              <div className="flex items-center pt-6">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.isPublic}
-                    onChange={(e) => setFormData({ ...formData, isPublic: e.target.checked })}
-                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span className="text-sm font-medium text-slate-700">
-                    Share publicly with all students
-                  </span>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Class / Grade
                 </label>
+                <select
+                  value={formData.classLevel}
+                  onChange={(e) => setFormData({ ...formData, classLevel: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">No specific class</option>
+                  {classOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center pt-6">
+                {editingId ? (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenShare(editingId)}
+                    disabled={sharingLoading}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share with students
+                  </button>
+                ) : (
+                  <span className="text-sm text-slate-600">
+                    Sharing is managed per material from the list below.
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
+                disabled={uploading}
                 className="rounded-xl bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
               >
-                {editingId ? 'Update' : 'Upload'}
+                {uploading ? 'Saving...' : editingId ? 'Update' : 'Upload'}
               </button>
               <button
                 type="button"
@@ -288,6 +837,10 @@ export default function ContentLibrary() {
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     <FileText className="h-5 w-5 text-slate-400 flex-shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
+                      {(() => {
+                        const parsed = splitSubjectAndClass(material.subject);
+                        return (
+                          <>
                       <h3 className="font-semibold text-slate-900">
                         {material.title}
                       </h3>
@@ -297,9 +850,14 @@ export default function ContentLibrary() {
                         </p>
                       )}
                       <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-500">
-                        {material.subject && (
+                        {parsed.subject && (
                           <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                            {material.subject}
+                            {parsed.subject}
+                          </span>
+                        )}
+                        {parsed.classLevel && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                            {parsed.classLevel}
                           </span>
                         )}
                         <span className="rounded-full bg-slate-100 px-2 py-0.5">
@@ -309,24 +867,29 @@ export default function ContentLibrary() {
                           <Download className="h-3 w-3" />
                           {material.downloads} downloads
                         </span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                          Shared with {material.sharedWithCount || 0}
+                        </span>
                         <span className="flex items-center gap-1">
-                          {material.isPublic ? (
-                            <>
-                              <Eye className="h-3 w-3" />
-                              Public
-                            </>
-                          ) : (
-                            <>
-                              <EyeOff className="h-3 w-3" />
-                              Private
-                            </>
-                          )}
+                          <EyeOff className="h-3 w-3" />
+                          Private share
                         </span>
                       </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleOpenShare(material.id)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                      title="Share"
+                    >
+                      <Share2 className="h-4 w-4" />
+                      Share
+                    </button>
                     <button
                       onClick={() => handleEdit(material)}
                       className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
@@ -335,7 +898,7 @@ export default function ContentLibrary() {
                       <Edit className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(material.id)}
+                      onClick={() => openDeleteModal(material)}
                       className="rounded-lg p-2 text-red-600 hover:bg-red-50"
                       title="Delete"
                     >
@@ -343,11 +906,135 @@ export default function ContentLibrary() {
                     </button>
                   </div>
                 </div>
+
+                {sharingMaterialId === material.id && (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <h4 className="text-sm font-semibold text-slate-800 mb-3">
+                      Share with enrolled students who have active tutor tokens
+                    </h4>
+
+                    {sharingLoading ? (
+                      <p className="text-sm text-slate-600">Loading students...</p>
+                    ) : shareableStudents.length === 0 ? (
+                      <p className="text-sm text-slate-600">
+                        No eligible students available.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleSelectAllStudents}
+                            type="button"
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            Select all
+                          </button>
+                          <button
+                            onClick={handleClearStudents}
+                            type="button"
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            Clear
+                          </button>
+                          <span className="text-xs text-slate-500">
+                            {selectedStudentIds.length} selected
+                          </span>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={sharingSearch}
+                          onChange={(e) => setSharingSearch(e.target.value)}
+                          placeholder="Search student by name, email, or grade"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                        />
+
+                        <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-300 bg-white p-2">
+                          {filteredStudents.length === 0 ? (
+                            <p className="px-2 py-3 text-xs text-slate-500">No students match your search.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {filteredStudents.map((student) => (
+                                <label
+                                  key={student.id}
+                                  className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-2 hover:bg-slate-50"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedStudentIds.includes(student.id)}
+                                    onChange={() => toggleStudentSelection(student.id)}
+                                    className="mt-0.5 h-4 w-4"
+                                  />
+                                  <span className="text-sm text-slate-700">
+                                    <span className="block font-medium text-slate-900">{student.name}</span>
+                                    <span className="block text-xs text-slate-500">
+                                      {student.email || 'No email'}
+                                      {student.grade ? ` • ${student.grade}` : ''}
+                                      {` • ${student.tokenBalance} tokens`}
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={handleSaveShare}
+                        disabled={sharingLoading}
+                        className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        Save Sharing
+                      </button>
+                      <button
+                        onClick={() => setSharingMaterialId(null)}
+                        className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-white"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-slate-900">Delete material?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to delete{' '}
+              <span className="font-semibold text-slate-800">{deleteTarget.title}</span>?
+              {' '}This action cannot be undone.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                disabled={deleting}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

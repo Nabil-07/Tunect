@@ -276,12 +276,21 @@ api.interceptors.response.use(
         const fieldsToDecrypt = [
           'email',
           'phone',
+          'avatarUrl',
+          'avatar',
           'user.email',
           'user.phone',
+          'user.avatarUrl',
           'tutor.user.email',
+          'tutor.user.phone',
+          'tutor.user.avatarUrl',
           'tutor.email', // Flattened structure (e.g., booking details)
+          'tutor.avatarUrl',
           'student.user.email',
+          'student.user.phone',
+          'student.user.avatarUrl',
           'student.email', // Flattened structure (e.g., booking details)
+          'student.avatarUrl',
         ];
         
         if (Array.isArray(res.data)) {

@@ -2,6 +2,7 @@
 import axios, { AxiosError } from 'axios';
 import { clearTokens } from '../lib/auth';
 import { refreshAccessToken, readToken } from '../lib/apiClient';
+import { decryptObject } from '../utils/decryption';
 
 /** Normalize VITE_API_URL and ensure no trailing slash */
 const rawBase = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
@@ -49,7 +50,45 @@ http.interceptors.request.use((config: any) => {
 
 /** Response interceptor: handle 401 with token refresh retry */
 http.interceptors.response.use(
-  (response) => {
+  async (response) => {
+    if (response.data && import.meta.env.VITE_ENCRYPTION_KEY) {
+      try {
+        const fieldsToDecrypt = [
+          'email',
+          'phone',
+          'avatarUrl',
+          'avatar',
+          'user.email',
+          'user.phone',
+          'user.avatarUrl',
+          'tutor.user.email',
+          'tutor.user.phone',
+          'tutor.user.avatarUrl',
+          'tutor.email',
+          'tutor.avatarUrl',
+          'student.user.email',
+          'student.user.phone',
+          'student.user.avatarUrl',
+          'student.email',
+          'student.avatarUrl',
+        ];
+
+        if (Array.isArray(response.data)) {
+          response.data = await Promise.all(
+            response.data.map((item: any) => decryptObject(item, fieldsToDecrypt))
+          );
+        } else if (response.data.items && Array.isArray(response.data.items)) {
+          response.data.items = await Promise.all(
+            response.data.items.map((item: any) => decryptObject(item, fieldsToDecrypt))
+          );
+        } else if (typeof response.data === 'object') {
+          response.data = await decryptObject(response.data, fieldsToDecrypt);
+        }
+      } catch (error) {
+        console.warn('[HTTP] Failed to decrypt response payload:', error);
+      }
+    }
+
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console
       console.debug(

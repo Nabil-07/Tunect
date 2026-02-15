@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Role, Prisma, OtpPurpose, OtpChannel } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { isPreprodAllowedEmail } from './preprod-allowlist';
 
 /** Brute-force protection: lock duration in minutes after max failed attempts. */
@@ -51,6 +52,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly cfg: ConfigService,
     private readonly notify: NotificationsService,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   private ensureInternal(email?: string) {
@@ -250,6 +252,10 @@ export class AuthService {
         },
       );
 
+      const readableAvatarUrl = user.avatarUrl
+        ? await this.uploadsService.toReadableReference(user.avatarUrl, user.id, user.role ?? undefined)
+        : user.avatarUrl;
+
       // Include user profile data in the response
       return { 
         access_token, 
@@ -258,7 +264,8 @@ export class AuthService {
           id: user.id,
           email: user.email,
           name: user.name,
-          avatar: user.avatarUrl,
+          avatarUrl: readableAvatarUrl,
+          avatar: readableAvatarUrl,
           role: user.role,
           isDirector: user.isDirector,
           hasChosenRole: user.hasChosenRole,

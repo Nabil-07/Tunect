@@ -45,6 +45,11 @@ export interface TutorSummary {
 		bannedAt: string | null;
 		piiStrikes: number;
 		piiMaxStrikes: number;
+		terms?: {
+			accepted: boolean;
+			version: number | null;
+			acceptedAt: string | null;
+		};
 	};
 }
 
@@ -62,6 +67,11 @@ export interface StudentSummary {
 		bannedAt: string | null;
 		piiStrikes: number;
 		piiMaxStrikes: number;
+		terms?: {
+			accepted: boolean;
+			version: number | null;
+			acceptedAt: string | null;
+		};
 	};
 }
 
@@ -107,6 +117,44 @@ export interface KycBundle {
 	tutor: { id: string; user: { email: string; name?: string | null } };
 	application: KycApplication | null;
 	documents: KycItem[];
+}
+
+export interface PolicyConfig {
+	legal: {
+		businessName: string;
+		cin: string;
+		officialEmail: string;
+		supportEmail: string;
+		jurisdictionCity: string;
+	};
+	student: {
+		tokenValidityDays: number;
+		tutorCancellationBonusPercent: number;
+	};
+	tutor: {
+		feeSlabs: {
+			low: { min: number; max: number; feePercent: number };
+			mid: { min: number; max: number; feePercent: number };
+			high: { min: number; max: number | null; feePercent: number };
+		};
+		demerit: {
+			lateJoinMinutes: number;
+			thresholdPoints: number;
+			extraFeePercent: number;
+			extraFeeBookings: number;
+			cancelPenaltyInr: number;
+		};
+	};
+	platform: {
+		classInfra: string;
+	};
+}
+
+export interface AdminPolicyConfigResponse {
+	config: PolicyConfig;
+	lastUpdatedAt: string | null;
+	lastUpdatedBy: string | null;
+	lastUpdatedById: string | null;
 }
 
 export async function fetchDashboard(): Promise<AdminDashboard> {
@@ -195,4 +243,14 @@ export async function sendSubjectBroadcast(subject: string, message: string) {
 export async function unbanUser(userId: string) {
 	const { data } = await api.post(`/admin/users/${userId}/unban`);
 	return data;
+}
+
+export async function fetchAdminPolicyConfig(): Promise<AdminPolicyConfigResponse> {
+	const { data } = await api.get('/admin/policy-config');
+	return data;
+}
+
+export async function updateAdminPolicyConfig(partial: Partial<PolicyConfig>) {
+	const { data } = await api.patch('/admin/policy-config', partial);
+	return data as { ok: boolean; config: PolicyConfig };
 }

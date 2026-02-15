@@ -1,17 +1,21 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateKycDto } from './dto/create-kyc.dto';
+import { FinalizeKycDto } from './dto/finalize-kyc.dto';
 import { QueryKycDto } from './dto/query-kyc.dto';
 import { ReviewKycDto } from './dto/review-kyc.dto';
-import { KycStatus, KycAppStatus, TutorStatus } from '@prisma/client';
+import { KycStatus, KycAppStatus, TutorStatus, AuditEntityType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
-import { AuditEntityType } from '@prisma/client';
+import { S3Service } from '../common/services/s3.service';
+import { UploadsService } from '../uploads/uploads.service';
 
 @Injectable()
 export class KycService {
   constructor(
-    private prisma: PrismaService,
-    private audit: AuditService,
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly s3Service: S3Service,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   // tutor must be approved/pending; upload KYC doc
@@ -19,20 +23,49 @@ export class KycService {
     const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
     if (!tutor) throw new ForbiddenException('Only tutors can upload KYC');
 
-    return this.prisma.kycDocument.create({
+    const created = await this.prisma.kycDocument.create({
       data: { tutorId: tutor.id, docType: dto.docType, url: dto.url, notes: dto.notes },
       select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
     });
+
+    return this.decorateDocUrl(created);
+  }
+
+  async finalizeMine(userId: string, dto: FinalizeKycDto) {
+    const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+    if (!tutor) throw new ForbiddenException('Only tutors can upload KYC');
+
+    const key = await this.uploadsService.assertKeyAllowedForUseCase({
+      userId,
+      useCase: 'kyc',
+      keyOrUrl: dto.key,
+      docType: dto.docType,
+    });
+
+    const created = await this.prisma.kycDocument.create({
+      data: {
+        tutorId: tutor.id,
+        docType: dto.docType,
+        notes: dto.notes,
+        status: KycStatus.PENDING,
+        url: this.uploadsService.toStoredReference(key),
+      },
+      select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
+    });
+
+    return this.decorateDocUrl(created);
   }
 
   async listMine(userId: string) {
     const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
     if (!tutor) throw new ForbiddenException('Only tutors can view KYC');
-    return this.prisma.kycDocument.findMany({
+    const docs = await this.prisma.kycDocument.findMany({
       where: { tutorId: tutor.id },
       orderBy: { createdAt: 'desc' },
       select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
     });
+
+    return this.decorateDocUrls(docs);
   }
 
   // ADMIN
@@ -55,7 +88,10 @@ export class KycService {
       this.prisma.kycDocument.count({ where }),
     ]);
 
-    return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    return {
+      items: await this.decorateDocUrls(items),
+      meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+    };
   }
 
   async review(id: string, dto: ReviewKycDto, adminId: string) {
@@ -78,17 +114,16 @@ export class KycService {
       select: { id: true },
     });
 
-    const appStatus: KycAppStatus = dto.status === KycStatus.APPROVED
-      ? KycAppStatus.APPROVED
-      : dto.status === KycStatus.REJECTED
-        ? KycAppStatus.REJECTED
-        : KycAppStatus.UNDER_REVIEW;
-
-    const tutorStatus: TutorStatus | null = dto.status === KycStatus.APPROVED
-      ? TutorStatus.APPROVED
-      : dto.status === KycStatus.REJECTED
-        ? TutorStatus.REJECTED
-        : null;
+    let appStatus: KycAppStatus = KycAppStatus.UNDER_REVIEW;
+    let tutorStatus: TutorStatus | null = null;
+    if (dto.status === KycStatus.APPROVED) {
+      appStatus = KycAppStatus.APPROVED;
+      tutorStatus = TutorStatus.APPROVED;
+    }
+    if (dto.status === KycStatus.REJECTED) {
+      appStatus = KycAppStatus.REJECTED;
+      tutorStatus = TutorStatus.REJECTED;
+    }
 
     if (latestApp) {
       await this.prisma.tutorKycApplication.update({
@@ -110,7 +145,7 @@ export class KycService {
       afterData: { status: dto.status, notes: dto.notes, tutorId: before.tutorId },
     });
 
-    return updated;
+    return this.decorateDocUrl(updated);
   }
 
   async getTutorBundle(tutorId: string) {
@@ -131,11 +166,15 @@ export class KycService {
       select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
     });
 
-    return { tutor, application, documents };
+    return {
+      tutor,
+      application,
+      documents: await this.decorateDocUrls(documents),
+    };
   }
 
   // ===== Unified submit + status =====
-  async submitUnified(userId: string, json: string, files: Array<Express.Multer.File>) {
+  async submitUnified(userId: string, json: string, files: Array<any>) {
     const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
     if (!tutor) throw new ForbiddenException('Only tutors can submit KYC');
 
@@ -188,11 +227,28 @@ export class KycService {
       select: { id: true, status: true, createdAt: true },
     });
 
-    // Persist any provided files into KycDocument for review (names only; real storage should save URLs)
+    // Persist any provided files into KycDocument for review
     const docs = files || [];
     for (const f of docs) {
       const docType = f.fieldname || 'FILE';
-      await this.prisma.kycDocument.create({ data: { tutorId: tutor.id, docType, url: f.originalname || 'upload', status: KycStatus.PENDING } });
+      const safeDocType = String(docType)
+        .trim()
+        .toLowerCase()
+        .replaceAll(/[^a-z0-9_-]/g, '-');
+      const s3Url = await this.s3Service.uploadFile(
+        f.buffer,
+        f.originalname,
+        `kyc/${tutor.id}/${safeDocType || 'file'}`,
+      );
+
+      await this.prisma.kycDocument.create({
+        data: {
+          tutorId: tutor.id,
+          docType,
+          url: s3Url,
+          status: KycStatus.PENDING,
+        },
+      });
     }
 
     return { ok: true, applicationId: app.id, status: app.status };
@@ -216,5 +272,16 @@ export class KycService {
       rejectionCount: last.rejectionCount,
       updatedAt: last.updatedAt,
     };
+  }
+
+  private async decorateDocUrl<T extends { url: string }>(item: T): Promise<T> {
+    return {
+      ...item,
+      url: await this.uploadsService.toReadableReference(item.url),
+    };
+  }
+
+  private async decorateDocUrls<T extends { url: string }>(items: T[]): Promise<T[]> {
+    return Promise.all(items.map((item) => this.decorateDocUrl(item)));
   }
 }

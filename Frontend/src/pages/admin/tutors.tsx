@@ -355,6 +355,7 @@ export default function AdminTutors() {
                     <SortIcon field="accountStatus" />
                   </div>
                 </th>
+                <th className="px-4 py-3 text-left">Terms</th>
                 <th className="px-4 py-3 text-left">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('hourlyRate')}>
                     <span>Hourly rate</span>
@@ -461,6 +462,7 @@ export default function AdminTutors() {
                 <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -508,6 +510,23 @@ export default function AdminTutors() {
                         Strikes: {t.user.piiStrikes}/{t.user.piiMaxStrikes}
                       </span>
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {t.user.terms?.accepted ? (
+                      <div className="flex flex-col gap-1 text-xs text-slate-700">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full font-medium bg-emerald-100 text-emerald-800 w-fit">
+                          Accepted
+                        </span>
+                        <span>v{t.user.terms.version ?? '—'}</span>
+                        <span className="text-slate-500">
+                          {t.user.terms.acceptedAt ? new Date(t.user.terms.acceptedAt).toLocaleDateString() : '—'}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        Pending
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{t.hourlyRate ? `₹${t.hourlyRate}` : '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{new Date(t.createdAt).toLocaleDateString()}</td>

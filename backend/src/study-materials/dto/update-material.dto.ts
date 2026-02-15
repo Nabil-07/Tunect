@@ -16,4 +16,12 @@ export class UpdateMaterialDto {
   @IsString()
   @IsOptional()
   subject?: string;
+
+  @IsString()
+  @IsOptional()
+  key?: string;
+
+  @IsString()
+  @IsOptional()
+  fileType?: string;
 }

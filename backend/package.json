@@ -65,7 +65,7 @@
     "socket.io-client": "^4.8.3",
     "stripe": "^18.4.0",
     "swagger-ui-express": "^5.0.1",
-    "uuid": "^11.1.0"
+    "@paralleldrive/cuid2": "^2.3.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.10",
@@ -85,7 +85,6 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
     "@types/stripe": "^8.0.416",
-    "@types/uuid": "^10.0.0",
     "cross-env": "^10.0.0",
     "dotenv-cli": "^10.0.0",
     "eslint": "^8.0.0",

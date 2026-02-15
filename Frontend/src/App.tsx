@@ -202,6 +202,7 @@ const AdminPayoutDashboard = lazy(() => import('./pages/admin/finance/PayoutDash
 const AdminBlogs = lazy(() => import('./pages/admin/blogs'));
 const AdminRefundRequests = lazy(() => import('./pages/admin/refund-requests'));
 const AdminAudit = lazy(() => import('./pages/admin/audit'));
+const AdminPolicyConfig = lazy(() => import('./pages/admin/policy-config'));
 
 /** Role chooser */
 const ChooseRole = lazy(() => import('./pages/choose-role'));
@@ -443,6 +444,7 @@ function App() {
           <Route path="/admin/finance/recon" element={<AdminFinanceRecon />} />
           <Route path="/admin/refund-requests" element={<AdminRefundRequests />} />
           <Route path="/admin/audit" element={<AdminAudit />} />
+          <Route path="/admin/policy-config" element={<AdminPolicyConfig />} />
         </Route>
 
         {/* 404 Fallback */}

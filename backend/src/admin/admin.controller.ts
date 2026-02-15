@@ -11,6 +11,7 @@ import { AuditListDto } from './dto/audit-list.dto';
 import { TutorStatus, BookingStatus, PaymentStatus } from '@prisma/client';
 import { SetTutorStatusDto } from './dto/set-tutor-status.dto';
 import { AdjustTokensDto } from './dto/adjust-tokens.dto';
+import type { PolicyConfig } from '../policy-config/default-policy-config';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -117,5 +118,15 @@ export class AdminController {
   @Get('metrics')
   getMetrics() {
     return this.metrics.getSummary();
+  }
+
+  @Get('policy-config')
+  getPolicyConfig() {
+    return this.svc.getPolicyConfig();
+  }
+
+  @Patch('policy-config')
+  updatePolicyConfig(@Body() dto: Partial<PolicyConfig>, @Req() req: any) {
+    return this.svc.updatePolicyConfig(dto, req.user!.id, req);
   }
 }

@@ -13,48 +13,42 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { AttachmentsService } from './attachments.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import * as fs from 'fs/promises';
+import { S3Service } from '../common/services/s3.service';
+
+const MAX_ATTACHMENT_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_ALLOWED_MIMES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+]);
 
 @ApiTags('attachments')
 @ApiBearerAuth()
 @Controller('attachments')
 @UseGuards(JwtAuthGuard)
 export class AttachmentsController {
-  constructor(private readonly service: AttachmentsService) {}
+  constructor(
+    private readonly service: AttachmentsService,
+    private readonly s3Service: S3Service,
+  ) {}
 
   @ApiOperation({ summary: 'Upload file attachments' })
   @ApiConsumes('multipart/form-data')
   @Post('upload/:messageId')
   @UseInterceptors(
     FilesInterceptor('files', 5, {
-      storage: diskStorage({
-        destination: './uploads/attachments',
-        filename: (req, file, cb) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, `${uniqueSuffix}${extname(file.originalname)}`);
-        },
-      }),
       limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB
+        fileSize: MAX_ATTACHMENT_FILE_SIZE_BYTES,
       },
-      fileFilter: (req, file, cb) => {
-        // Allow common file types
-        const allowedMimes = [
-          'image/jpeg',
-          'image/png',
-          'image/gif',
-          'image/webp',
-          'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'application/vnd.ms-excel',
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'text/plain',
-        ];
-
-        if (allowedMimes.includes(file.mimetype)) {
+      fileFilter: (_req, file, cb) => {
+        if (ATTACHMENT_ALLOWED_MIMES.has(file.mimetype)) {
           cb(null, true);
         } else {
           cb(new BadRequestException('File type not allowed'), false);
@@ -70,15 +64,16 @@ export class AttachmentsController {
       throw new BadRequestException('No files uploaded');
     }
 
-    // Ensure upload directory exists
-    await fs.mkdir('./uploads/attachments', { recursive: true });
-
-    const attachments = files.map((file) => ({
-      fileUrl: `/uploads/attachments/${file.filename}`,
+    const attachments = await Promise.all(files.map(async (file) => ({
+      fileUrl: await this.s3Service.uploadFile(
+        file.buffer,
+        file.originalname,
+        `test/attachments/${messageId}`,
+      ),
       fileName: file.originalname,
       fileSize: file.size,
       fileType: file.mimetype,
-    }));
+    })));
 
     return this.service.createMultiple(messageId, attachments);
   }
@@ -93,13 +88,10 @@ export class AttachmentsController {
   @Delete(':id')
   async deleteAttachment(@Param('id') id: string) {
     const attachment = await this.service.delete(id);
-    
-    // Optionally delete the physical file
+
     try {
-      await fs.unlink(`.${attachment.fileUrl}`);
-    } catch (error) {
-      // File might not exist, ignore error
-    }
+      await this.s3Service.deleteFile(attachment.fileUrl);
+    } catch {}
 
     return { success: true };
   }

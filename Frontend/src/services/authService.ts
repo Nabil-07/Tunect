@@ -2,6 +2,7 @@
 import { http as api } from '../api/http';
 import { getAccessToken, clearTokens } from '../lib/auth';
 import { writeToken, writeRefreshToken } from '../lib/apiClient';
+import { decryptObject } from '../utils/decryption';
 
 export type RoleApi = "STUDENT" | "TUTOR" | "ADMIN";
 export type SignupRoleUi = "student" | "tutor";
@@ -78,12 +79,14 @@ function saveUserProfileToLS(profile: any) {
   if (!profile) return;
   try {
     const prev = JSON.parse(localStorage.getItem("user") || "{}");
+    const avatarUrl = profile?.avatarUrl ?? profile?.avatar ?? null;
     const merged = {
       ...prev,
       ...(profile?.name ? { name: profile.name } : {}),
       ...(profile?.email ? { email: profile.email } : {}),
       ...(profile?.role ? { role: profile.role } : {}),
       ...(profile?.id ? { id: profile.id } : {}),
+      ...(avatarUrl !== undefined ? { avatarUrl } : {}),
     };
     localStorage.setItem("user", JSON.stringify(merged));
   } catch {}
@@ -101,11 +104,12 @@ export async function me(): Promise<any | null> {
   for (const url of candidates) {
     try {
       const { data } = await api.get(url);
+      const decrypted = await decryptObject(data, ['avatarUrl', 'avatar', 'user.avatarUrl']);
       if (url.startsWith("/students")) setRole("STUDENT");
       if (url.startsWith("/tutors")) setRole("TUTOR");
 
-      saveUserProfileToLS(data);
-      return data ?? null;
+      saveUserProfileToLS(decrypted);
+      return decrypted ?? null;
     } catch (e: any) {
       const s = e?.response?.status;
       if (s === 401) return null;

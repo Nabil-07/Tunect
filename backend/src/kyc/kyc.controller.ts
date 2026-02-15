@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards, UploadedFiles, UseInterceptors } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UseGuards, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { KycService } from './kyc.service';
 import { CreateKycDto } from './dto/create-kyc.dto';
+import { FinalizeKycDto } from './dto/finalize-kyc.dto';
 import { QueryKycDto } from './dto/query-kyc.dto';
 import { ReviewKycDto } from './dto/review-kyc.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -9,6 +10,14 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
+
+const MAX_KYC_FILE_SIZE_BYTES = 8 * 1024 * 1024;
+const KYC_ALLOWED_MIMES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
 
 @ApiTags('kyc')
 @ApiBearerAuth()
@@ -24,6 +33,13 @@ export class KycController {
     return this.svc.createMine(userId, dto);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TUTOR')
+  @Post('finalize')
+  finalizeMine(@CurrentUser('id') userId: string, @Body() dto: FinalizeKycDto) {
+    return this.svc.finalizeMine(userId, dto);
+  }
+
   // Tutor: list my KYC documents
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TUTOR')
@@ -36,7 +52,20 @@ export class KycController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TUTOR')
   @Post('submit')
-  @UseInterceptors(AnyFilesInterceptor())
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(AnyFilesInterceptor({
+    limits: {
+      fileSize: MAX_KYC_FILE_SIZE_BYTES,
+      files: 10,
+    },
+    fileFilter: (_req, file, cb) => {
+      if (KYC_ALLOWED_MIMES.has(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new BadRequestException('Unsupported KYC file type'), false);
+      }
+    },
+  }))
   submitUnified(@CurrentUser('id') userId: string, @UploadedFiles() files: Array<Express.Multer.File>, @Body('data') data: string) {
     return this.svc.submitUnified(userId, data, files || []);
   }

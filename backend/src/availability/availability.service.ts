@@ -347,11 +347,17 @@ export class AvailabilityService {
     await this.ensureNoSlotOverlap(tutor.id, start, end, slotId, dto.tzOffsetMinutes);
     await this.ensureNoBookingOverlap(tutor.id, start, end);
 
-    return this.prisma.availabilitySlot.update({
+    const updated = await this.prisma.availabilitySlot.update({
       where: { id: slotId },
       data: { startTime: start, endTime: end },
       select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
     });
+
+    this.trackingService.updateTutorAvailabilityMetrics(tutor.id).catch(err => {
+      this.logger.warn(`Failed to update availability metrics for tutor ${tutor.id}:`, err);
+    });
+
+    return updated;
   }
 
   async deleteMine(userId: string, slotId: string) {
@@ -365,6 +371,11 @@ export class AvailabilityService {
     if (slot.tutorId !== tutor.id) throw new ForbiddenException('Not your slot');
 
     await this.prisma.availabilitySlot.delete({ where: { id: slotId } });
+
+    this.trackingService.updateTutorAvailabilityMetrics(tutor.id).catch(err => {
+      this.logger.warn(`Failed to update availability metrics for tutor ${tutor.id}:`, err);
+    });
+
     return { deleted: true };
   }
 

@@ -12,7 +12,7 @@ export default function Terms() {
               <Scale className="h-16 w-16" />
             </div>
             <h1 className="text-5xl font-bold mb-4">Terms of Use</h1>
-            <p className="text-xl text-white/90">Last Updated: December 24, 2025</p>
+            <p className="text-xl text-white/90">Last Updated: February 15, 2026</p>
             <p className="text-lg text-white/80 mt-4">
               Please read these terms carefully before using Tunect. By accessing or using our platform, 
               you agree to be bound by these terms.
@@ -82,7 +82,6 @@ export default function Terms() {
               <li>You must arrive on time for scheduled sessions</li>
               <li>Free demo sessions are limited to one per tutor per student</li>
               <li>Recurring bookings require upfront payment for the full package</li>
-              <li>Group bookings require 50% upfront payment; full payment must be made 1.5 hours before session</li>
             </ul>
 
             <h3 className="font-semibold text-lg mb-3 text-slate-800">3.2 Cancellation & Refund Policy</h3>
@@ -92,9 +91,8 @@ export default function Terms() {
               <li><strong>Cancellations 24-48 hours before scheduled time:</strong> 50% refund to token balance</li>
               <li><strong>Cancellations less than 24 hours before scheduled time:</strong> No refund</li>
               <li><strong>No-shows:</strong> Full session fee charged, no refund</li>
-              <li><strong>Group bookings:</strong> Non-refundable once booked (no refunds for any cancellations)</li>
               <li><strong>Demo sessions:</strong> Free of charge, cancellation does not affect token balance</li>
-              <li><strong>Tutor cancellation:</strong> Full refund + 10% bonus tokens as compensation</li>
+              <li><strong>Tutor cancellation:</strong> Full refund to token balance</li>
             </ul>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-4">
               <p className="text-sm text-blue-900">
@@ -107,7 +105,7 @@ export default function Terms() {
             <h3 className="font-semibold text-lg mb-3 text-slate-800">3.3 Token System</h3>
             <ul className="list-disc pl-6 space-y-2 text-slate-600 mb-4">
               <li>Tokens are non-refundable to original payment method (refunds to token balance only)</li>
-              <li>Tokens do not expire and can be used for any tutor on the platform</li>
+              <li>Tokens are valid for 60 days from the date of purchase unless otherwise specified</li>
               <li>Promotional tokens may have expiration dates and usage restrictions</li>
               <li>Tokens are non-transferable between accounts</li>
             </ul>
@@ -132,7 +130,7 @@ export default function Terms() {
               <li>You must possess genuine expertise in your listed subjects</li>
               <li>All credentials and certificates must be authentic and verifiable</li>
               <li>You must pass our skill assessment before being listed as "Verified"</li>
-              <li>You must complete KYC verification with valid government ID</li>
+              <li>You must complete verification with a valid government ID and a valid degree certificate</li>
               <li>False credentials result in permanent ban and potential legal action</li>
             </ul>
 
@@ -141,15 +139,15 @@ export default function Terms() {
               <li>Arrive on time and deliver the full duration of booked sessions</li>
               <li>Provide high-quality, engaging, and professional instruction</li>
               <li>Maintain a professional demeanor and appropriate language</li>
-              <li>Use approved tools: Google Meet, integrated whiteboard, file sharing</li>
-              <li>Provide session notes for student review (subject to student approval if AI-generated)</li>
+              <li>Use Tunect’s in-platform class tools powered by LiveKit, including integrated whiteboard and file sharing</li>
+              <li>Provide session notes for student review when required by platform policy</li>
               <li>Respond to student messages within 24 hours</li>
             </ul>
 
             <h3 className="font-semibold text-lg mb-3 text-slate-800">4.3 Pricing & Payments</h3>
             <ul className="list-disc pl-6 space-y-2 text-slate-600 mb-4">
               <li>Set competitive and fair hourly rates</li>
-              <li>Tunect charges a tiered platform fee on tutor earnings: 25% below ₹400/hr, 18% between ₹400–₹699/hr, and 15% at ₹700+/hr</li>
+              <li>Tunect charges a tiered platform fee on tutor earnings: 25% for ₹0–₹399/hr, 22% for ₹400–₹699/hr, and 18% for ₹700+/hr</li>
               <li>Payments processed within 7 business days after session completion</li>
               <li>Minimum payout threshold: ₹500 (accumulates until reached)</li>
               <li>You are responsible for applicable taxes on your earnings</li>
@@ -158,8 +156,11 @@ export default function Terms() {
 
             <h3 className="font-semibold text-lg mb-3 text-slate-800">4.4 Cancellation by Tutors</h3>
             <ul className="list-disc pl-6 space-y-2 text-slate-600 mb-4">
-              <li>Cancellations 24+ hours before: No penalty</li>
-              <li>Cancellations under 24 hours: ₹200 penalty fee</li>
+              <li>Not joining a scheduled class within 10 minutes leads to 1 demerit point</li>
+              <li>When 3 demerit points are reached, an additional +3% platform fee is applied to your next 10 bookings</li>
+              <li>After those 10 bookings, your platform fee reverts to your normal slab</li>
+              <li>After 3 demerit points are reached, cancellation rules are: 24+ hours before: no penalty; under 24 hours: ₹200 penalty fee</li>
+              <li>Continued misses after penalty may lead to withholding of company-held earnings and permanent account suspension</li>
               <li>Repeated cancellations may result in account suspension</li>
               <li>Emergency cancellations must be reported with valid reason</li>
             </ul>
@@ -168,7 +169,7 @@ export default function Terms() {
             <ul className="list-disc pl-6 space-y-2 text-slate-600">
               <li><strong>No off-platform transactions:</strong> All bookings and payments must occur through Tunect</li>
               <li><strong>No solicitation:</strong> Do not ask students to book sessions outside the platform</li>
-              <li><strong>No sharing contact info:</strong> Until after at least 3 completed sessions (automated protection)</li>
+              <li><strong>No sharing contact info:</strong> Do not share personal phone numbers, email addresses, or social handles in chat</li>
               <li><strong>No inappropriate content:</strong> Sexual, violent, discriminatory, or harmful material strictly prohibited</li>
               <li><strong>No proxy teaching:</strong> You must personally conduct all booked sessions</li>
             </ul>
@@ -306,7 +307,7 @@ export default function Terms() {
               <li><strong>Contact Support First:</strong> Reach out to support@tunectnow.com to resolve informally</li>
               <li><strong>Mediation:</strong> If unresolved, both parties agree to good-faith mediation</li>
               <li><strong>Arbitration:</strong> Disputes will be resolved via binding arbitration under Indian Arbitration Act</li>
-              <li><strong>Jurisdiction:</strong> Governed by the laws of India; courts in [Your City] have exclusive jurisdiction</li>
+              <li><strong>Jurisdiction:</strong> Governed by the laws of India; courts in Patna have exclusive jurisdiction</li>
             </ol>
           </TermsSection>
 
@@ -358,8 +359,8 @@ export default function Terms() {
             <div className="bg-slate-100 rounded-xl p-6">
               <p className="text-slate-700"><strong>Official:</strong> <a href="mailto:official@tunectnow.com" className="text-ocean-700 hover:underline">official@tunectnow.com</a></p>
               <p className="text-slate-700 mt-2"><strong>Support:</strong> <a href="mailto:support@tunectnow.com" className="text-ocean-700 hover:underline">support@tunectnow.com</a></p>
-              <p className="text-slate-700 mt-2"><strong>Business Name:</strong> Tunect Technologies Pvt. Ltd.</p>
-              <p className="text-slate-700 mt-2"><strong>Address:</strong> [Your Registered Business Address]</p>
+              <p className="text-slate-700 mt-2"><strong>Business Name:</strong> Tunect Private Limited</p>
+              <p className="text-slate-700 mt-2"><strong>CIN:</strong> U85500BR2026PTC081390</p>
             </div>
           </TermsSection>
 
@@ -369,7 +370,7 @@ export default function Terms() {
             <p className="text-ocean-800">
               By using Tunect, you acknowledge that you have read, understood, and agree to be bound by 
               these Terms of Use and our Privacy Policy. These terms constitute a legally binding agreement 
-              between you and Tunect Technologies Pvt. Ltd.
+              between you and Tunect Private Limited.
             </p>
           </div>
 
@@ -403,7 +404,7 @@ export default function Terms() {
   );
 }
 
-function TermsSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function TermsSection({ icon, title, children }: Readonly<{ icon: React.ReactNode; title: string; children: React.ReactNode }>) {
   return (
     <div className="rounded-2xl border bg-white p-8 shadow-sm">
       <div className="flex items-center gap-3 mb-6">

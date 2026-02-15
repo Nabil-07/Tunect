@@ -19,6 +19,7 @@ import {
   createTokenTransferRequest,
   type TutorTokenBalance,
 } from '../services/refundService';
+import { searchTutors, type Tutor } from '../services/tutorService';
 import { useToast } from '../contexts/ToastContext';
 
 type BotMessage = { id: string; from: 'user' | 'bot'; text: string; createdAt: string };
@@ -63,6 +64,9 @@ export default function SupportPage() {
   const [transferAmount, setTransferAmount] = useState<string>('');
   const [transferReason, setTransferReason] = useState<string>('');
   const [submittingTransfer, setSubmittingTransfer] = useState(false);
+  const [toTutorSearch, setToTutorSearch] = useState('');
+  const [eligibleToTutors, setEligibleToTutors] = useState<Tutor[]>([]);
+  const [loadingEligibleTutors, setLoadingEligibleTutors] = useState(false);
 
   // AI bot state
   const [botInput, setBotInput] = useState('');
@@ -113,7 +117,7 @@ export default function SupportPage() {
       const balances = await getTokenBalances();
       setTokenBalances(balances);
     } catch (err: any) {
-      showError('Failed to load token balances');
+      showError(err?.response?.data?.message || 'Failed to load token balances');
     } finally {
       setLoadingBalances(false);
     }
@@ -191,6 +195,62 @@ export default function SupportPage() {
       setSubmittingTransfer(false);
     }
   };
+
+  const loadEligibleTutors = async (fromTutorId: string, q?: string) => {
+    const fromBalance = tokenBalances.find((b) => b.tutorId === fromTutorId);
+    const purchasePricePerToken = Number(fromBalance?.pricePerToken || 0);
+    if (!fromTutorId || purchasePricePerToken <= 0) {
+      setEligibleToTutors([]);
+      return;
+    }
+
+    setLoadingEligibleTutors(true);
+    try {
+      const result = await searchTutors({
+        q: q?.trim() || undefined,
+        priceMax: purchasePricePerToken,
+        page: 1,
+        pageSize: 50,
+        sort: 'price_asc',
+      });
+
+      const filtered = (result.items || []).filter((tutor) => {
+        if (!tutor?.id || tutor.id === fromTutorId) return false;
+        const hourlyRate = Number(tutor.hourlyRate || 0);
+        return hourlyRate > 0 && hourlyRate <= purchasePricePerToken;
+      });
+      setEligibleToTutors(filtered);
+    } catch {
+      setEligibleToTutors([]);
+      showError('Failed to load eligible tutors for transfer');
+    } finally {
+      setLoadingEligibleTutors(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!transferFromTutor) {
+      setTransferToTutor('');
+      setTransferAmount('');
+      setToTutorSearch('');
+      setEligibleToTutors([]);
+      return;
+    }
+
+    const selectedBalance = tokenBalances.find((b) => b.tutorId === transferFromTutor);
+    setTransferAmount(selectedBalance ? Number(selectedBalance.balance).toFixed(2) : '');
+    setTransferToTutor('');
+    setToTutorSearch('');
+    loadEligibleTutors(transferFromTutor);
+  }, [transferFromTutor, tokenBalances]);
+
+  useEffect(() => {
+    if (!transferFromTutor) return;
+    const timer = setTimeout(() => {
+      loadEligibleTutors(transferFromTutor, toTutorSearch);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [toTutorSearch, transferFromTutor]);
 
   const loadTicketMessages = async (ticketId: string) => {
     const ticket = await getSupportTicket(ticketId);
@@ -302,8 +362,8 @@ export default function SupportPage() {
     const istEnd = new Date(istNow);
     istEnd.setHours(20, 0, 0, 0);
     const isOpen = istNow >= istStart && istNow <= istEnd;
-    const localStart = new Date(istStart.getTime());
-    const localEnd = new Date(istEnd.getTime());
+    const localStart = new Date(istStart);
+    const localEnd = new Date(istEnd);
     const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
     return {
       isOpen,
@@ -319,6 +379,37 @@ export default function SupportPage() {
     if (messages.length === 1 && messages[0]?.senderId === user?.id) return true;
     return false;
   }, [selectedTicket, tickets.length, firstContactTicketId, messages, user?.id]);
+
+  let tokenBalancesSection: JSX.Element;
+  if (loadingBalances) {
+    tokenBalancesSection = <p className="text-slate-500">Loading...</p>;
+  } else if (tokenBalances.length === 0) {
+    tokenBalancesSection = <p className="text-slate-500">No token balances</p>;
+  } else {
+    tokenBalancesSection = (
+      <div className="space-y-2">
+        {tokenBalances.map((balance) => (
+          <div key={balance.id} className="border rounded-lg p-3 flex justify-between items-center">
+            <div>
+              <p className="font-semibold">{balance.tutor.user.name || balance.tutor.user.email}</p>
+              <p className="text-sm text-slate-600">Balance: {Number(balance.balance).toFixed(2)} tokens</p>
+            </div>
+            {Number(balance.balance) > 0 && (
+              <button
+                onClick={() => {
+                  setSelectedTutorForRefund(balance.tutorId);
+                  setRefundAmount(balance.balance.toString());
+                }}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+              >
+                Request Refund
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <main className="bg-slate-50/60 py-6">
@@ -474,6 +565,7 @@ export default function SupportPage() {
                     </div>
                     <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                       Support chat hours: 10:00 AM – 8:00 PM IST
+                      {' '}
                       <span className="ml-2 text-slate-500">(Your local time: {supportWindow.localStartLabel} – {supportWindow.localEndLabel})</span>
                       {!supportWindow.isOpen && (
                         <span className="ml-2 text-amber-600">We are currently offline.</span>
@@ -622,33 +714,7 @@ export default function SupportPage() {
                     <RefreshCw className={`w-4 h-4 inline ${loadingBalances ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
-                {loadingBalances ? (
-                  <p className="text-slate-500">Loading...</p>
-                ) : tokenBalances.length === 0 ? (
-                  <p className="text-slate-500">No token balances</p>
-                ) : (
-                  <div className="space-y-2">
-                    {tokenBalances.map((balance) => (
-                      <div key={balance.id} className="border rounded-lg p-3 flex justify-between items-center">
-                        <div>
-                          <p className="font-semibold">{balance.tutor.user.name || balance.tutor.user.email}</p>
-                          <p className="text-sm text-slate-600">Balance: {Number(balance.balance).toFixed(2)} tokens</p>
-                        </div>
-                        {Number(balance.balance) > 0 && (
-                          <button
-                            onClick={() => {
-                              setSelectedTutorForRefund(balance.tutorId);
-                              setRefundAmount(balance.balance.toString());
-                            }}
-                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-                          >
-                            Request Refund
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {tokenBalancesSection}
               </div>
 
               {/* Refund Request Form */}
@@ -657,18 +723,19 @@ export default function SupportPage() {
                   <h3 className="text-lg font-semibold text-slate-900 mb-4">Request Refund</h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                      <label htmlFor="refund-tutor" className="block text-sm font-medium text-slate-700 mb-1">
                         Tutor
                       </label>
-                      <p className="text-sm text-slate-600">
+                      <p id="refund-tutor" className="text-sm text-slate-600">
                         {tokenBalances.find(b => b.tutorId === selectedTutorForRefund)?.tutor.user.name || 'Unknown'}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                      <label htmlFor="refund-amount" className="block text-sm font-medium text-slate-700 mb-1">
                         Token Amount *
                       </label>
                       <input
+                        id="refund-amount"
                         type="number"
                         value={refundAmount}
                         onChange={(e) => setRefundAmount(e.target.value)}
@@ -679,10 +746,11 @@ export default function SupportPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                      <label htmlFor="refund-purchase-date" className="block text-sm font-medium text-slate-700 mb-1">
                         Purchase Date *
                       </label>
                       <input
+                        id="refund-purchase-date"
                         type="date"
                         value={purchaseDate}
                         onChange={(e) => setPurchaseDate(e.target.value)}
@@ -694,10 +762,11 @@ export default function SupportPage() {
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                      <label htmlFor="refund-reason" className="block text-sm font-medium text-slate-700 mb-1">
                         Reason (optional)
                       </label>
                       <textarea
+                        id="refund-reason"
                         value={refundReason}
                         onChange={(e) => setRefundReason(e.target.value)}
                         className="w-full rounded-lg border px-3 py-2 text-sm min-h-[80px]"
@@ -733,17 +802,14 @@ export default function SupportPage() {
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Transfer Tokens to Another Tutor</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                    <label htmlFor="transfer-from-tutor" className="block text-sm font-medium text-slate-700 mb-1">
                       From Tutor *
                     </label>
                     <select
+                      id="transfer-from-tutor"
                       value={transferFromTutor}
                       onChange={(e) => {
                         setTransferFromTutor(e.target.value);
-                        const balance = tokenBalances.find(b => b.tutorId === e.target.value);
-                        if (balance) {
-                          setTransferAmount(balance.balance.toString());
-                        }
                       }}
                       className="w-full rounded-lg border px-3 py-2 text-sm"
                     >
@@ -756,42 +822,63 @@ export default function SupportPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                    <label htmlFor="transfer-to-tutor-search" className="block text-sm font-medium text-slate-700 mb-1">
                       To Tutor *
                     </label>
+                    <input
+                      id="transfer-to-tutor-search"
+                      type="text"
+                      value={toTutorSearch}
+                      onChange={(e) => setToTutorSearch(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2 text-sm mb-2"
+                      placeholder="Search tutor by name, subject, language..."
+                      disabled={!transferFromTutor}
+                    />
                     <select
+                      id="transfer-to-tutor"
                       value={transferToTutor}
                       onChange={(e) => setTransferToTutor(e.target.value)}
+                      disabled={!transferFromTutor || loadingEligibleTutors}
                       className="w-full rounded-lg border px-3 py-2 text-sm"
                     >
-                      <option value="">Select tutor...</option>
-                      {/* In a real implementation, you'd fetch available tutors here */}
-                      <option value="" disabled>Search for tutor first...</option>
+                      <option value="">
+                        {loadingEligibleTutors ? 'Loading tutors...' : 'Select tutor...'}
+                      </option>
+                      {eligibleToTutors.map((tutor) => (
+                        <option key={tutor.id} value={tutor.id}>
+                          {tutor.name || tutor.email} (₹{Number(tutor.hourlyRate || 0).toFixed(0)}/token)
+                        </option>
+                      ))}
                     </select>
                     <p className="text-xs text-slate-500 mt-1">
-                      Note: You'll need to search for the tutor ID. This will be enhanced with tutor search.
+                      Only tutors at or below your original purchase rate are shown.
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                    <label htmlFor="transfer-amount" className="block text-sm font-medium text-slate-700 mb-1">
                       Token Amount *
                     </label>
                     <input
+                      id="transfer-amount"
                       type="number"
                       value={transferAmount}
-                      onChange={(e) => setTransferAmount(e.target.value)}
+                      readOnly
                       className="w-full rounded-lg border px-3 py-2 text-sm"
                       placeholder="0.00"
                       step="0.01"
                       min="0"
                       max={tokenBalances.find(b => b.tutorId === transferFromTutor)?.balance || 0}
                     />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Full available balance is transferred to switch tutor assignment cleanly.
+                    </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                    <label htmlFor="transfer-reason" className="block text-sm font-medium text-slate-700 mb-1">
                       Reason (optional)
                     </label>
                     <textarea
+                      id="transfer-reason"
                       value={transferReason}
                       onChange={(e) => setTransferReason(e.target.value)}
                       className="w-full rounded-lg border px-3 py-2 text-sm min-h-[80px]"
