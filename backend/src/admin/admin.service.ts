@@ -11,6 +11,12 @@ import { Request } from 'express';
 import { PolicyConfigService } from '../policy-config/policy-config.service';
 import type { PolicyConfig } from '../policy-config/default-policy-config';
 
+function toNum(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'bigint') return Number(v);
+  return Number((v as any)?.toString?.() ?? v ?? 0);
+}
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -260,6 +266,16 @@ export class AdminService {
       this.prisma.student.count({ where }),
     ]);
 
+    const studentIds = items.map((s) => s.id);
+    const tokenSums = studentIds.length
+      ? await this.prisma.tokenLedger.groupBy({
+          by: ['studentId'],
+          where: { studentId: { in: studentIds } },
+          _sum: { delta: true },
+        })
+      : [];
+    const tokenSumMap = new Map(tokenSums.map((row) => [row.studentId, toNum(row._sum.delta)]));
+
     const studentUserIds = items.map((s) => s.user.id);
     const studentStrikeCounts = studentUserIds.length
       ? await this.prisma.piiViolationLog.groupBy({
@@ -273,6 +289,7 @@ export class AdminService {
 
     const enriched = items.map((item) => ({
       ...item,
+      tokens: tokenSumMap.get(item.id) ?? 0,
       user: {
         ...item.user,
         piiStrikes: studentStrikeMap.get(item.user.id) ?? 0,
@@ -412,6 +429,12 @@ export class AdminService {
       throw new NotFoundException('Student not found');
     }
 
+    const tokenTotal = await this.prisma.tokenLedger.aggregate({
+      where: { studentId },
+      _sum: { delta: true },
+    });
+    const liveTokens = toNum(tokenTotal._sum.delta);
+
     const userId = student.user.id;
 
     // Enhance tutorTokenBalances with expiration info
@@ -493,6 +516,7 @@ export class AdminService {
 
     return {
       ...student,
+      tokens: liveTokens,
       tutorTokenBalances: tutorTokenBalancesWithExpiry,
       payments,
       conversations,

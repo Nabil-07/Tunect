@@ -25,6 +25,22 @@ function toNum(v: any, d = 0) {
   return Number.isFinite(n) ? Number(n) : d;
 }
 
+function parseAttendance(data: unknown): { studentJoinedAt?: string; tutorJoinedAt?: string } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  const attendance = (data as { attendance?: unknown }).attendance;
+  if (!attendance || typeof attendance !== 'object' || Array.isArray(attendance)) return {};
+  const att = attendance as Record<string, unknown>;
+  return {
+    studentJoinedAt: typeof att.studentJoinedAt === 'string' ? att.studentJoinedAt : undefined,
+    tutorJoinedAt: typeof att.tutorJoinedAt === 'string' ? att.tutorJoinedAt : undefined,
+  };
+}
+
+function hasVerifiedAttendance(data: unknown): boolean {
+  const attendance = parseAttendance(data);
+  return !!attendance.studentJoinedAt && !!attendance.tutorJoinedAt;
+}
+
 function normalizeTutor(row: any): TutorPublic { // NOSONAR
   const subjectsArr: string[] = Array.isArray(row?.subjects) ? row.subjects : [];
   const classesTeachArr: string[] = Array.isArray(row?.classesTeach) ? row.classesTeach : [];
@@ -952,6 +968,10 @@ export class TutorsService {
         endTime: true,
         status: true,
         isDemo: true,
+        whiteboardSessions: {
+          take: 1,
+          select: { data: true },
+        },
         tutor: { select: { subjects: true } },
         student: {
           select: {
@@ -991,7 +1011,9 @@ export class TutorsService {
       if (booking.status === BookingStatus.PENDING_SLOT) {
         status = 'PENDING_SLOT';
       } else if (booking.status === BookingStatus.COMPLETED) {
-        status = 'COMPLETED';
+        status = hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data)
+          ? 'COMPLETED'
+          : 'CONFIRMED';
       } else if (
         booking.status === BookingStatus.CONFIRMED ||
         booking.status === BookingStatus.WAITING_ROOM ||
@@ -1027,15 +1049,25 @@ export class TutorsService {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Get active students count (students with confirmed/completed sessions)
-    const activeStudentsResult = await this.prisma.booking.groupBy({
-      by: ['studentId'],
+    // Active students should reflect actual attended classes, not merely scheduled sessions
+    const attendedCompletedForActive = await this.prisma.booking.findMany({
       where: {
         tutorId,
-        status: { in: ['CONFIRMED', 'COMPLETED'] },
+        status: BookingStatus.COMPLETED,
+      },
+      select: {
+        studentId: true,
+        whiteboardSessions: {
+          take: 1,
+          select: { data: true },
+        },
       },
     });
-    const activeStudentsCount = activeStudentsResult.length;
+    const activeStudentsCount = new Set(
+      attendedCompletedForActive
+        .filter((b) => hasVerifiedAttendance(b.whiteboardSessions?.[0]?.data))
+        .map((b) => b.studentId),
+    ).size;
 
     const completedBookings = await this.prisma.booking.findMany({
       where: {
@@ -1050,10 +1082,18 @@ export class TutorsService {
         isDemo: true,
         tokensCharged: true,
         tutor: { select: { hourlyRate: true } },
+        whiteboardSessions: {
+          take: 1,
+          select: { data: true },
+        },
       },
     });
 
-    const sessionsCompleted = completedBookings.length;
+    const attendedCompletedBookings = completedBookings.filter((b) =>
+      hasVerifiedAttendance(b.whiteboardSessions?.[0]?.data),
+    );
+
+    const sessionsCompleted = attendedCompletedBookings.length;
 
     // ✅ Get actual earnings from wallet + payouts (source of truth)
     const wallet = await this.prisma.tutorWallet.findUnique({

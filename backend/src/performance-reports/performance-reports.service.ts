@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateReportDto } from './dto/create-report.dto';
+import { UpdateReportDto } from './dto/update-report.dto';
 
 @Injectable()
 export class PerformanceReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(userId: string, dto: CreateReportDto) {
     const tutor = await this.prisma.tutor.findUnique({
@@ -70,6 +71,57 @@ export class PerformanceReportsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async update(userId: string, reportId: string, dto: UpdateReportDto) {
+    const tutor = await this.prisma.tutor.findUnique({ where: { userId } });
+    if (!tutor) throw new NotFoundException('Tutor profile not found');
+
+    const report = await this.prisma.performanceReport.findUnique({ where: { id: reportId } });
+    if (!report) throw new NotFoundException('Performance report not found');
+    if (report.tutorId !== tutor.id) {
+      throw new ForbiddenException('You can only update your own performance reports');
+    }
+
+    const updateData: { period?: string; data?: Record<string, any> } = {};
+    if (dto.period === undefined) {
+      // no-op
+    } else {
+      updateData.period = dto.period;
+    }
+    if (dto.data === undefined) {
+      // no-op
+    } else {
+      updateData.data = dto.data;
+    }
+
+    return this.prisma.performanceReport.update({
+      where: { id: reportId },
+      data: updateData,
+      include: {
+        student: {
+          include: {
+            user: {
+              select: { name: true, email: true },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async remove(userId: string, reportId: string) {
+    const tutor = await this.prisma.tutor.findUnique({ where: { userId } });
+    if (!tutor) throw new NotFoundException('Tutor profile not found');
+
+    const report = await this.prisma.performanceReport.findUnique({ where: { id: reportId } });
+    if (!report) throw new NotFoundException('Performance report not found');
+    if (report.tutorId !== tutor.id) {
+      throw new ForbiddenException('You can only delete your own performance reports');
+    }
+
+    await this.prisma.performanceReport.delete({ where: { id: reportId } });
+    return { ok: true };
   }
 
   async findStudentReports(userId: string) {

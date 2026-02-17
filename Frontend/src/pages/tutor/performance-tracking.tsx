@@ -1,6 +1,6 @@
 // src/pages/tutor/performance-tracking.tsx
 import { useState, useEffect } from 'react';
-import { TrendingUp, Users, Clock, BookOpen, Plus, Search, FileText } from 'lucide-react';
+import { TrendingUp, Users, Clock, BookOpen, Plus, Search, FileText, Pencil, Trash2 } from 'lucide-react';
 import api from '../../lib/apiClient';
 
 type Student = {
@@ -38,6 +38,9 @@ export default function PerformanceTracking() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingReportId, setEditingReportId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -87,6 +90,7 @@ export default function PerformanceTracking() {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setSaving(true);
 
     try {
       const reportData: PerformanceData = {
@@ -101,22 +105,73 @@ export default function PerformanceTracking() {
         notes: formData.notes || undefined,
       };
 
-      await api.post('/performance-reports', {
-        studentId: formData.studentId,
-        period: formData.period,
-        data: reportData,
-      });
-      
-      setSuccess('Performance report created successfully!');
+      if (editingReportId) {
+        await api.patch(`/performance-reports/${editingReportId}`, {
+          period: formData.period,
+          data: reportData,
+        });
+        setSuccess('Performance report updated successfully!');
+      } else {
+        await api.post('/performance-reports', {
+          studentId: formData.studentId,
+          period: formData.period,
+          data: reportData,
+        });
+        setSuccess('Performance report created successfully!');
+      }
+
       resetForm();
       loadReports();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to create report');
+      setError(err.response?.data?.message || 'Failed to save report');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = (report: PerformanceReport) => {
+    const data = (report.data || {}) as PerformanceData;
+    setError(null);
+    setSuccess(null);
+    setEditingReportId(report.id);
+    setFormData({
+      studentId: report.studentId,
+      period: report.period,
+      totalSessions: Number(data.totalSessions || 0),
+      totalHours: Number(data.totalHours || 0),
+      averageRating: Number(data.averageRating || 0),
+      completionRate: Number(data.completionRate || 0),
+      strengths: Array.isArray(data.strengths) ? data.strengths.join(', ') : '',
+      areasForImprovement: Array.isArray(data.areasForImprovement)
+        ? data.areasForImprovement.join(', ')
+        : '',
+      notes: data.notes || '',
+    });
+    setShowForm(true);
+  };
+
+  const handleDelete = async (reportId: string) => {
+    const confirmed = globalThis.confirm('Delete this performance report? This action cannot be undone.');
+    if (!confirmed) return;
+
+    setDeletingId(reportId);
+    setError(null);
+    setSuccess(null);
+    try {
+      await api.delete(`/performance-reports/${reportId}`);
+      setReports((prev) => prev.filter((r) => r.id !== reportId));
+      setSuccess('Performance report deleted successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to delete report');
+    } finally {
+      setDeletingId(null);
     }
   };
 
   const resetForm = () => {
+    setEditingReportId(null);
     setFormData({
       studentId: '',
       period: new Date().toISOString().slice(0, 7),
@@ -159,6 +214,125 @@ export default function PerformanceTracking() {
     return student?.name || student?.user?.name || student?.email || 'Unknown Student';
   };
 
+  let submitButtonLabel = 'Create Report';
+  if (saving) {
+    submitButtonLabel = 'Saving...';
+  } else if (editingReportId) {
+    submitButtonLabel = 'Update Report';
+  }
+
+  const emptyStateText = reports.length === 0
+    ? 'No reports yet. Create your first performance report!'
+    : 'No reports match your filters.';
+
+  let reportsListContent: React.ReactNode;
+  if (loading) {
+    reportsListContent = (
+      <div className="px-6 py-12 text-center text-sm text-slate-600">
+        Loading reports...
+      </div>
+    );
+  } else if (filteredReports.length === 0) {
+    reportsListContent = (
+      <div className="px-6 py-12 text-center text-sm text-slate-600">
+        {emptyStateText}
+      </div>
+    );
+  } else {
+    reportsListContent = (
+      <div className="divide-y divide-slate-200">
+        {filteredReports.map((report) => {
+          const data = report.data as PerformanceData;
+
+          return (
+            <div key={report.id} className="px-6 py-4 hover:bg-slate-50 transition">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-start gap-3 mb-3">
+                    <FileText className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-slate-900">
+                        {getStudentName(report.student)}
+                      </h3>
+                      <p className="text-sm text-slate-600 mt-0.5">
+                        {formatPeriod(report.period)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <BookOpen className="h-4 w-4 text-slate-400" />
+                      <span className="text-slate-600">{data.totalSessions} sessions</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Clock className="h-4 w-4 text-slate-400" />
+                      <span className="text-slate-600">{data.totalHours} hours</span>
+                    </div>
+                    {data.averageRating !== undefined && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <TrendingUp className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-600">{data.averageRating.toFixed(1)}/5 rating</span>
+                      </div>
+                    )}
+                    {data.completionRate !== undefined && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Users className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-600">{data.completionRate}% completion</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {data.strengths && data.strengths.length > 0 && (
+                    <div className="mb-2">
+                      <span className="text-xs font-medium text-emerald-700">Strengths: </span>
+                      <span className="text-xs text-slate-600">
+                        {data.strengths.join(', ')}
+                      </span>
+                    </div>
+                  )}
+
+                  {data.areasForImprovement && data.areasForImprovement.length > 0 && (
+                    <div className="mb-2">
+                      <span className="text-xs font-medium text-amber-700">Areas for Improvement: </span>
+                      <span className="text-xs text-slate-600">
+                        {data.areasForImprovement.join(', ')}
+                      </span>
+                    </div>
+                  )}
+
+                  {data.notes && (
+                    <p className="text-sm text-slate-600 mt-2 italic">"{data.notes}"</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEdit(report)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(report.id)}
+                    disabled={deletingId === report.id}
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {deletingId === report.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <main className="container-px mx-auto py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -192,17 +366,21 @@ export default function PerformanceTracking() {
       {/* Report Form */}
       {showForm && (
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold mb-4">Create Performance Report</h2>
+          <h2 className="text-lg font-semibold mb-4">
+            {editingReportId ? 'Edit Performance Report' : 'Create Performance Report'}
+          </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <p className="block text-sm font-medium text-slate-700 mb-1">
                   Student *
-                </label>
+                </p>
                 <select
+                  id="report-student"
                   required
                   value={formData.studentId}
                   onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
+                  disabled={!!editingReportId}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                 >
                   <option value="">Select a student</option>
@@ -215,10 +393,11 @@ export default function PerformanceTracking() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <p className="block text-sm font-medium text-slate-700 mb-1">
                   Period *
-                </label>
+                </p>
                 <input
+                  id="report-period"
                   type="month"
                   required
                   value={formData.period}
@@ -230,10 +409,11 @@ export default function PerformanceTracking() {
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <p className="block text-sm font-medium text-slate-700 mb-1">
                   Total Sessions *
-                </label>
+                </p>
                 <input
+                  id="report-total-sessions"
                   type="number"
                   required
                   min="0"
@@ -244,10 +424,11 @@ export default function PerformanceTracking() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <p className="block text-sm font-medium text-slate-700 mb-1">
                   Total Hours *
-                </label>
+                </p>
                 <input
+                  id="report-total-hours"
                   type="number"
                   required
                   min="0"
@@ -259,10 +440,11 @@ export default function PerformanceTracking() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <p className="block text-sm font-medium text-slate-700 mb-1">
                   Average Rating
-                </label>
+                </p>
                 <input
+                  id="report-average-rating"
                   type="number"
                   min="0"
                   max="5"
@@ -274,10 +456,11 @@ export default function PerformanceTracking() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <p className="block text-sm font-medium text-slate-700 mb-1">
                   Completion Rate (%)
-                </label>
+                </p>
                 <input
+                  id="report-completion-rate"
                   type="number"
                   min="0"
                   max="100"
@@ -289,10 +472,11 @@ export default function PerformanceTracking() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <p className="block text-sm font-medium text-slate-700 mb-1">
                 Strengths (comma-separated)
-              </label>
+              </p>
               <input
+                id="report-strengths"
                 type="text"
                 value={formData.strengths}
                 onChange={(e) => setFormData({ ...formData, strengths: e.target.value })}
@@ -302,10 +486,11 @@ export default function PerformanceTracking() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <p className="block text-sm font-medium text-slate-700 mb-1">
                 Areas for Improvement (comma-separated)
-              </label>
+              </p>
               <input
+                id="report-areas"
                 type="text"
                 value={formData.areasForImprovement}
                 onChange={(e) => setFormData({ ...formData, areasForImprovement: e.target.value })}
@@ -315,10 +500,11 @@ export default function PerformanceTracking() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <p className="block text-sm font-medium text-slate-700 mb-1">
                 Additional Notes
-              </label>
+              </p>
               <textarea
+                id="report-notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
@@ -330,9 +516,10 @@ export default function PerformanceTracking() {
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
+                disabled={saving}
                 className="rounded-xl bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
               >
-                Create Report
+                {submitButtonLabel}
               </button>
               <button
                 type="button"
@@ -381,88 +568,7 @@ export default function PerformanceTracking() {
           <h2 className="text-lg font-semibold">Performance Reports</h2>
         </div>
 
-        {loading ? (
-          <div className="px-6 py-12 text-center text-sm text-slate-600">
-            Loading reports...
-          </div>
-        ) : filteredReports.length === 0 ? (
-          <div className="px-6 py-12 text-center text-sm text-slate-600">
-            {reports.length === 0
-              ? 'No reports yet. Create your first performance report!'
-              : 'No reports match your filters.'}
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-200">
-            {filteredReports.map((report) => {
-              const data = report.data as PerformanceData;
-              
-              return (
-                <div key={report.id} className="px-6 py-4 hover:bg-slate-50 transition">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-start gap-3 mb-3">
-                        <FileText className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-slate-900">
-                            {getStudentName(report.student)}
-                          </h3>
-                          <p className="text-sm text-slate-600 mt-0.5">
-                            {formatPeriod(report.period)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
-                        <div className="flex items-center gap-2 text-sm">
-                          <BookOpen className="h-4 w-4 text-slate-400" />
-                          <span className="text-slate-600">{data.totalSessions} sessions</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Clock className="h-4 w-4 text-slate-400" />
-                          <span className="text-slate-600">{data.totalHours} hours</span>
-                        </div>
-                        {data.averageRating !== undefined && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <TrendingUp className="h-4 w-4 text-slate-400" />
-                            <span className="text-slate-600">{data.averageRating.toFixed(1)}/5 rating</span>
-                          </div>
-                        )}
-                        {data.completionRate !== undefined && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <Users className="h-4 w-4 text-slate-400" />
-                            <span className="text-slate-600">{data.completionRate}% completion</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {data.strengths && data.strengths.length > 0 && (
-                        <div className="mb-2">
-                          <span className="text-xs font-medium text-emerald-700">Strengths: </span>
-                          <span className="text-xs text-slate-600">
-                            {data.strengths.join(', ')}
-                          </span>
-                        </div>
-                      )}
-
-                      {data.areasForImprovement && data.areasForImprovement.length > 0 && (
-                        <div className="mb-2">
-                          <span className="text-xs font-medium text-amber-700">Areas for Improvement: </span>
-                          <span className="text-xs text-slate-600">
-                            {data.areasForImprovement.join(', ')}
-                          </span>
-                        </div>
-                      )}
-
-                      {data.notes && (
-                        <p className="text-sm text-slate-600 mt-2 italic">"{data.notes}"</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {reportsListContent}
       </div>
     </main>
   );

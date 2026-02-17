@@ -1093,6 +1093,9 @@ export class BookingsService {
       if (b.status === BookingStatus.COMPLETED) return b;
       
       const attendance = this.parseBookingAttendance(b.whiteboardSessions?.[0]?.data);
+      if (!attendance.studentJoinedAt) {
+        throw new ForbiddenException('Cannot complete booking without student attendance.');
+      }
       if (!attendance.tutorJoinedAt) {
         throw new ForbiddenException('Cannot complete booking without tutor attendance.');
       }
@@ -1162,11 +1165,12 @@ export class BookingsService {
 
   private parseBookingAttendance(data: any): { studentJoinedAt?: string; tutorJoinedAt?: string } {
     if (data && typeof data === 'object' && !Array.isArray(data)) {
-      const attendance = (data as any).attendance;
-      if (attendance && typeof attendance === 'object') {
+      const attendance = (data as { attendance?: unknown }).attendance;
+      if (attendance && typeof attendance === 'object' && !Array.isArray(attendance)) {
+        const att = attendance as Record<string, unknown>;
         return {
-          studentJoinedAt: (attendance as any).studentJoinedAt,
-          tutorJoinedAt: (attendance as any).tutorJoinedAt,
+          studentJoinedAt: typeof att.studentJoinedAt === 'string' ? att.studentJoinedAt : undefined,
+          tutorJoinedAt: typeof att.tutorJoinedAt === 'string' ? att.tutorJoinedAt : undefined,
         };
       }
     }
