@@ -213,6 +213,19 @@ export default function Profile() {
       setTimeout(() => setToast(null), 3000);
       return;
     }
+    if (data.hourlyRate !== undefined) {
+      const hourlyRate = Number(data.hourlyRate);
+      if (!Number.isFinite(hourlyRate)) {
+        setToast('Hourly rate must be a valid number');
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+      if (hourlyRate < 0) {
+        setToast('Hourly rate cannot be negative');
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+    }
 
     try {
       setSaving(true);
@@ -240,9 +253,9 @@ export default function Profile() {
 
       await updateMyProfile(payload);
       setToast('Profile saved successfully! ✓');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setToast('Failed to save profile');
+      setToast(e?.response?.data?.message || 'Failed to save profile');
     } finally {
       setSaving(false);
       setTimeout(() => setToast(null), 3000);

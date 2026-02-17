@@ -26,6 +26,11 @@ function hasVerifiedAttendance(data: unknown): boolean {
   return !!attendance.studentJoinedAt && !!attendance.tutorJoinedAt;
 }
 
+function hasStudentAttendance(data: unknown): boolean {
+  const attendance = parseAttendance(data);
+  return !!attendance.studentJoinedAt;
+}
+
 @Injectable()
 export class StudentsService {
   constructor(
@@ -123,16 +128,26 @@ export class StudentsService {
 
     const studentId = student.id as unknown as string;
 
-    // Only count sessions where attendance is verified for both tutor and student
+    // Count sessions attended by student that are explicitly completed,
+    // or ended sessions that remained confirmed/live states
     const completedBookings = await this.prisma.booking.findMany({
       where: {
         studentId,
-        status: BookingStatus.COMPLETED,
+        OR: [
+          { status: BookingStatus.COMPLETED },
+          {
+            status: {
+              in: [BookingStatus.CONFIRMED, BookingStatus.WAITING_ROOM, BookingStatus.LIVE],
+            },
+            endTime: { lt: now },
+          },
+        ],
       },
       select: {
         id: true,
         startTime: true,
         endTime: true,
+        status: true,
         whiteboardSessions: {
           take: 1,
           select: { data: true },
@@ -140,9 +155,12 @@ export class StudentsService {
       },
     });
 
-    const completedWithAttendance = completedBookings.filter((b) =>
-      hasVerifiedAttendance(b.whiteboardSessions?.[0]?.data),
-    );
+    const completedWithAttendance = completedBookings.filter((b) => {
+      const attended = hasStudentAttendance(b.whiteboardSessions?.[0]?.data);
+      if (!attended) return false;
+      if (b.status === BookingStatus.COMPLETED) return true;
+      return !!b.endTime && b.endTime < now;
+    });
 
     const completedCount = completedWithAttendance.length;
     const monthlyCompletedBookings = completedWithAttendance.filter(
@@ -299,7 +317,7 @@ export class StudentsService {
     // Filter to only sessions with actual data (attendance evidence)
     const attendedBookingIds = new Set(
       whiteboardSessions
-        .filter((ws) => hasVerifiedAttendance(ws.data))
+        .filter((ws) => hasStudentAttendance(ws.data))
         .map((ws) => ws.bookingId),
     );
 
@@ -346,10 +364,18 @@ export class StudentsService {
         new Date(b.startTime) > now,
     );
 
-    // Only include sessions that are COMPLETED with student attendance evidence
-    const completed = enriched.filter(
-      (b) => b.status === 'COMPLETED' && b.hasAttended,
-    );
+    // Include attended sessions that are completed or have already ended
+    const completed = enriched.filter((b) => {
+      if (!b.hasAttended) return false;
+      const hasEnded = !!b.endTime && new Date(b.endTime) < now;
+      if (!hasEnded) return false;
+      return (
+        b.status === 'COMPLETED' ||
+        b.status === 'CONFIRMED' ||
+        b.status === 'WAITING_ROOM' ||
+        b.status === 'LIVE'
+      );
+    });
 
     return { unscheduled, upcoming, completed, all: enriched };
   }
