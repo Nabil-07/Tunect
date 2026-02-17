@@ -96,7 +96,7 @@ export class TasksService {
   }
 
   // 2) Nightly cleanup at 02:00 UTC: auto-complete past sessions
-  // Only auto-complete sessions where attendance is verified (whiteboard session exists)
+  // Only auto-complete sessions where both tutor and student attendance are verified
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async completePastSessions() {
     const now = new Date();
@@ -119,19 +119,18 @@ export class TasksService {
 
     for (const booking of bookings) {
       try {
-        // Check for attendance evidence: whiteboardSession exists (indicates LiveKit participation)
-        // Note: whiteboardSession is created when student requests LiveKit token (joins class)
-        // This tracks actual LiveKit room participation, not just whiteboard usage
+        // Check for attendance evidence from whiteboard session attendance payload
         const whiteboardSession = await this.prisma.whiteboardSession.findUnique({
           where: { bookingId: booking.id },
           select: { id: true, data: true },
         });
 
-        // Only auto-complete if there's evidence of attendance (student joined LiveKit room)
-        // This ensures sessions aren't marked complete if student never joined the class
-        if (!whiteboardSession || !whiteboardSession.data) {
+        const attendance = this.parseAttendance(whiteboardSession?.data);
+        const hasVerifiedAttendance = !!attendance.studentJoinedAt && !!attendance.tutorJoinedAt;
+
+        if (!hasVerifiedAttendance) {
           skippedNoAttendance++;
-          this.logger.debug(`Skipping auto-complete for booking ${booking.id}: no attendance evidence (student didn't join LiveKit room)`);
+          this.logger.debug(`Skipping auto-complete for booking ${booking.id}: attendance not verified for both participants`);
           continue;
         }
 
@@ -237,7 +236,16 @@ export class TasksService {
         const bothMissing = !studentJoined && !tutorJoined;
 
         await this.prisma.$transaction(async (tx) => {
-          if (isTutorNoShow || bothMissing) {
+          if (bothMissing) {
+            await tx.booking.update({
+              where: { id: booking.id },
+              data: {
+                status: BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW,
+                refundProcessed: true,
+                noShowCheckAt: now,
+              },
+            });
+          } else if (isTutorNoShow) {
             await tx.booking.update({
               where: { id: booking.id },
               data: {

@@ -354,6 +354,47 @@ export class UploadsService {
       return;
     }
 
+    if (key.startsWith('study-materials/')) {
+      const student = await this.prisma.student.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+
+      if (student) {
+        const hasDirectAccess = await this.prisma.materialAccess.findFirst({
+          where: {
+            studentId: student.id,
+            studyMaterial: {
+              OR: [
+                { fileUrl: key },
+                { fileUrl: { endsWith: key } },
+              ],
+            },
+          },
+          select: { id: true },
+        });
+
+        if (hasDirectAccess) {
+          return;
+        }
+      }
+
+      const isPublicStudyMaterial = await this.prisma.studyMaterial.findFirst({
+        where: {
+          isPublic: true,
+          OR: [
+            { fileUrl: key },
+            { fileUrl: { endsWith: key } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (isPublicStudyMaterial) {
+        return;
+      }
+    }
+
     const tutor = await this.prisma.tutor.findUnique({
       where: { userId },
       select: { id: true },
