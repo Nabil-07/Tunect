@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BookingStatus, TutorStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TrendingTutorDto } from './dto/trending-tutor.dto';
@@ -1240,8 +1240,15 @@ export class TutorsService {
       updatesTutor.yearsExperience = Number(body.yearsExperience);
     }
 
-    if (body?.hourlyRate !== undefined && Number.isFinite(Number(body.hourlyRate))) {
-      updatesTutor.hourlyRate = Number(body.hourlyRate);
+    if (body?.hourlyRate !== undefined) {
+      const hourlyRate = Number(body.hourlyRate);
+      if (!Number.isFinite(hourlyRate)) {
+        throw new BadRequestException('Hourly rate must be a valid number');
+      }
+      if (hourlyRate < 0) {
+        throw new BadRequestException('Hourly rate cannot be negative');
+      }
+      updatesTutor.hourlyRate = hourlyRate;
     }
 
     if (typeof body?.country === 'string' && body.country.trim()) {
