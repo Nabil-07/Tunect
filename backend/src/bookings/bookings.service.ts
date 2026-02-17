@@ -1076,6 +1076,10 @@ export class BookingsService {
         include: {
           tutor: { select: { userId: true, id: true, hourlyRate: true } },
           student: { select: { userId: true, id: true } },
+          whiteboardSessions: {
+            select: { data: true },
+            take: 1,
+          },
         },
       });
       if (!b) throw new NotFoundException('Booking not found');
@@ -1087,6 +1091,11 @@ export class BookingsService {
         if (!allowed) throw new ForbiddenException('You cannot complete this booking.');
       }
       if (b.status === BookingStatus.COMPLETED) return b;
+      
+      const attendance = this.parseBookingAttendance(b.whiteboardSessions?.[0]?.data);
+      if (!attendance.tutorJoinedAt) {
+        throw new ForbiddenException('Cannot complete booking without tutor attendance.');
+      }
 
       const updated = await tx.booking.update({
         where: { id },
@@ -1149,6 +1158,19 @@ export class BookingsService {
     }
     const fallback = Number(fallbackTokens ?? 0);
     return Number.isFinite(fallback) ? fallback : 0;
+  }
+
+  private parseBookingAttendance(data: any): { studentJoinedAt?: string; tutorJoinedAt?: string } {
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const attendance = (data as any).attendance;
+      if (attendance && typeof attendance === 'object') {
+        return {
+          studentJoinedAt: (attendance as any).studentJoinedAt,
+          tutorJoinedAt: (attendance as any).tutorJoinedAt,
+        };
+      }
+    }
+    return {};
   }
 
   private requiredTokens(start: Date, end: Date, tokensPerHour: number): number {

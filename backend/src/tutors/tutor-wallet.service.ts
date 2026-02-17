@@ -1,11 +1,32 @@
 // src/tutors/tutor-wallet.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PayoutStatus } from '@prisma/client';
+import { BookingStatus, PayoutStatus } from '@prisma/client';
 
 @Injectable()
 export class TutorWalletService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
+
+  private parseAttendance(data: any): { studentJoinedAt?: string; tutorJoinedAt?: string } {
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const att = (data as { attendance?: unknown }).attendance;
+      if (att && typeof att === 'object' && !Array.isArray(att)) {
+        const attendance = att as Record<string, unknown>;
+        return {
+          studentJoinedAt:
+            typeof attendance.studentJoinedAt === 'string' ? attendance.studentJoinedAt : undefined,
+          tutorJoinedAt:
+            typeof attendance.tutorJoinedAt === 'string' ? attendance.tutorJoinedAt : undefined,
+        };
+      }
+    }
+    return {};
+  }
+
+  private hasVerifiedAttendance(data: any): boolean {
+    const att = this.parseAttendance(data);
+    return !!att.studentJoinedAt && !!att.tutorJoinedAt;
+  }
 
   private getBookingHours(startTime?: Date | null, endTime?: Date | null, fallbackTokens?: number | null): number {
     if (startTime && endTime) {
@@ -31,7 +52,7 @@ export class TutorWalletService {
       where: {
         tutorId,
         endTime: { not: null, lt: now },
-        status: { in: ['CONFIRMED', 'COMPLETED'] },
+        status: BookingStatus.COMPLETED,
       },
       select: {
         id: true,
@@ -41,6 +62,10 @@ export class TutorWalletService {
         startTime: true,
         endTime: true,
         tutor: { select: { hourlyRate: true } },
+        whiteboardSessions: {
+          select: { data: true },
+          take: 1,
+        },
       },
     });
 
@@ -59,6 +84,7 @@ export class TutorWalletService {
     for (const booking of bookings) {
       if (credited.has(booking.id)) continue;
       if (booking.isDemo) continue;
+      if (!this.hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data)) continue;
       const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
       if (!hours) continue;
 
@@ -88,13 +114,6 @@ export class TutorWalletService {
             note: 'Auto-credited for completed session',
           },
         });
-
-        if (booking.status !== 'COMPLETED') {
-          await tx.booking.update({
-            where: { id: booking.id },
-            data: { status: 'COMPLETED' },
-          });
-        }
       });
     }
   }
@@ -125,7 +144,7 @@ export class TutorWalletService {
     const where: any = { tutorId };
     if (cursor) {
       const dt = new Date(cursor);
-      if (!isNaN(dt.getTime())) where.createdAt = { lt: dt };
+      if (!Number.isNaN(dt.getTime())) where.createdAt = { lt: dt };
     }
 
     const rows = await this.prisma.tutorWalletLedger.findMany({
@@ -147,7 +166,7 @@ export class TutorWalletService {
 
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
+    const nextCursor = hasMore ? items.at(-1)?.createdAt.toISOString() ?? null : null;
 
     return { items, nextCursor };
   }
@@ -165,7 +184,7 @@ export class TutorWalletService {
     if (status) where.status = status;
     if (cursor) {
       const dt = new Date(cursor);
-      if (!isNaN(dt.getTime())) where.createdAt = { lt: dt };
+      if (!Number.isNaN(dt.getTime())) where.createdAt = { lt: dt };
     }
 
     const rows = await this.prisma.payout.findMany({
@@ -184,7 +203,7 @@ export class TutorWalletService {
 
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
+    const nextCursor = hasMore ? items.at(-1)?.createdAt.toISOString() ?? null : null;
 
     return { items, nextCursor };
   }

@@ -7,6 +7,8 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "build": "prisma generate && nest build",
+    "cleanup:unattended-credits": "node scripts/reverse-unattended-wallet-credits.js",
+    "cleanup:unattended-credits:apply": "node scripts/reverse-unattended-wallet-credits.js --apply",
     "test": "jest --runInBand",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "seed": "npx prisma db seed",

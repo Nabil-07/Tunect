@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { TutorStatus } from '@prisma/client';
+import { BookingStatus, TutorStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TrendingTutorDto } from './dto/trending-tutor.dto';
 import { Cacheable } from '../common/cache.decorator';
@@ -987,8 +987,18 @@ export class TutorsService {
           ? booking.tutor.subjects[0]
           : 'Session';
 
-      const status: 'UPCOMING' | 'COMPLETED' =
-        new Date(booking.endTime!) > now ? 'UPCOMING' : 'COMPLETED';
+      let status: 'UPCOMING' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED' = 'CONFIRMED';
+      if (booking.status === BookingStatus.PENDING_SLOT) {
+        status = 'PENDING_SLOT';
+      } else if (booking.status === BookingStatus.COMPLETED) {
+        status = 'COMPLETED';
+      } else if (
+        booking.status === BookingStatus.CONFIRMED ||
+        booking.status === BookingStatus.WAITING_ROOM ||
+        booking.status === BookingStatus.LIVE
+      ) {
+        status = new Date(booking.endTime!) > now ? 'UPCOMING' : 'CONFIRMED';
+      }
 
       return {
         id: booking.id,
@@ -1027,12 +1037,10 @@ export class TutorsService {
     });
     const activeStudentsCount = activeStudentsResult.length;
 
-    // Completed sessions based on endTime (even if status not updated yet)
     const completedBookings = await this.prisma.booking.findMany({
       where: {
         tutorId,
-        endTime: { not: null, lt: now },
-        status: { not: 'CANCELED' },
+        status: BookingStatus.COMPLETED,
         isDemo: false,
       },
       select: {
