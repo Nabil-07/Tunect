@@ -10,6 +10,22 @@ function toNum(v: unknown): number {
   return Number((v as any)?.toString?.() ?? v ?? 0);
 }
 
+function parseAttendance(data: unknown): { studentJoinedAt?: string; tutorJoinedAt?: string } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  const attendance = (data as any).attendance;
+  if (!attendance || typeof attendance !== 'object' || Array.isArray(attendance)) return {};
+  const att = attendance as Record<string, unknown>;
+  return {
+    studentJoinedAt: typeof att.studentJoinedAt === 'string' ? att.studentJoinedAt : undefined,
+    tutorJoinedAt: typeof att.tutorJoinedAt === 'string' ? att.tutorJoinedAt : undefined,
+  };
+}
+
+function hasVerifiedAttendance(data: unknown): boolean {
+  const attendance = parseAttendance(data);
+  return !!attendance.studentJoinedAt && !!attendance.tutorJoinedAt;
+}
+
 @Injectable()
 export class StudentsService {
   constructor(
@@ -107,67 +123,40 @@ export class StudentsService {
 
     const studentId = student.id as unknown as string;
 
-    // Get COMPLETED bookings for count and hours calculation
-    const [completedCount, monthlyCompletedBookings] = await Promise.all([
-      this.prisma.booking.count({
-        where: {
-          studentId,
-          status: BookingStatus.COMPLETED,
-        },
-      }),
-      this.prisma.booking.findMany({
-        where: {
-          studentId,
-          status: BookingStatus.COMPLETED,
-          startTime: { gte: startOfMonth },
-        },
-        select: { id: true, startTime: true, endTime: true },
-      }),
-    ]);
-
-    // Also get EXPIRED (CONFIRMED past endTime) sessions with attendance for hours calculation
-    const expiredBookings = await this.prisma.booking.findMany({
+    // Only count sessions where attendance is verified for both tutor and student
+    const completedBookings = await this.prisma.booking.findMany({
       where: {
         studentId,
-        status: BookingStatus.CONFIRMED,
-        startTime: { gte: startOfMonth },
-        endTime: { lt: now },
+        status: BookingStatus.COMPLETED,
       },
-      select: { id: true, startTime: true, endTime: true },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        whiteboardSessions: {
+          take: 1,
+          select: { data: true },
+        },
+      },
     });
 
-    // Check which expired bookings have attendance
-    // Note: We use whiteboardSession as a storage mechanism to track LiveKit participation
-    // A whiteboardSession exists when student requested LiveKit token (joined the class)
-    // This is better than tracking whiteboard usage - we're tracking actual class participation
-    const expiredBookingIds = expiredBookings.map((b) => b.id);
-    const allWhiteboardSessions = expiredBookingIds.length > 0
-      ? await this.prisma.whiteboardSession.findMany({
-          where: {
-            bookingId: { in: expiredBookingIds },
-          },
-          select: { bookingId: true, data: true },
-        })
-      : [];
-    
-    // Filter to only sessions with attendance evidence (whiteboardSession exists = student joined LiveKit room)
-    const attendedExpiredBookings = allWhiteboardSessions
-      .filter((ws) => ws.data !== null && ws.data !== undefined)
-      .map((ws) => ws.bookingId);
+    const completedWithAttendance = completedBookings.filter((b) =>
+      hasVerifiedAttendance(b.whiteboardSessions?.[0]?.data),
+    );
 
-    const attendedExpiredIds = new Set(attendedExpiredBookings);
-    const expiredWithAttendance = expiredBookings.filter((b) => attendedExpiredIds.has(b.id));
+    const completedCount = completedWithAttendance.length;
+    const monthlyCompletedBookings = completedWithAttendance.filter(
+      (b) => !!b.startTime && b.startTime >= startOfMonth,
+    );
 
-    // Count hours from COMPLETED sessions + EXPIRED sessions with attendance
-    const allSessionsForHours = [...monthlyCompletedBookings, ...expiredWithAttendance];
-    const hoursStudied = allSessionsForHours.reduce((sum, b) => {
+    const hoursStudied = monthlyCompletedBookings.reduce((sum, b) => {
       if (!b.startTime || !b.endTime) return sum;
       return sum + (b.endTime.getTime() - b.startTime.getTime()) / 3_600_000;
     }, 0);
 
     // Debug logging (remove in production if needed)
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[getMe] Student ID: ${typeof student.id === 'object' ? JSON.stringify(student.id) : student.id}, completedCount=${completedCount}, monthlyCompleted=${monthlyCompletedBookings.length}, expiredWithAttendance=${expiredWithAttendance.length}, hoursStudied=${hoursStudied.toFixed(2)}`);
+      console.log(`[getMe] Student ID: ${typeof student.id === 'object' ? JSON.stringify(student.id) : student.id}, completedCount=${completedCount}, monthlyCompleted=${monthlyCompletedBookings.length}, hoursStudied=${hoursStudied.toFixed(2)}`);
     }
 
     const studentPayload = {
@@ -310,7 +299,7 @@ export class StudentsService {
     // Filter to only sessions with actual data (attendance evidence)
     const attendedBookingIds = new Set(
       whiteboardSessions
-        .filter((ws) => ws.data !== null && ws.data !== undefined)
+        .filter((ws) => hasVerifiedAttendance(ws.data))
         .map((ws) => ws.bookingId),
     );
 
@@ -357,10 +346,9 @@ export class StudentsService {
         new Date(b.startTime) > now,
     );
 
-    // Only include sessions that are actually COMPLETED
-    // Don't include CONFIRMED sessions that just passed endTime (they may not have been attended)
+    // Only include sessions that are COMPLETED with student attendance evidence
     const completed = enriched.filter(
-      (b) => b.status === 'COMPLETED',
+      (b) => b.status === 'COMPLETED' && b.hasAttended,
     );
 
     return { unscheduled, upcoming, completed, all: enriched };
