@@ -279,7 +279,7 @@ export default function TutorKYC() {
           savedAt: Date.now(),
         };
         localStorage.setItem(KYC_LOCAL_SNAPSHOT_KEY, JSON.stringify(snapshot));
-        setSubmittedFileNames([...(snapshot.selfieName ? [snapshot.selfieName] : []), ...snapshot.degreeNames]);
+        setSubmittedFileNames([...(snapshot.selfieName ? [snapshot.selfieName] : []), ...(snapshot.degreeNames || [])]);
       } catch {}
 
       const latest = await getMyKycSubmission();
