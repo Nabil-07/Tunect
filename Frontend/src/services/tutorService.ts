@@ -624,6 +624,46 @@ export type KycFiles = {
   degreeCertificates?: File[]; // can be multiple
 };
 
+export type KycSubmissionSnapshot = {
+  application: {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    status: string;
+    notes?: string | null;
+    fullName: string;
+    dob: string;
+    phone: string;
+    country: string;
+    address1: string;
+    address2?: string | null;
+    city: string;
+    state?: string | null;
+    postalCode?: string | null;
+    bankAccountHolder: string;
+    bankName: string;
+    bankBranch?: string | null;
+    accountNumber?: string | null;
+    ifsc?: string | null;
+    upiId?: string | null;
+    iban?: string | null;
+    swift?: string | null;
+  } | null;
+  documents: Array<{
+    id: string;
+    docType: string;
+    url: string;
+    status: string;
+    notes?: string | null;
+    createdAt: string;
+  }>;
+};
+
+const KYC_SUBMIT_TIMEOUT_MS = (() => {
+  const parsed = Number(import.meta.env.VITE_KYC_SUBMIT_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 120_000;
+})();
+
 export async function submitKyc(payload: KycPayload, files: KycFiles) {
   const fd = new FormData();
   // Send JSON as a plain string so Nest's Body('data') reads it correctly in multipart
@@ -637,12 +677,18 @@ export async function submitKyc(payload: KycPayload, files: KycFiles) {
   );
 
   try {
-    await api.post('/kyc/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    await api.post('/kyc/submit', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: KYC_SUBMIT_TIMEOUT_MS,
+    });
   } catch (err: any) {
     // Only fallback if the primary route truly does not exist
     const status = err?.response?.status;
     if (status === 404) {
-      await api.post('/tutors/me/kyc', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await api.post('/tutors/me/kyc', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: KYC_SUBMIT_TIMEOUT_MS,
+      });
     } else {
       throw err;
     }
@@ -677,6 +723,15 @@ export async function getKycStatus(): Promise<{
   }
 }
 
+export async function getMyKycSubmission(): Promise<KycSubmissionSnapshot | null> {
+  try {
+    const { data } = await api.get('/kyc/submission');
+    return data as KycSubmissionSnapshot;
+  } catch {
+    return null;
+  }
+}
+
 export async function uploadKycDoc(file: File): Promise<any> {
   const fd = new FormData();
   fd.append('file', file);
@@ -704,6 +759,7 @@ export default {
 
   submitKyc,
   getKycStatus,
+  getMyKycSubmission,
   uploadKycDoc,
   getMySessions,
 };
