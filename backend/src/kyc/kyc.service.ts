@@ -274,6 +274,67 @@ export class KycService {
     };
   }
 
+  async getMySubmission(userId: string) {
+    const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+    if (!tutor) throw new ForbiddenException('Only tutors can query KYC submission');
+
+    const application = await this.prisma.tutorKycApplication.findFirst({
+      where: { tutorId: tutor.id },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        status: true,
+        notes: true,
+        fullName: true,
+        dob: true,
+        phone: true,
+        country: true,
+        address1: true,
+        address2: true,
+        city: true,
+        state: true,
+        postalCode: true,
+        bankAccountHolder: true,
+        bankName: true,
+        bankBranch: true,
+        accountNumber: true,
+        ifsc: true,
+        upiId: true,
+        iban: true,
+        swift: true,
+      },
+    });
+
+    if (!application) {
+      return { application: null, documents: [] };
+    }
+
+    let documents = await this.prisma.kycDocument.findMany({
+      where: {
+        tutorId: tutor.id,
+        createdAt: { gte: application.createdAt },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
+    });
+
+    if (!documents.length) {
+      documents = await this.prisma.kycDocument.findMany({
+        where: { tutorId: tutor.id },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
+      });
+    }
+
+    return {
+      application,
+      documents: await this.decorateDocUrls(documents),
+    };
+  }
+
   private async decorateDocUrl<T extends { url: string }>(item: T): Promise<T> {
     return {
       ...item,

@@ -111,10 +111,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const roleUpper = (user?.role || '').toString().toUpperCase();
     const shouldCheck = roleUpper === 'TUTOR';
+    const tutorTermsAccepted = !!user?.terms?.tutor?.accepted;
     const path = loc?.pathname || '';
     const onKycPage = path.startsWith('/tutor/kyc') || path.startsWith('/become-tutor');
 
-    if (!shouldCheck || onKycPage) {
+    if (!shouldCheck || onKycPage || !tutorTermsAccepted) {
       setKycPrompt((prev) => (prev.show ? { show: false, status: prev.status } : prev));
       return () => { alive = false; };
     }
@@ -147,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [user, loc?.pathname]);
+  }, [user, user?.terms?.tutor?.accepted, loc?.pathname]);
   const lastActivityRef = useRef<number>(Date.now());
   const idleTimerRef = useRef<number | null>(null);
   const warnTimerRef = useRef<number | null>(null);

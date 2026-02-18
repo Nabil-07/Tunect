@@ -1,6 +1,6 @@
 // src/pages/tutor/kyc-upload.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { submitKyc, getKycStatus, type KycPayload, type KycFiles } from '../../services/tutorService';
+import { submitKyc, getKycStatus, getMyKycSubmission, type KycPayload, type KycFiles } from '../../services/tutorService';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import { getCountries, type CountryOption, findCountry } from '../../utils/countryData';
 
@@ -12,8 +12,16 @@ const IFSC_RE = /^[A-Z]{4}0\d{6}$/i;
 const AE_IBAN_RE = /^AE\d{21}$/i;
 // SWIFT/BIC: 8 or 11 alphanum
 const SWIFT_RE = /^[A-Z0-9]{8}([A-Z0-9]{3})?$/i;
+const KYC_LOCAL_SNAPSHOT_KEY = 'tunect_kyc_last_submission';
 
 const onlyDigits = (s: string) => s.replace(/\D/g, '');
+
+type KycLocalSnapshot = {
+  countryCode?: string;
+  selfieName?: string;
+  degreeNames?: string[];
+  savedAt: number;
+};
 
 /* ----------------- Component ----------------- */
 
@@ -25,6 +33,8 @@ export default function TutorKYC() {
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [modal, setModal] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: string; docType: string; url: string; status: string; createdAt: string }>>([]);
+  const [submittedFileNames, setSubmittedFileNames] = useState<string[]>([]);
 
   // Countries from countryData (single source of truth)
   const countries = useMemo<CountryOption[]>(() => getCountries(), []);
@@ -86,7 +96,79 @@ export default function TutorKYC() {
   const [degrees, setDegrees] = useState<File[]>([]);
 
   useEffect(() => {
-    getKycStatus().then(setStatus).catch(() => setStatus({ status: 'none' }));
+    const readLocalSnapshot = (): KycLocalSnapshot | null => {
+      try {
+        const raw = localStorage.getItem(KYC_LOCAL_SNAPSHOT_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as KycLocalSnapshot;
+        return parsed && typeof parsed === 'object' ? parsed : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const toInputDate = (value?: string | null): string => {
+      if (!value) return '';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toISOString().slice(0, 10);
+    };
+
+    const hydrate = async () => {
+      const [statusRes, submissionRes] = await Promise.all([
+        getKycStatus().catch(() => ({ status: 'none' as const })),
+        getMyKycSubmission().catch(() => null),
+      ]);
+
+      setStatus(statusRes);
+
+      const local = readLocalSnapshot();
+      if (local?.degreeNames?.length || local?.selfieName) {
+        setSubmittedFileNames([...(local.selfieName ? [local.selfieName] : []), ...(local.degreeNames || [])]);
+      }
+
+      const app = submissionRes?.application;
+      const docs = (submissionRes?.documents || []).map((d) => ({
+        id: d.id,
+        docType: d.docType,
+        url: d.url,
+        status: d.status,
+        createdAt: d.createdAt,
+      }));
+      setUploadedDocs(docs);
+
+      if (!app) return;
+
+      setFullName(app.fullName || '');
+      setDob(toInputDate(app.dob));
+      setPhone(app.phone || '');
+      setAddress1(app.address1 || '');
+      setAddress2(app.address2 || '');
+      setCity(app.city || '');
+      setState(app.state || '');
+      setPostal(app.postalCode || '');
+      setHolder(app.bankAccountHolder || '');
+      setBankName(app.bankName || '');
+      setBankBranch(app.bankBranch || '');
+
+      setAccNumber(app.accountNumber || '');
+      setAccNumber2(app.accountNumber || '');
+      setIfsc(app.ifsc || '');
+      setUpi(app.upiId || '');
+      setIban(app.iban || '');
+      setSwift(app.swift || '');
+
+      const countryUpper = String(app.country || '').toUpperCase();
+      if (countryUpper === 'IN') {
+        setCountryCode('IN');
+      } else if (countryUpper === 'AE') {
+        setCountryCode('AE');
+      } else if (local?.countryCode) {
+        setCountryCode(local.countryCode);
+      }
+    };
+
+    void hydrate();
   }, []);
 
   useEffect(() => {
@@ -189,6 +271,27 @@ export default function TutorKYC() {
     try {
       await submitKyc(payload, files);
       setStatus({ status: 'submitted' });
+      try {
+        const snapshot: KycLocalSnapshot = {
+          countryCode,
+          selfieName: selfie?.name,
+          degreeNames: degrees.map((f) => f.name),
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(KYC_LOCAL_SNAPSHOT_KEY, JSON.stringify(snapshot));
+        setSubmittedFileNames([...(snapshot.selfieName ? [snapshot.selfieName] : []), ...snapshot.degreeNames]);
+      } catch {}
+
+      const latest = await getMyKycSubmission();
+      const docs = (latest?.documents || []).map((d) => ({
+        id: d.id,
+        docType: d.docType,
+        url: d.url,
+        status: d.status,
+        createdAt: d.createdAt,
+      }));
+      setUploadedDocs(docs);
+
       const msg = 'KYC submitted successfully. We will review and update your status soon.';
       setSubmitSuccess(msg);
       setModal({ kind: 'success', message: msg });
@@ -449,37 +552,66 @@ export default function TutorKYC() {
             </div>
           )}
 
-          {/* Common non-ID files */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="text-sm">
-              <span className="block text-slate-600 mb-1">Clear photo (selfie) *</span>
-              <input type="file" accept="image/*" onChange={e=>setSelfie(e.target.files?.[0] ?? null)} />
-              {errors.selfie && <p className="text-rose-600 text-xs mt-1">{errors.selfie}</p>}
-              <p className="text-[11px] text-slate-500 mt-1">Good lighting, no sunglasses; JPG/PNG up to ~5 MB.</p>
-            </label>
-            <label className="text-sm">
-              <span className="block text-slate-600 mb-1">Degree certificate(s) *</span>
-              <input type="file" accept=".pdf,image/*" multiple onChange={e=>limitFiles(e.target.files, setDegrees)} />
-              {errors.degrees && <p className="text-rose-600 text-xs mt-1">{errors.degrees}</p>}
-              {degrees.length > 0 && (
-                <p className="text-[11px] text-slate-500 mt-1"><CheckCircle2 className="inline" size={14}/> {degrees.length} file(s) selected</p>
+          {formLocked ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div className="font-medium text-slate-800 mb-2">Submitted documents</div>
+              {uploadedDocs.length > 0 ? (
+                <ul className="space-y-1 text-slate-700">
+                  {uploadedDocs.map((doc) => (
+                    <li key={doc.id} className="flex items-center justify-between gap-3">
+                      <span>{doc.docType}</span>
+                      <a className="text-blue-700 hover:underline" href={doc.url} target="_blank" rel="noreferrer">View</a>
+                    </li>
+                  ))}
+                </ul>
+              ) : submittedFileNames.length > 0 ? (
+                <ul className="space-y-1 text-slate-700">
+                  {submittedFileNames.map((name, idx) => (
+                    <li key={`${name}-${idx}`}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-slate-600">Documents already submitted.</p>
               )}
-            </label>
-          </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="text-sm">
+                <span className="block text-slate-600 mb-1">Clear photo (selfie) *</span>
+                <input type="file" accept="image/*" onChange={e=>setSelfie(e.target.files?.[0] ?? null)} />
+                {errors.selfie && <p className="text-rose-600 text-xs mt-1">{errors.selfie}</p>}
+                <p className="text-[11px] text-slate-500 mt-1">Good lighting, no sunglasses; JPG/PNG up to ~5 MB.</p>
+              </label>
+              <label className="text-sm">
+                <span className="block text-slate-600 mb-1">Degree certificate(s) *</span>
+                <input type="file" accept=".pdf,image/*" multiple onChange={e=>limitFiles(e.target.files, setDegrees)} />
+                {errors.degrees && <p className="text-rose-600 text-xs mt-1">{errors.degrees}</p>}
+                {degrees.length > 0 && (
+                  <p className="text-[11px] text-slate-500 mt-1"><CheckCircle2 className="inline" size={14}/> {degrees.length} file(s) selected</p>
+                )}
+              </label>
+            </div>
+          )}
         </section>
 
         {/* Submit */}
         <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-lg bg-blue-600 text-white px-5 py-2.5 hover:bg-blue-700 inline-flex items-center gap-2 disabled:opacity-60"
-          >
-            {submitting && <Loader2 className="animate-spin" size={16} />} Submit KYC
-          </button>
-          <p className="text-xs text-slate-500">
-            Submitting your KYC allows us to verify your identity and disburse earnings to your bank account securely.
-          </p>
+          {formLocked ? (
+            <p className="text-xs text-slate-600">Submitted details are shown in read-only mode while your KYC is under review.</p>
+          ) : (
+            <>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-lg bg-blue-600 text-white px-5 py-2.5 hover:bg-blue-700 inline-flex items-center gap-2 disabled:opacity-60"
+              >
+                {submitting && <Loader2 className="animate-spin" size={16} />} Submit KYC
+              </button>
+              <p className="text-xs text-slate-500">
+                Submitting your KYC allows us to verify your identity and disburse earnings to your bank account securely.
+              </p>
+            </>
+          )}
         </div>
         </fieldset>
       </form>

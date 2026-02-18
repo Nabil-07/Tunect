@@ -78,6 +78,13 @@ export class KycController {
     return this.svc.getMyStatus(userId);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TUTOR')
+  @Get('submission')
+  getMySubmission(@CurrentUser('id') userId: string) {
+    return this.svc.getMySubmission(userId);
+  }
+
   // Admin: list all with filters/pagination
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
