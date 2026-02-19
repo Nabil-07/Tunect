@@ -38,4 +38,23 @@ export class WhiteboardController {
   ) {
     return this.whiteboardService.exportToS3(bookingId, userId);
   }
+
+  @Post(':bookingId/share-notes')
+  @ApiOperation({ summary: 'Share whiteboard content as class notes' })
+  shareAsNotes(
+    @Param('bookingId') bookingId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: { noteName: string; data: any },
+  ) {
+    return this.whiteboardService.shareAsNotes(bookingId, userId, body.noteName, body.data);
+  }
+
+  @Get(':bookingId/notes')
+  @ApiOperation({ summary: 'Get shared whiteboard notes for a booking' })
+  getNotes(
+    @Param('bookingId') bookingId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.whiteboardService.getNotes(bookingId, userId);
+  }
 }

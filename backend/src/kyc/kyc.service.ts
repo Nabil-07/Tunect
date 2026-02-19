@@ -155,7 +155,7 @@ export class KycService {
   async review(id: string, dto: ReviewKycDto, adminId: string) {
     const before = await this.prisma.kycDocument.findUnique({
       where: { id },
-      select: { id: true, tutorId: true, status: true, notes: true },
+      select: { id: true, tutorId: true, status: true, notes: true, createdAt: true },
     });
     if (!before) throw new NotFoundException('KYC document not found');
 
@@ -165,34 +165,7 @@ export class KycService {
       select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
     });
 
-    // Update latest application + tutor status to reflect review outcome
-    const latestApp = await this.prisma.tutorKycApplication.findFirst({
-      where: { tutorId: before.tutorId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true },
-    });
-
-    let appStatus: KycAppStatus = KycAppStatus.UNDER_REVIEW;
-    let tutorStatus: TutorStatus | null = null;
-    if (dto.status === KycStatus.APPROVED) {
-      appStatus = KycAppStatus.APPROVED;
-      tutorStatus = TutorStatus.APPROVED;
-    }
-    if (dto.status === KycStatus.REJECTED) {
-      appStatus = KycAppStatus.REJECTED;
-      tutorStatus = TutorStatus.REJECTED;
-    }
-
-    if (latestApp) {
-      await this.prisma.tutorKycApplication.update({
-        where: { id: latestApp.id },
-        data: { status: appStatus, notes: dto.notes },
-      });
-    }
-
-    if (tutorStatus) {
-      await this.prisma.tutor.update({ where: { id: before.tutorId }, data: { status: tutorStatus } });
-    }
+    await this.recomputeLatestApplicationStatus(before.tutorId, dto.notes);
 
     this.audit.log({
       adminId,
@@ -447,13 +420,14 @@ export class KycService {
     const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true, status: true } });
     if (!tutor) throw new ForbiddenException('Only tutors can query KYC');
 
-    // If tutor already approved, surface approved immediately
-    if (tutor.status === 'APPROVED') {
-      return { status: KycAppStatus.APPROVED };
-    }
+    await this.recomputeLatestApplicationStatus(tutor.id);
 
     const last = await this.prisma.tutorKycApplication.findFirst({ where: { tutorId: tutor.id }, orderBy: { createdAt: 'desc' } });
-    if (!last) return { status: 'none' };
+    if (!last) {
+      return tutor.status === TutorStatus.APPROVED
+        ? { status: KycAppStatus.APPROVED }
+        : { status: 'none' };
+    }
     const parsed = this.parseCorrectionRequest(last.notes);
     return {
       status: last.status,
@@ -651,5 +625,57 @@ export class KycService {
 
   private async decorateDocUrls<T extends { url: string }>(items: T[]): Promise<T[]> {
     return Promise.all(items.map((item) => this.decorateDocUrl(item)));
+  }
+
+  private async recomputeLatestApplicationStatus(tutorId: string, reviewNotes?: string) {
+    const latestApp = await this.prisma.tutorKycApplication.findFirst({
+      where: { tutorId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, createdAt: true },
+    });
+
+    if (!latestApp) return;
+
+    const docs = await this.prisma.kycDocument.findMany({
+      where: {
+        tutorId,
+        createdAt: { gte: latestApp.createdAt },
+      },
+      select: { status: true },
+    });
+
+    let appStatus: KycAppStatus = KycAppStatus.SUBMITTED;
+    let tutorStatus: TutorStatus = TutorStatus.PENDING;
+
+    if (docs.length > 0) {
+      const hasRejected = docs.some((doc) => doc.status === KycStatus.REJECTED);
+      const allApproved = docs.every((doc) => doc.status === KycStatus.APPROVED);
+
+      if (hasRejected) {
+        appStatus = KycAppStatus.REJECTED;
+        tutorStatus = TutorStatus.REJECTED;
+      } else if (allApproved) {
+        appStatus = KycAppStatus.APPROVED;
+        tutorStatus = TutorStatus.APPROVED;
+      } else {
+        appStatus = KycAppStatus.UNDER_REVIEW;
+        tutorStatus = TutorStatus.PENDING;
+      }
+    }
+
+    const appUpdateData: { status: KycAppStatus; notes?: string } = { status: appStatus };
+    if (typeof reviewNotes === 'string') {
+      appUpdateData.notes = reviewNotes;
+    }
+
+    await this.prisma.tutorKycApplication.update({
+      where: { id: latestApp.id },
+      data: appUpdateData,
+    });
+
+    await this.prisma.tutor.update({
+      where: { id: tutorId },
+      data: { status: tutorStatus },
+    });
   }
 }

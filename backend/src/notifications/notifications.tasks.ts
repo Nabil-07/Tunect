@@ -4,14 +4,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BookingStatus } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { addMinutes } from 'date-fns';
+import { NotificationType } from './dto/create-notification.dto';
 
 @Injectable()
 export class NotificationsTasks {
   private readonly logger = new Logger(NotificationsTasks.name);
 
   constructor(
-    private prisma: PrismaService,
-    private notifications: NotificationsService,
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -69,5 +70,77 @@ export class NotificationsTasks {
     }
 
     this.logger.log(`T30 reminders sent: ${upcoming.length}`);
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async sendT5Reminders() {
+    const now = new Date();
+    const t5 = addMinutes(now, 5);
+    const t6 = addMinutes(now, 6);
+
+    const upcoming = await this.prisma.booking.findMany({
+      where: {
+        status: BookingStatus.CONFIRMED,
+        startTime: { gte: t5, lt: t6 },
+        reminders: { none: { kind: 'T5' } },
+      },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        studentId: true,
+        tutorId: true,
+        student: { select: { user: { select: { id: true, name: true, email: true } } } },
+        tutor: { select: { user: { select: { id: true, name: true, email: true } } } },
+      },
+    });
+
+    if (!upcoming.length) return;
+
+    for (const b of upcoming) {
+      if (!b.startTime || !b.endTime) continue;
+
+      const startIso = b.startTime.toISOString();
+      const endIso = b.endTime.toISOString();
+      const studentName = b.student.user.name || 'Student';
+      const tutorName = b.tutor.user.name || 'Tutor';
+
+      await this.notifications.create({
+        userId: b.student.user.id,
+        type: NotificationType.REMINDER,
+        bookingId: b.id,
+        title: 'Class starts in 5 minutes',
+        message: `Your class with ${tutorName} starts in 5 minutes.`,
+      });
+
+      await this.notifications.create({
+        userId: b.tutor.user.id,
+        type: NotificationType.REMINDER,
+        bookingId: b.id,
+        title: 'Class starts in 5 minutes',
+        message: `Your class with ${studentName} starts in 5 minutes.`,
+      });
+
+      this.notifications.bookingReminder({
+        to: b.student.user.email,
+        bookingId: b.id,
+        startIso,
+        endIso,
+        minutesBefore: 5,
+      });
+      this.notifications.bookingReminder({
+        to: b.tutor.user.email,
+        bookingId: b.id,
+        startIso,
+        endIso,
+        minutesBefore: 5,
+      });
+
+      await this.prisma.reminder.create({
+        data: { bookingId: b.id, kind: 'T5' },
+      });
+    }
+
+    this.logger.log(`T5 reminders sent: ${upcoming.length}`);
   }
 }

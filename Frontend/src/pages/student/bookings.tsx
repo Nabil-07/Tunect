@@ -473,6 +473,7 @@ export default function MyBookings() {
           onClose={closePicker}
           bookingId={pickerBooking.id}
           tutorId={pickerBooking.tutor?.id || pickerBooking.tutorId}
+          isDemo={!!pickerBooking.isDemo}
           onAssigned={async () => {
             await refresh();
             // Refresh token balances after slot assignment

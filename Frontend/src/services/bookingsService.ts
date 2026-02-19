@@ -107,7 +107,7 @@ export async function getTutorAvailability(
   fromIso?: string,
   toIso?: string,
   tz?: string
-): Promise<Array<{ id?: string; startTime: string; endTime: string }>> {
+): Promise<Array<{ id?: string; startTime: string; endTime: string; title?: string }>> {
   const params: Record<string, string> = {};
   if (fromIso) params.from = fromIso;
   if (toIso) params.to = toIso;

@@ -1,5 +1,6 @@
 // src/pages/tutor/performance-tracking.tsx
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { TrendingUp, Users, Clock, BookOpen, Plus, Search, FileText, Pencil, Trash2 } from 'lucide-react';
 import api from '../../lib/apiClient';
 
@@ -34,6 +35,7 @@ type PerformanceData = {
 };
 
 export default function PerformanceTracking() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [reports, setReports] = useState<PerformanceReport[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +45,7 @@ export default function PerformanceTracking() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [autoFilled, setAutoFilled] = useState(false);
   
   const [formData, setFormData] = useState({
     studentId: '',
@@ -63,6 +66,64 @@ export default function PerformanceTracking() {
     loadReports();
     loadStudents();
   }, []);
+
+  // Auto-fill from URL params (linked from post-class screen)
+  useEffect(() => {
+    if (autoFilled) return;
+    const bookingId = searchParams.get('bookingId');
+    const studentId = searchParams.get('studentId');
+    if (!bookingId && !studentId) return;
+
+    const autoFillFromBooking = async () => {
+      try {
+        let bkStudentId = studentId || '';
+        let bkPeriod = new Date().toISOString().slice(0, 7);
+        let bkStudentName = '';
+
+        // Fetch booking details to get student info and date
+        if (bookingId) {
+          const res = await api.get(`/bookings/${bookingId}/details`);
+          const booking = res.data;
+          bkStudentId = booking.studentId || studentId || '';
+          if (booking.startTime) {
+            bkPeriod = new Date(booking.startTime).toISOString().slice(0, 7);
+          }
+          bkStudentName = booking.student?.name || '';
+        }
+
+        // Fetch stats for this student
+        let totalSessions = 0;
+        let totalHours = 0;
+        if (bkStudentId) {
+          try {
+            const statsRes = await api.get(`/performance-reports/student/${bkStudentId}`);
+            totalSessions = statsRes.data?.totalSessions || 0;
+            totalHours = Math.round((statsRes.data?.totalHours || 0) * 10) / 10;
+          } catch {
+            // stats endpoint might fail — that's fine
+          }
+        }
+
+        setFormData((prev) => ({
+          ...prev,
+          studentId: bkStudentId,
+          period: bkPeriod,
+          totalSessions,
+          totalHours,
+          notes: bkStudentName ? `Class with ${bkStudentName} on ${new Date(bkPeriod + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : prev.notes,
+        }));
+        setShowForm(true);
+        setAutoFilled(true);
+
+        // Clear URL params to avoid re-triggering
+        setSearchParams({}, { replace: true });
+      } catch (err) {
+        console.error('Failed to auto-fill from booking:', err);
+      }
+    };
+
+    autoFillFromBooking();
+  }, [searchParams, autoFilled, setSearchParams]);
 
   const loadReports = async () => {
     try {

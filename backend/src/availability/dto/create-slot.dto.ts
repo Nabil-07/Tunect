@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsISO8601, IsOptional, IsNumber } from 'class-validator';
+import { IsISO8601, IsOptional, IsNumber, IsString, MaxLength } from 'class-validator';
 import { IsCuid } from '../../common/validators/is-cuid.decorator';
 
 export class CreateSlotDto {
@@ -20,4 +20,10 @@ export class CreateSlotDto {
   @IsOptional()
   @IsNumber()
   tzOffsetMinutes?: number;
+
+  @ApiProperty({ example: 'Mathematics', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
 }

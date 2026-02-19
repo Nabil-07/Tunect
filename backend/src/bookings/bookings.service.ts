@@ -25,6 +25,7 @@ import { UploadsService } from '../uploads/uploads.service';
 
 const TOKENS_PER_HOUR = Number(process.env.TOKENS_PER_HOUR ?? 1);
 const MIN_BLOCK_MINUTES = 15;
+const DEMO_DURATION_MINUTES = 30;
 const DEFAULT_FEE_PERCENT = Number(process.env.FEE_PERCENT ?? 20);
 const FAILED_TECHNICAL = 'FAILED_TECHNICAL' as BookingStatus;
 
@@ -373,9 +374,9 @@ export class BookingsService {
           );
         }
 
-        if (dto.startTime && dto.endTime) {
+        if (dto.startTime) {
         const start = toUtc(dto.startTime, tz);
-        const end = toUtc(dto.endTime, tz);
+        const end = addMinutes(start, DEMO_DURATION_MINUTES);
 
         if (!isBefore(start, end)) throw new BadRequestException('startTime must be before endTime.');
         if (isBefore(end, addMinutes(start, MIN_BLOCK_MINUTES))) {
@@ -1190,10 +1191,10 @@ export class BookingsService {
     tz?: string,
   ) {
     const start = toUtc(dto.startTime, tz);
-    const end = toUtc(dto.endTime, tz);
+    const requestedEnd = toUtc(dto.endTime, tz);
 
-    if (!isBefore(start, end)) throw new BadRequestException('startTime must be before endTime.');
-    if (isBefore(end, addMinutes(start, MIN_BLOCK_MINUTES))) {
+    if (!isBefore(start, requestedEnd)) throw new BadRequestException('startTime must be before endTime.');
+    if (isBefore(requestedEnd, addMinutes(start, MIN_BLOCK_MINUTES))) {
       throw new BadRequestException(`Minimum booking is ${MIN_BLOCK_MINUTES} minutes.`);
     }
 
@@ -1233,6 +1234,8 @@ export class BookingsService {
       if (!allowed.includes(booking.status)) {
         throw new BadRequestException('Booking is not pending slot assignment.');
       }
+
+      const end = booking.isDemo ? addMinutes(start, DEMO_DURATION_MINUTES) : requestedEnd;
 
       // Validate status transition: PENDING/PENDING_SLOT → CONFIRMED
       this.validateStatusTransition(booking.status, BookingStatus.CONFIRMED, 'assignSlot');

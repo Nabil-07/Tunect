@@ -131,4 +131,91 @@ export class WhiteboardService {
 
     return { s3Url };
   }
+
+  /**
+   * Share whiteboard content as notes — both tutor and student can view later.
+   * Only the tutor can trigger this.
+   */
+  async shareAsNotes(bookingId: string, userId: string, noteName: string, wbData: any) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { tutor: true, student: true },
+    });
+
+    if (!booking) throw new NotFoundException('Booking not found');
+    if (booking.tutor.userId !== userId) {
+      throw new ForbiddenException('Only the tutor can share whiteboard notes');
+    }
+
+    // Upsert whiteboard with note info + snapshot
+    const wb = await this.prisma.whiteboardSession.upsert({
+      where: { bookingId },
+      update: {
+        data: wbData,
+        noteName,
+        sharedAt: new Date(),
+        updatedAt: new Date(),
+      },
+      create: {
+        bookingId,
+        data: wbData,
+        noteName,
+        sharedAt: new Date(),
+      },
+    });
+
+    return {
+      id: wb.id,
+      bookingId: wb.bookingId,
+      noteName: wb.noteName,
+      sharedAt: wb.sharedAt,
+    };
+  }
+
+  /**
+   * Get shared whiteboard notes for a booking (both tutor and student can view).
+   */
+  async getNotes(bookingId: string, userId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        tutor: { include: { user: { select: { name: true } } } },
+        student: { include: { user: { select: { name: true } } } },
+      },
+    });
+
+    if (!booking) throw new NotFoundException('Booking not found');
+    if (booking.tutor.userId !== userId && booking.student.userId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const wb = await this.prisma.whiteboardSession.findUnique({
+      where: { bookingId },
+    });
+
+    if (!wb || !wb.sharedAt) {
+      return null; // No shared notes yet
+    }
+
+    const isTutor = booking.tutor.userId === userId;
+    const classDate = booking.startTime
+      ? new Date(booking.startTime).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')
+      : new Date(wb.sharedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+
+    // Name shown is counterpart name
+    const counterpartName = isTutor
+      ? booking.student?.user?.name || 'Student'
+      : booking.tutor?.user?.name || 'Tutor';
+
+    const displayName = wb.noteName || `ClassWhiteBoardNotes-${counterpartName}_${classDate}`;
+
+    return {
+      id: wb.id,
+      bookingId: wb.bookingId,
+      noteName: displayName,
+      data: wb.data,
+      sharedAt: wb.sharedAt,
+      s3Url: wb.s3Url,
+    };
+  }
 }
