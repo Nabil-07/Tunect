@@ -79,7 +79,6 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
 }) {
   const participants = useParticipants() as Participant[];
   const room = useRoomContext();
-  const navigate = useNavigate();
   const [callStartedAt, setCallStartedAt] = useState<Date | null>(null);
   const [sideTab, setSideTab] = useState<"participants" | "whiteboard">("participants");
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
