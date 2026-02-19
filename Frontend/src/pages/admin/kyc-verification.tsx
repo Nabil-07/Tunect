@@ -1,6 +1,28 @@
 // src/pages/admin/kyc-verification.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { fetchKycQueue, fetchKycBundle, reviewKyc, type KycItem, type KycBundle } from '../../services/adminService';
+import { fetchKycQueue, fetchKycBundle, requestKycResubmission, reviewKyc, type KycItem, type KycBundle } from '../../services/adminService';
+
+const RESUBMISSION_FIELD_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'fullName', label: 'Full name' },
+  { key: 'dob', label: 'Date of birth' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'country', label: 'Country' },
+  { key: 'addressLine1', label: 'Address line 1' },
+  { key: 'addressLine2', label: 'Address line 2' },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'State/Province' },
+  { key: 'postalCode', label: 'Postal code' },
+  { key: 'bankAccountHolder', label: 'Bank account holder' },
+  { key: 'bankName', label: 'Bank name' },
+  { key: 'bankBranch', label: 'Bank branch' },
+  { key: 'accountNumber', label: 'Account number' },
+  { key: 'ifsc', label: 'IFSC' },
+  { key: 'upiId', label: 'UPI ID' },
+  { key: 'iban', label: 'IBAN' },
+  { key: 'swift', label: 'SWIFT' },
+  { key: 'selfie', label: 'Selfie document' },
+  { key: 'degreeCertificates', label: 'Degree certificates' },
+];
 
 export default function AdminKYCVerification() {
   const [items, setItems] = useState<KycItem[]>([]);
@@ -9,6 +31,8 @@ export default function AdminKYCVerification() {
   const [expandedTutorId, setExpandedTutorId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, { loading: boolean; data?: KycBundle; error?: string }>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [correctionFields, setCorrectionFields] = useState<Record<string, string[]>>({});
+  const [requestingResubmission, setRequestingResubmission] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -51,6 +75,37 @@ export default function AdminKYCVerification() {
     setExpandedTutorId((prev) => (prev === tutorId ? null : tutorId));
     if (!details[tutorId]) {
       loadDetails(tutorId);
+    }
+  };
+
+  const toggleCorrectionField = (tutorId: string, field: string) => {
+    setCorrectionFields((prev) => {
+      const current = new Set(prev[tutorId] || []);
+      if (current.has(field)) current.delete(field);
+      else current.add(field);
+      return { ...prev, [tutorId]: Array.from(current) };
+    });
+  };
+
+  const handleRequestResubmission = async (tutorId: string) => {
+    if (requestingResubmission[tutorId]) return;
+
+    const selected = correctionFields[tutorId] || [];
+    if (!selected.length) {
+      setError('Select at least one field before requesting resubmission.');
+      return;
+    }
+
+    try {
+      setRequestingResubmission((prev) => ({ ...prev, [tutorId]: true }));
+      setError(null);
+      await requestKycResubmission(tutorId, selected, notes[tutorId]);
+      await loadDetails(tutorId);
+      setCorrectionFields((prev) => ({ ...prev, [tutorId]: [] }));
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to request resubmission');
+    } finally {
+      setRequestingResubmission((prev) => ({ ...prev, [tutorId]: false }));
     }
   };
 
@@ -138,6 +193,15 @@ export default function AdminKYCVerification() {
                     {detail?.data?.application && (
                       <div className="rounded-xl border p-3 bg-slate-50">
                         <div className="font-semibold text-sm mb-2">Submitted details</div>
+                        {detail.data.application.correctionRequest?.fields?.length ? (
+                          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                            <div className="font-semibold">Resubmission requested for:</div>
+                            <div>{detail.data.application.correctionRequest.fields.join(', ')}</div>
+                            {detail.data.application.correctionRequest.message && (
+                              <div className="mt-1">Message: {detail.data.application.correctionRequest.message}</div>
+                            )}
+                          </div>
+                        ) : null}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-slate-700">
                           {[
                             ['Full name', detail.data.application.fullName],
@@ -208,6 +272,34 @@ export default function AdminKYCVerification() {
                         value={notes[group.tutorId] || ''}
                         onChange={(e) => setNotes((prev) => ({ ...prev, [group.tutorId]: e.target.value }))}
                       />
+                    </div>
+
+                    <div className="rounded-xl border p-3 space-y-3">
+                      <div className="font-semibold text-sm">Request tutor resubmission (field-level)</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {RESUBMISSION_FIELD_OPTIONS.map((field) => {
+                          const checked = (correctionFields[group.tutorId] || []).includes(field.key);
+                          return (
+                            <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleCorrectionField(group.tutorId, field.key)}
+                              />
+                              <span>{field.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          className="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60"
+                          onClick={() => handleRequestResubmission(group.tutorId)}
+                          disabled={requestingResubmission[group.tutorId]}
+                        >
+                          {requestingResubmission[group.tutorId] ? 'Sending...' : 'Request resubmission'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

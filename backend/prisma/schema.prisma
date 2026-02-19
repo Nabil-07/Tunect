@@ -676,6 +676,7 @@ model Student {
   id                      String                    @id @default(cuid())
   userId                                String                    @unique
   grade                                 String?
+  board                                 String?
   tokens                                Int                       @default(0)
   bio                                   String?
   timezone                              String?
@@ -773,6 +774,8 @@ model Tutor {
   bio                 String?
   summary             String?
   subjects            String[]              @default([])
+  boards              String[]              @default([])
+  classSubjectMappings Json?
   languages           String[]              @default([])
   degrees             String[]              @default([])
   classesTeach        String[]              @default([])

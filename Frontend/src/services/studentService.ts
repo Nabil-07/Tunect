@@ -35,6 +35,7 @@ export type StudentProfileUpdatePayload = {
   timezone?: string;
   preferredLanguage?: string;
   grade?: string;
+  board?: string;
 };
 
 /** Prefer /users/me; also cache profile flags for guards. */

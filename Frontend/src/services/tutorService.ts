@@ -13,6 +13,8 @@ export type Tutor = {
   subjectPrimary?: string;
   subjects?: string[];
   classesTeach?: string[];
+  boards?: string[];
+  classSubjectMappings?: Array<{ classRange: string; subjects: string[] }>;
   languages?: string[];
   rating?: number | null;
   reviews?: number;
@@ -66,6 +68,17 @@ const toNum = (v: any, d = 0) => {
 function normalizeTutor(raw: any): Tutor {
   const subjectsArr: string[] = Array.isArray(raw?.subjects) ? raw.subjects : [];
   const classesTeachArr: string[] = Array.isArray(raw?.classesTeach) ? raw.classesTeach : [];
+  const boardsArr: string[] = Array.isArray(raw?.boards) ? raw.boards : [];
+  const classSubjectMappings = Array.isArray(raw?.classSubjectMappings)
+    ? raw.classSubjectMappings
+        .map((entry: any) => ({
+          classRange: String(entry?.classRange || '').trim(),
+          subjects: Array.isArray(entry?.subjects)
+            ? entry.subjects.map((s: any) => String(s || '').trim()).filter(Boolean)
+            : [],
+        }))
+        .filter((entry: any) => entry.classRange && entry.subjects.length)
+    : [];
   const languagesArr: string[] = Array.isArray(raw?.languages) ? raw.languages : [];
   const subject = raw?.subject ?? (subjectsArr.length ? subjectsArr.join(', ') : undefined);
 
@@ -93,6 +106,8 @@ function normalizeTutor(raw: any): Tutor {
     subjectPrimary: raw?.subjectPrimary ?? subject,
     subjects: subjectsArr,
     classesTeach: classesTeachArr,
+    boards: boardsArr,
+    classSubjectMappings,
     languages: languagesArr,
     hourlyRate,
     pricePerHour,
@@ -129,6 +144,7 @@ export async function listTutors(params?: {
   pageSize?: number;
   subject?: string;
   classTeach?: string;
+  board?: string;
   language?: string;
 }) {
   const clean: any = {};
@@ -139,6 +155,8 @@ export async function listTutors(params?: {
     clean.subject = params.subject.trim();
   if (params?.classTeach && params.classTeach.trim())
     clean.class = params.classTeach.trim();
+  if (params?.board && params.board.trim())
+    clean.board = params.board.trim();
   if (params?.language && params.language.trim())
     clean.language = params.language.trim();
 
@@ -152,6 +170,7 @@ export async function searchTutors(params: {
   q?: string;
   subject?: string;
   classTeach?: string;
+  board?: string;
   language?: string;
   minRating?: number;
   priceMin?: number;
@@ -166,6 +185,7 @@ export async function searchTutors(params: {
   if (params.q && params.q.trim()) qp.q = params.q.trim();
   if (params.subject && params.subject.trim()) qp.subject = params.subject.trim();
   if (params.classTeach && params.classTeach.trim()) qp.class = params.classTeach.trim();
+  if (params.board && params.board.trim()) qp.board = params.board.trim();
   if (params.language && params.language.trim()) qp.language = params.language.trim();
   if (Number.isFinite(params.minRating as any)) qp.minRating = Number(params.minRating);
   if (Number.isFinite(params.priceMin as any)) qp.priceMin = Number(params.priceMin);
@@ -201,6 +221,7 @@ export type TutorSearchHistoryEntry = {
   term?: string;
   subject?: string;
   classTeach?: string;
+  board?: string;
   language?: string;
   ts?: number;
 };
@@ -225,6 +246,7 @@ export async function getRecommendedTutors(params?: {
 export async function getFilterOptions(): Promise<{
   subjects: string[];
   classesTeach: string[];
+  boards: string[];
   languages: string[];
   ratingOptions: Array<{ value: number; label: string }>;
 }> {
@@ -233,6 +255,7 @@ export async function getFilterOptions(): Promise<{
     return {
       subjects: data.subjects || [],
       classesTeach: data.classesTeach || [],
+      boards: data.boards || [],
       languages: data.languages || [],
       ratingOptions: data.ratingOptions || [
         { value: 0, label: 'Any rating' },
@@ -247,6 +270,7 @@ export async function getFilterOptions(): Promise<{
     return {
       subjects: [],
       classesTeach: [],
+      boards: [],
       languages: [],
       ratingOptions: [
         { value: 0, label: 'Any rating' },
@@ -577,6 +601,8 @@ export async function updateMyProfile(
     bio: string;
     summary: string;
     subjects: string[];
+    boards: string[];
+    classSubjectMappings: Array<{ classRange: string; subjects: string[] }>;
     languages: string[];
     hourlyRate: number;
     country: string;
@@ -631,6 +657,13 @@ export type KycSubmissionSnapshot = {
     updatedAt: string;
     status: string;
     notes?: string | null;
+    correctionRequest?: {
+      version: 1;
+      fields: string[];
+      message?: string;
+      requestedAt: string;
+      requestedBy: string;
+    } | null;
     fullName: string;
     dob: string;
     phone: string;
@@ -698,6 +731,13 @@ export async function submitKyc(payload: KycPayload, files: KycFiles) {
 export async function getKycStatus(): Promise<{
   status: 'none' | 'submitted' | 'under_review' | 'approved' | 'rejected';
   reason?: string;
+  correctionRequest?: {
+    version: 1;
+    fields: string[];
+    message?: string;
+    requestedAt: string;
+    requestedBy: string;
+  };
 }> {
   try {
     const { data } = await api.get('/kyc/status');
@@ -713,13 +753,13 @@ export async function getKycStatus(): Promise<{
       pending: 'under_review',
     };
     const status = normalized[raw] || normalized[raw.replace(/\s+/g, '_')] || 'none';
-    return { status, reason: data?.reason };
+    return { status, reason: data?.reason, correctionRequest: data?.correctionRequest };
   } catch {
     // legacy fallback shape
     const { data } = await api.get('/tutors/me/kyc/status');
     const raw = String(data?.status || 'none').toLowerCase();
     const status = raw === 'approved' ? 'approved' : raw === 'rejected' ? 'rejected' : raw === 'submitted' ? 'submitted' : raw.includes('under') ? 'under_review' : 'none';
-    return { status, reason: data?.reason };
+    return { status, reason: data?.reason, correctionRequest: data?.correctionRequest };
   }
 }
 

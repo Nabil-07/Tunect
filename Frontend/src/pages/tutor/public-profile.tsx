@@ -30,6 +30,7 @@ type TutorPublic = {
   qualifications?: string;
   classesTeach?: string[];
   teachingClasses?: string[];
+  classSubjectMappings?: { classRange: string; subjects: string[] }[];
   rating?: number;
   reviews?: number;
   verified?: boolean;
@@ -172,6 +173,42 @@ export default function TutorPublicProfile() { // NOSONAR
     }
     return res;
   }, [month]);
+
+  const mappingRows = useMemo(() => {
+    const rows = Array.isArray(tutor?.classSubjectMappings) ? tutor.classSubjectMappings : [];
+    const normalizedRows = rows
+      .map((row) => ({
+        classRange: String(row?.classRange || '').trim(),
+        subjects: Array.isArray(row?.subjects)
+          ? row.subjects.map((s) => String(s || '').trim()).filter(Boolean)
+          : [],
+      }))
+      .filter((row) => row.classRange && row.subjects.length);
+
+    if (normalizedRows.length > 0) return normalizedRows;
+
+    const classFallback = (tutor?.classesTeach ?? tutor?.teachingClasses ?? [])
+      .map((cls) => String(cls || '').trim())
+      .filter(Boolean);
+    const subjectFallback = (tutor?.subjects ?? [])
+      .map((s) => String(s || '').trim())
+      .filter(Boolean);
+
+    if (!classFallback.length && !subjectFallback.length) return [];
+
+    if (!classFallback.length) {
+      return subjectFallback.map((s) => ({ classRange: '', subjects: [s] }));
+    }
+    if (!subjectFallback.length) {
+      return classFallback.map((c) => ({ classRange: c, subjects: [] }));
+    }
+
+    const pairCount = Math.min(classFallback.length, subjectFallback.length);
+    return Array.from({ length: pairCount }, (_, i) => ({
+      classRange: classFallback[i],
+      subjects: [subjectFallback[i]],
+    }));
+  }, [tutor]);
 
   const normalizeSlots = (data: any): BookableSlot[] => {
     if (Array.isArray(data?.slices)) return data.slices as BookableSlot[];
@@ -744,45 +781,35 @@ export default function TutorPublicProfile() { // NOSONAR
             )}
           </div>
 
-          {/* Subjects */}
-          {tutor.subjects && tutor.subjects.length > 0 && (
+          {/* What I Teach */}
+          {mappingRows.length > 0 && (
             <div className="card p-6 rounded-xl border bg-white shadow-sm">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
-                Subjects I Teach
+                What I Teach
               </h2>
-              <div className="flex flex-wrap gap-2">
-                {tutor.subjects.map((subject, idx) => (
-                  <span
-                    key={idx}
-                    className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
-                  >
-                    {subject}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Classes/Grades Taught */}
-          {(tutor.classesTeach?.length || tutor.teachingClasses?.length) && (
-            <div className="card p-6 rounded-xl border bg-white shadow-sm">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <svg className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-                Classes/Grades I Teach
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {(tutor.classesTeach || tutor.teachingClasses || []).map((cls, idx) => (
-                  <span
-                    key={idx}
-                    className="px-4 py-2 bg-amber-100 text-amber-700 rounded-full text-sm font-medium"
-                  >
-                    {cls}
-                  </span>
+              <div className="space-y-3">
+                {mappingRows.map((row, idx) => (
+                  <div key={idx} className="flex flex-wrap items-center gap-2">
+                    {row.classRange && (
+                      <span className="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-700">
+                        {row.classRange}
+                      </span>
+                    )}
+                    {row.classRange && row.subjects.length > 0 && (
+                      <span className="text-sm font-semibold text-slate-400">→</span>
+                    )}
+                    {row.subjects.map((subject) => (
+                      <span
+                        key={subject}
+                        className="rounded-full bg-indigo-100 px-3 py-1.5 text-sm font-medium text-indigo-700"
+                      >
+                        {subject}
+                      </span>
+                    ))}
+                  </div>
                 ))}
               </div>
             </div>
@@ -795,7 +822,7 @@ export default function TutorPublicProfile() { // NOSONAR
                 <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
                 </svg>
-                Languages
+                Languages I Speak
               </h2>
               <div className="flex flex-wrap gap-2">
                 {tutor.languages.map((lang, idx) => (

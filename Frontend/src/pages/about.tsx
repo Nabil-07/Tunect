@@ -98,23 +98,6 @@ export default function About() {
         </div>
       </section>
 
-      {/* By the Numbers */}
-      <section className="py-16 container mx-auto px-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-slate-800 mb-4">Tunect by the Numbers</h2>
-            <p className="text-xl text-slate-600">Growing stronger every day</p>
-          </div>
-
-          <div className="grid md:grid-cols-4 gap-8">
-            <StatCard number="10,000+" label="Active Students" />
-            <StatCard number="2,500+" label="Expert Tutors" />
-            <StatCard number="50,000+" label="Sessions Completed" />
-            <StatCard number="98%" label="Satisfaction Rate" />
-          </div>
-        </div>
-      </section>
-
       {/* How It Works */}
       <section className="py-16 bg-gradient-to-r from-ocean-50 to-green-50">
         <div className="container mx-auto px-4">
@@ -187,7 +170,7 @@ export default function About() {
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-4xl font-bold mb-6">Ready to Start Your Learning Journey?</h2>
           <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-            Join thousands of students discovering the joy of personalized learning with expert tutors.
+            Join students and expert tutors on Tunect — personalized, one-on-one learning, on your schedule.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <a
@@ -215,15 +198,6 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
       <div className="mb-4">{icon}</div>
       <h3 className="text-xl font-bold text-slate-800 mb-3">{title}</h3>
       <p className="text-slate-600 leading-relaxed">{description}</p>
-    </div>
-  );
-}
-
-function StatCard({ number, label }: { number: string; label: string }) {
-  return (
-    <div className="rounded-2xl border bg-white p-8 shadow-sm hover:shadow-lg transition text-center">
-      <div className="text-4xl font-bold text-ocean-700 mb-2">{number}</div>
-      <div className="text-slate-600 font-medium">{label}</div>
     </div>
   );
 }
