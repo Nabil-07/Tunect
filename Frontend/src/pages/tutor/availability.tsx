@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { getAvailability, saveAvailabilityForMonth, createSlot, updateSlot, deleteSlot } from '../../services/tutorService';
+import { getAvailability, saveAvailabilityForMonth, createSlot, updateSlot, deleteSlot, getMyProfile } from '../../services/tutorService';
 import type { AvailabilitySlot } from '../../services/tutorService';
 import api from '../../lib/apiClient';
 
@@ -17,6 +17,23 @@ type RecurringTemplate = {
   title?: string;
   isActive: boolean;
 };
+
+function extractTutorSubjects(profile: any): string[] {
+  const direct = Array.isArray(profile?.subjects) ? profile.subjects : [];
+  const nested = Array.isArray(profile?.tutor?.subjects) ? profile.tutor.subjects : [];
+  const directMappings = Array.isArray(profile?.classSubjectMappings) ? profile.classSubjectMappings : [];
+  const nestedMappings = Array.isArray(profile?.tutor?.classSubjectMappings) ? profile.tutor.classSubjectMappings : [];
+  const fromMappings = [...directMappings, ...nestedMappings]
+    .flatMap((row: any) => (Array.isArray(row?.subjects) ? row.subjects : []));
+
+  return Array.from(
+    new Set(
+      [...direct, ...nested, ...fromMappings]
+        .map((subject: any) => String(subject || '').trim())
+        .filter(Boolean),
+    ),
+  );
+}
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -135,8 +152,9 @@ export default function TutorAvailability() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null); // null => add, number => edit
   const [draftStart, setDraftStart] = useState('09:00');
   const [draftEnd,   setDraftEnd]   = useState('10:00');
-  const [draftTitle, setDraftTitle] = useState<string>('');
+  const [draftSubject, setDraftSubject] = useState<string>('');
   const [draftBooked, setDraftBooked] = useState<boolean>(false); // if the slot is booked
+  const [tutorSubjects, setTutorSubjects] = useState<string[]>([]);
 
   // template editor state
   const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
@@ -153,6 +171,25 @@ export default function TutorAvailability() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  useEffect(() => {
+    const loadTutorSubjects = async () => {
+      try {
+        const profile = await getMyProfile();
+        setTutorSubjects(extractTutorSubjects(profile));
+      } catch {
+        setTutorSubjects([]);
+      }
+    };
+    void loadTutorSubjects();
+  }, []);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    if (draftSubject.trim()) return;
+    if (!tutorSubjects.length) return;
+    setDraftSubject(tutorSubjects[0]);
+  }, [editorOpen, draftSubject, tutorSubjects]);
 
   const now = new Date();
   const monthLabel = useMemo(() => month.toLocaleString(undefined, { month: 'long', year: 'numeric' }), [month]);
@@ -241,7 +278,7 @@ export default function TutorAvailability() {
     const end = addMinutes(start, 60);
     setDraftStart(start);
     setDraftEnd(end);
-    setDraftTitle('');
+    setDraftSubject(tutorSubjects[0] || '');
     setDraftBooked(false);
     setEditorOpen(true);
   }
@@ -254,7 +291,9 @@ export default function TutorAvailability() {
     setEditingIndex(idx);
     setDraftStart(item.start);
     setDraftEnd(item.end);
-    setDraftTitle(item.title || '');
+    const currentSubject = String(item.title || '').trim();
+    const allowedSubject = tutorSubjects.find((subject) => subject === currentSubject);
+    setDraftSubject(allowedSubject || tutorSubjects[0] || '');
     setDraftBooked(!!item.booked);
     setEditorOpen(true);
   }
@@ -328,17 +367,23 @@ export default function TutorAvailability() {
       
       const startIso = startDate.toISOString();
       const endIso = endDate.toISOString();
+      const selectedSubject = draftSubject.trim();
+
+      if (!selectedSubject) {
+        setToast({ message: 'Please add subjects in your profile before creating slots.', type: 'error' });
+        return;
+      }
 
       if (editingIndex === null) {
         // Create new slot
-        const newSlot = await createSlot(startIso, endIso);
+        const newSlot = await createSlot(startIso, endIso, selectedSubject);
         setSlots((prev) => {
           const list = [...(prev[activeDay] || [])];
           list.push({
             id: newSlot.id,
             start: newSlot.startTime,
             end: newSlot.endTime,
-            title: draftTitle?.trim() || undefined,
+            title: newSlot.title || selectedSubject,
             booked: false,
           });
           list.sort((a, b) => compareHHMM(a.start, b.start));
@@ -357,7 +402,7 @@ export default function TutorAvailability() {
           return;
         }
         
-        const updatedSlot = await updateSlot(existingSlot.id, startIso, endIso);
+        const updatedSlot = await updateSlot(existingSlot.id, startIso, endIso, selectedSubject);
         setSlots((prev) => {
           const list = [...(prev[activeDay] || [])];
           list[editingIndex] = {
@@ -365,7 +410,7 @@ export default function TutorAvailability() {
             id: updatedSlot.id,
             start: updatedSlot.startTime,
             end: updatedSlot.endTime,
-            title: draftTitle?.trim() || undefined,
+            title: updatedSlot.title || selectedSubject,
           };
           list.sort((a, b) => compareHHMM(a.start, b.start));
           return { ...prev, [activeDay]: list };
@@ -629,7 +674,7 @@ export default function TutorAvailability() {
             <div className="p-4 space-y-4">
               {draftBooked && (
                 <div className="text-amber-700 text-sm flex items-center gap-2">
-                  <Lock size={16} /> This slot has a booking. You can only change its title.
+                  <Lock size={16} /> This slot has a booking. You can only change its subject.
                 </div>
               )}
 
@@ -657,14 +702,29 @@ export default function TutorAvailability() {
               </div>
 
               <label className="text-sm block">
-                <span className="block text-slate-600 mb-1">Title (optional)</span>
-                <input
-                  value={draftTitle}
-                  onChange={(e) => setDraftTitle(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="e.g., Algebra practice"
-                  disabled={loading}
-                />
+                <span className="block text-slate-600 mb-1">Subject</span>
+                {tutorSubjects.length > 1 ? (
+                  <select
+                    value={draftSubject}
+                    onChange={(e) => setDraftSubject(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 bg-white"
+                    disabled={loading}
+                  >
+                    {tutorSubjects.map((subject) => (
+                      <option key={subject} value={subject}>
+                        {subject}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={draftSubject}
+                    className="w-full border rounded-lg px-3 py-2"
+                    placeholder="Add subjects in your profile"
+                    readOnly
+                    disabled={loading || tutorSubjects.length === 0}
+                  />
+                )}
               </label>
 
               <div className="text-[11px] text-slate-500">
@@ -683,7 +743,7 @@ export default function TutorAvailability() {
               <button
                 className="rounded-lg bg-blue-600 text-white px-4 py-2 hover:bg-blue-700"
                 onClick={saveDraft}
-                disabled={loading}
+                disabled={loading || !draftSubject.trim()}
               >
                 {loading ? 'Saving...' : editingIndex === null ? 'Add slot' : 'Save'}
               </button>

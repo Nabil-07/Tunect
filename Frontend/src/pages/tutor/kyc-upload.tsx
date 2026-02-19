@@ -41,6 +41,7 @@ export default function TutorKYC() {
   const [submittedFileNames, setSubmittedFileNames] = useState<string[]>([]);
   const [requestedCorrectionFields, setRequestedCorrectionFields] = useState<string[]>([]);
   const [requestedCorrectionMessage, setRequestedCorrectionMessage] = useState<string>('');
+  const [lastSubmittedCountryRaw, setLastSubmittedCountryRaw] = useState<string>('');
 
   // Countries from countryData (single source of truth)
   const countries = useMemo<CountryOption[]>(() => getCountries(), []);
@@ -73,6 +74,8 @@ export default function TutorKYC() {
   const isEditable = !status || status.status === 'none' || status.status === 'rejected';
   const formLocked = !isEditable;
   const restrictedCorrectionMode = !!(status?.status === 'rejected' && requestedCorrectionFields.length);
+  const isResubmissionPending = !!(status?.status === 'rejected' && requestedCorrectionFields.length);
+  const displayStatus = isResubmissionPending ? 'pending' : (status?.status || 'none');
   const canEditField = (field: string) => !formLocked && (!restrictedCorrectionMode || requestedCorrectionFields.includes(field));
   const showReadOnlyDocs = formLocked || (!canEditField('selfie') && !canEditField('degreeCertificates'));
 
@@ -177,13 +180,21 @@ export default function TutorKYC() {
       setIban(app.iban || '');
       setSwift(app.swift || '');
 
-      const countryUpper = String(app.country || '').toUpperCase();
-      if (countryUpper === 'IN') {
-        setCountryCode('IN');
-      } else if (countryUpper === 'AE') {
-        setCountryCode('AE');
+      const appCountryRaw = String(app.country || '').trim();
+      setLastSubmittedCountryRaw(appCountryRaw);
+      const appCountryUpper = appCountryRaw.toUpperCase();
+
+      const matchedByCode = findCountry(appCountryUpper);
+      const matchedByName = countries.find((c) => c.name.toUpperCase() === appCountryUpper);
+
+      if (matchedByCode) {
+        setCountryCode(matchedByCode.code.toUpperCase());
+      } else if (matchedByName) {
+        setCountryCode(matchedByName.code.toUpperCase());
+      } else if (appCountryUpper === 'OTHER' && local?.countryCode) {
+        setCountryCode(local.countryCode.toUpperCase());
       } else if (local?.countryCode) {
-        setCountryCode(local.countryCode);
+        setCountryCode(local.countryCode.toUpperCase());
       }
     };
 
@@ -203,13 +214,14 @@ export default function TutorKYC() {
     if (!status) return null;
     const map: Record<string, string> = {
       none: 'bg-slate-100 text-slate-700',
+      pending: 'bg-amber-100 text-amber-800',
       submitted: 'bg-amber-100 text-amber-800',
       under_review: 'bg-amber-100 text-amber-800',
       approved: 'bg-green-100 text-green-800',
       rejected: 'bg-rose-100 text-rose-800',
     };
-    return <span className={`px-2 py-1 rounded text-xs font-medium ${map[status.status]}`}>{status.status.replace('_',' ')}</span>;
-  }, [status]);
+    return <span className={`px-2 py-1 rounded text-xs font-medium ${map[displayStatus]}`}>{displayStatus.replace('_',' ')}</span>;
+  }, [status, displayStatus]);
 
   // Phone placeholder from selected country dial code
   const phonePlaceholder = useMemo(() => {
@@ -255,12 +267,22 @@ export default function TutorKYC() {
     setSubmitSuccess(null);
     if (!validate()) return;
 
-    // Preserve backend contract: collapse to IN/AE/OTHER for payload
+    // Preserve backend contract for editable country, but keep previous stored value
+    // when country isn't editable (e.g. selfie-only correction requests).
     const kycCountry: 'IN' | 'AE' | 'OTHER' = isIndia ? 'IN' : isUAE ? 'AE' : 'OTHER';
+    const countryForPayload = !canEditField('country') && lastSubmittedCountryRaw
+      ? lastSubmittedCountryRaw
+      : kycCountry;
+    const normalizedCountry = countryForPayload.replace(/\s+/g, '').toUpperCase();
+    const payloadIsIndia = normalizedCountry === 'IN' || normalizedCountry === 'INDIA';
+    const payloadIsUAE =
+      normalizedCountry === 'AE' ||
+      normalizedCountry === 'UAE' ||
+      normalizedCountry === 'UNITEDARABEMIRATES';
 
     const payload: KycPayload = {
       fullName, dob, phone,
-      country: kycCountry,
+      country: countryForPayload,
       addressLine1: address1,
       addressLine2: address2 || undefined,
       city, state: state || undefined, postalCode: postal || undefined,
@@ -269,13 +291,13 @@ export default function TutorKYC() {
       bankName, bankBranch: bankBranch || undefined,
 
       // India
-      accountNumber: isIndia ? onlyDigits(accNumber) : undefined,
-      ifsc: isIndia ? ifsc.toUpperCase() : undefined,
-      upiId: isIndia ? (upi || undefined) : undefined,
+      accountNumber: payloadIsIndia ? onlyDigits(accNumber) : undefined,
+      ifsc: payloadIsIndia ? ifsc.toUpperCase() : undefined,
+      upiId: payloadIsIndia ? (upi || undefined) : undefined,
 
       // UAE
-      iban: isUAE ? iban.replace(/\s+/g,'').toUpperCase() : undefined,
-      swift: isUAE ? (swift ? swift.toUpperCase() : undefined) : undefined,
+      iban: payloadIsUAE ? iban.replace(/\s+/g,'').toUpperCase() : undefined,
+      swift: payloadIsUAE ? (swift ? swift.toUpperCase() : undefined) : undefined,
     };
 
     // No government ID files for any country; DigiLocker handles India.
@@ -344,7 +366,7 @@ export default function TutorKYC() {
 
       <section className="mb-4 rounded-xl border bg-white p-4 shadow-sm flex items-center justify-between">
         <div className="text-sm text-slate-700">
-          <div className="font-semibold">Current status: {status?.status || 'none'}</div>
+          <div className="font-semibold">Current status: {displayStatus}</div>
           {status?.reason && <div className="text-rose-700">Reason: {status.reason}</div>}
           {restrictedCorrectionMode && (
             <div className="text-amber-700 mt-1">
@@ -380,7 +402,7 @@ export default function TutorKYC() {
             );
           })}
         </div>
-        <p className="text-xs text-slate-500 mt-2">Next step: {status?.status === 'submitted' ? 'Under review (ETA 12–24h)' : status?.status === 'under_review' ? 'Approval (ETA soon)' : status?.status === 'approved' ? 'Completed' : 'Submit your details to begin review.'}</p>
+        <p className="text-xs text-slate-500 mt-2">Next step: {displayStatus === 'pending' ? 'Pending your resubmission for requested fields.' : displayStatus === 'submitted' ? 'Under review (ETA 12–24h)' : displayStatus === 'under_review' ? 'Approval (ETA soon)' : displayStatus === 'approved' ? 'Completed' : 'Submit your details to begin review.'}</p>
       </section>
 
       {submitError && (

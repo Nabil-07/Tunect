@@ -383,11 +383,11 @@ export async function getAvailability(range?: {
 /**
  * Create a single availability slot
  */
-export async function createSlot(startTime: string, endTime: string): Promise<AvailabilitySlot> {
+export async function createSlot(startTime: string, endTime: string, title?: string): Promise<AvailabilitySlot> {
   const tzOffsetMinutes = new Date().getTimezoneOffset();
-  const { data } = await api.post<{ id: string; tutorId: string; startTime: string; endTime: string; createdAt: string }>(
+  const { data } = await api.post<{ id: string; tutorId: string; startTime: string; endTime: string; title?: string; createdAt: string }>(
     '/availability/me',
-    { startTime, endTime, tzOffsetMinutes }
+    { startTime, endTime, title, tzOffsetMinutes }
   );
   
   // Convert ISO timestamps to date/startTime/endTime format
@@ -402,19 +402,21 @@ export async function createSlot(startTime: string, endTime: string): Promise<Av
     day: date,
     startTime: hhmm(start),
     endTime: hhmm(end),
+    title: data.title,
   };
 }
 
 /**
  * Update a single availability slot by ID
  */
-export async function updateSlot(slotId: string, startTime?: string, endTime?: string): Promise<AvailabilitySlot> {
+export async function updateSlot(slotId: string, startTime?: string, endTime?: string, title?: string): Promise<AvailabilitySlot> {
   const body: any = {};
   if (startTime) body.startTime = startTime;
   if (endTime) body.endTime = endTime;
+  if (title !== undefined) body.title = title;
   body.tzOffsetMinutes = new Date().getTimezoneOffset();
   
-  const { data } = await api.patch<{ id: string; tutorId: string; startTime: string; endTime: string; createdAt: string }>(
+  const { data } = await api.patch<{ id: string; tutorId: string; startTime: string; endTime: string; title?: string; createdAt: string }>(
     `/availability/me/${slotId}`,
     body
   );
@@ -431,6 +433,7 @@ export async function updateSlot(slotId: string, startTime?: string, endTime?: s
     day: date,
     startTime: hhmm(start),
     endTime: hhmm(end),
+    title: data.title,
   };
 }
 
@@ -620,7 +623,7 @@ export type KycPayload = {
   fullName: string;
   dob: string; // YYYY-MM-DD
   phone: string;
-  country: 'IN' | 'AE' | 'OTHER';
+  country: string;
   addressLine1: string;
   addressLine2?: string;
   city: string;
@@ -696,6 +699,8 @@ const KYC_SUBMIT_TIMEOUT_MS = (() => {
   const parsed = Number(import.meta.env.VITE_KYC_SUBMIT_TIMEOUT_MS);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 120_000;
 })();
+
+const KYC_USE_PRESIGNED_UPLOADS = String(import.meta.env.VITE_KYC_USE_PRESIGNED_UPLOADS || '').trim().toLowerCase() === 'true';
 
 const KYC_MAX_FILE_BYTES = 8 * 1024 * 1024;
 const KYC_ALLOWED_MIMES = new Set([
@@ -794,32 +799,34 @@ export async function submitKyc(payload: KycPayload, files: KycFiles) {
   const entries = collectKycUploadEntries(files);
   validateKycFiles(entries);
 
-  try {
-    const uploadedDocs = await uploadKycDocsWithPresign(entries);
-    await api.post(
-      '/kyc/submit',
-      {
-        ...payload,
-        uploadedDocs,
-      },
-      {
-        timeout: KYC_SUBMIT_TIMEOUT_MS,
-      },
-    );
-    return;
-  } catch (err: any) {
-    const requestUrl = String(err?.config?.url || '');
-    const responseStatus = Number(err?.response?.status || 0);
-    const message = String(err?.message || '').toLowerCase();
-    const isPresignOrStorageTransportFailure =
-      requestUrl.includes('/uploads/presign') ||
-      message.includes('failed to fetch') ||
-      message.includes('network') ||
-      message.includes('load failed');
-    const isServerSideUploadLimit = responseStatus === 413 || responseStatus === 408 || responseStatus >= 500;
+  if (KYC_USE_PRESIGNED_UPLOADS) {
+    try {
+      const uploadedDocs = await uploadKycDocsWithPresign(entries);
+      await api.post(
+        '/kyc/submit',
+        {
+          ...payload,
+          uploadedDocs,
+        },
+        {
+          timeout: KYC_SUBMIT_TIMEOUT_MS,
+        },
+      );
+      return;
+    } catch (err: any) {
+      const requestUrl = String(err?.config?.url || '');
+      const responseStatus = Number(err?.response?.status || 0);
+      const message = String(err?.message || '').toLowerCase();
+      const isPresignOrStorageTransportFailure =
+        requestUrl.includes('/uploads/presign') ||
+        message.includes('failed to fetch') ||
+        message.includes('network') ||
+        message.includes('load failed');
+      const isServerSideUploadLimit = responseStatus === 413 || responseStatus === 408 || responseStatus >= 500;
 
-    if (!isPresignOrStorageTransportFailure && !isServerSideUploadLimit) {
-      throw err;
+      if (!isPresignOrStorageTransportFailure && !isServerSideUploadLimit) {
+        throw err;
+      }
     }
   }
 

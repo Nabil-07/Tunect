@@ -9,12 +9,15 @@ type AvailabilitySlot = {
   id?: string;
   startTime: string; // ISO
   endTime: string;   // ISO
+  subject?: string;
+  title?: string;
 };
 
 export default function SlotPicker({
   open,
   bookingId,
   tutorId,
+  isDemo = false,
   tz,
   days = 14,
   onClose,
@@ -23,6 +26,7 @@ export default function SlotPicker({
   readonly open: boolean;
   readonly bookingId: string;
   readonly tutorId: string;
+  readonly isDemo?: boolean;
   readonly tz?: string;          // optional IANA timezone header passthrough
   readonly days?: number;        // how many days ahead to fetch (default 14)
   readonly onClose: () => void;
@@ -57,8 +61,9 @@ export default function SlotPicker({
       const from = new Date();
       const to = new Date();
       to.setDate(to.getDate() + Math.max(1, days));
+      const durationMin = isDemo ? 30 : 60;
 
-      const params = { from: from.toISOString(), to: to.toISOString(), durationMin: 60, stepMin: 15 } as const;
+      const params = { from: from.toISOString(), to: to.toISOString(), durationMin, stepMin: 15, _t: Date.now() } as const;
       const normalizeSlices = (data: any) => {
         if (Array.isArray(data?.slices)) return data.slices;
         if (Array.isArray(data)) return data;
@@ -93,7 +98,20 @@ export default function SlotPicker({
         const end = new Date(s.endTime).getTime();
         return Number.isFinite(start) && Number.isFinite(end) && end > start;
       });
-      setSlots(filtered);
+      const unique = new Map<string, AvailabilitySlot>();
+      filtered.forEach((slot: any) => {
+        const key = `${slot.startTime}::${slot.endTime}`;
+        if (!unique.has(key)) {
+          unique.set(key, {
+            id: slot.id,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            subject: slot.subject || slot.title,
+            title: slot.title,
+          });
+        }
+      });
+      setSlots(Array.from(unique.values()));
       
       // Create a set of booked time ranges for quick lookup
       const booked = new Set<string>();
@@ -111,7 +129,7 @@ export default function SlotPicker({
     } finally {
       setLoading(false);
     }
-  }, [open, tutorId, days, tz]);
+  }, [open, tutorId, isDemo, days, tz]);
 
   // initial + whenever reopened
   useEffect(() => {
@@ -236,14 +254,21 @@ export default function SlotPicker({
               <button
                 key={key}
                 onClick={() => setSelectedKey(key)}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2 text-sm transition ${
                   active
                     ? 'border-ocean-600 bg-ocean-50 text-ocean-900'
                     : 'border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                <Clock className="h-4 w-4 text-slate-500" />
-                <span>{label}</span>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-slate-500" />
+                  <span>{label}</span>
+                </div>
+                {(s.subject || s.title) && (
+                  <span className="text-xs text-slate-600">
+                    Subject: {s.subject || s.title}
+                  </span>
+                )}
               </button>
             );
           })}

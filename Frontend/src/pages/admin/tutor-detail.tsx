@@ -457,13 +457,26 @@ export default function TutorDetailPage() {
       {/* KYC Documents */}
       {tutor.kycDocs.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-900 mb-4">KYC Documents</h2>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-xl font-bold text-slate-900">KYC Documents</h2>
+            <Link
+              to={`/admin/kyc-verification?tutorId=${encodeURIComponent(tutor.id)}`}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Open full KYC review
+            </Link>
+          </div>
           <div className="space-y-2">
             {tutor.kycDocs.map((doc) => (
               <div key={doc.id} className="border rounded-lg p-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="font-semibold">{doc.docType}</p>
+                    <Link
+                      to={`/admin/kyc-verification?tutorId=${encodeURIComponent(tutor.id)}&docId=${encodeURIComponent(doc.id)}`}
+                      className="font-semibold text-blue-700 hover:underline"
+                    >
+                      {doc.docType}
+                    </Link>
                     <p className="text-sm text-slate-600">
                       Status: {doc.status}
                     </p>
@@ -474,14 +487,22 @@ export default function TutorDetailPage() {
                       {new Date(doc.createdAt).toLocaleDateString()}
                     </p>
                   </div>
-                  <a
-                    href={doc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline text-sm"
-                  >
-                    View Document
-                  </a>
+                  <div className="flex flex-col items-end gap-1 text-sm">
+                    <Link
+                      to={`/admin/kyc-verification?tutorId=${encodeURIComponent(tutor.id)}&docId=${encodeURIComponent(doc.id)}`}
+                      className="text-blue-700 hover:underline"
+                    >
+                      Review in KYC panel
+                    </Link>
+                    <a
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      View Document
+                    </a>
+                  </div>
                 </div>
               </div>
             ))}

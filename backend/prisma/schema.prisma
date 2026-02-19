@@ -1137,6 +1137,8 @@ model WhiteboardSession {
   bookingId String   @unique
   data      Json?
   s3Url     String?
+  noteName  String?
+  sharedAt  DateTime?
   endedAt   DateTime?
   createdAt DateTime @default(now())
   updatedAt               DateTime                  @default(now()) @updatedAt

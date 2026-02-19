@@ -7,6 +7,7 @@ import {
   type AppState,
   type ExcalidrawImperativeAPI,
 } from '@excalidraw/excalidraw';
+import '@excalidraw/excalidraw/index.css';
 import { readToken } from '../../lib/apiClient';
 
 interface WhiteboardProps {
@@ -163,7 +164,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
   }
 
   return (
-    <div className={className || "min-h-screen w-full bg-slate-50"}>
+    <div
+      className={className || "min-h-screen w-full bg-slate-50"}
+      style={{ position: "relative", width: "100%", height: "100%" }}
+    >
       <Excalidraw
         ref={(api: ExcalidrawImperativeAPI | null) => setExcalidrawAPI(api)}
         onChange={handleChange}

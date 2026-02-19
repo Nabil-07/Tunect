@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ControlBar,
@@ -12,6 +12,7 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, type Participant, DisconnectReason } from "livekit-client";
+import { Clock, FileText, PanelRightOpen, Users, PenTool, X } from "lucide-react";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
 import { useToast } from "../../contexts/ToastContext";
 import { getTokenPayload } from "../../lib/apiClient";
@@ -19,6 +20,7 @@ import { fetchLivekitToken } from "../../services/livekit";
 import { getBookingPerspective } from "../../utils/bookingPerspective";
 import { useAuth } from "../../contexts/AuthContext";
 import Whiteboard from "../../components/Whiteboard/Whiteboard";
+import { whiteboardService } from "../../services/whiteboardService";
 import "@livekit/components-styles";
 
 function ParticipantList() {
@@ -50,15 +52,15 @@ function LivekitStage() {
   );
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full flex-col gap-2 sm:gap-4 overflow-hidden">
       {screenTracks.length > 0 && (
-        <div className="flex-1 min-h-[240px] rounded-2xl border bg-white p-2">
+        <div className="flex-1 min-h-0 max-h-[50%] rounded-xl sm:rounded-2xl border bg-white p-1 sm:p-2 overflow-hidden">
           <TrackLoop tracks={screenTracks}>
             <ParticipantTile />
           </TrackLoop>
         </div>
       )}
-      <div className="flex-1 min-h-[320px] rounded-2xl border bg-white p-2">
+      <div className="flex-1 min-h-0 rounded-xl sm:rounded-2xl border bg-white p-1 sm:p-2 overflow-hidden">
         <GridLayout tracks={cameraTracks}>
           <ParticipantTile />
         </GridLayout>
@@ -68,11 +70,23 @@ function LivekitStage() {
   );
 }
 
-function CallRoomContent({ bookingId }: { bookingId: string }) {
+function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate }: {
+  bookingId: string;
+  endTime?: string | null;
+  isTutor?: boolean;
+  counterpartName?: string;
+  classDate?: string;
+}) {
   const participants = useParticipants() as Participant[];
   const room = useRoomContext();
+  const navigate = useNavigate();
   const [callStartedAt, setCallStartedAt] = useState<Date | null>(null);
   const [sideTab, setSideTab] = useState<"participants" | "whiteboard">("participants");
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
+  const [isOvertime, setIsOvertime] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
+  const { showError: showToastError, showSuccess: showToastSuccess } = useToast();
 
   const hasBothJoined = participants.length >= 2;
 
@@ -82,64 +96,208 @@ function CallRoomContent({ bookingId }: { bookingId: string }) {
     }
   }, [callStartedAt, hasBothJoined]);
 
+  // Class end timer
   useEffect(() => {
-    if (!callStartedAt) return;
+    if (!endTime) return;
+    const end = new Date(endTime).getTime();
+    const tick = () => {
+      const now = Date.now();
+      const diff = end - now;
+      if (diff <= 0) {
+        setTimeLeft("00:00");
+        setIsOvertime(true);
+        return;
+      }
+      setIsOvertime(false);
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      setTimeLeft(`${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`);
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [endTime]);
+
+  // Auto-disconnect 5 min after end time
+  useEffect(() => {
+    if (!endTime) return;
+    const end = new Date(endTime).getTime();
+    const gracePeriod = 5 * 60 * 1000; // 5 min grace
+    const disconnectAt = end + gracePeriod - Date.now();
+    if (disconnectAt <= 0) {
+      room.disconnect();
+      return;
+    }
     const timer = globalThis.setTimeout(() => {
       room.disconnect();
-    }, 60 * 60 * 1000);
+    }, disconnectAt);
     return () => globalThis.clearTimeout(timer);
-  }, [callStartedAt, room]);
+  }, [endTime, room]);
+
+  // Save whiteboard as notes
+  const handleSaveWhiteboardNotes = useCallback(async () => {
+    try {
+      setSavingNotes(true);
+      // Fetch current whiteboard data
+      const wbData = await whiteboardService.getWhiteboardData(bookingId);
+      if (!wbData || (!wbData.elements?.length)) {
+        showToastError("Whiteboard is empty — nothing to save.");
+        return;
+      }
+      // Format the date for the filename
+      const dateStr = classDate
+        ? new Date(classDate).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-")
+        : new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-");
+      const noteName = `ClassWhiteBoardNotes-${counterpartName || "Participant"}_${dateStr}`;
+
+      // Export to S3 and save as session note
+      await whiteboardService.saveWhiteboardNotes(bookingId, noteName, wbData);
+      setNotesSaved(true);
+      showToastSuccess("Whiteboard notes saved and shared!");
+    } catch (err: any) {
+      console.error("Failed to save whiteboard notes:", err);
+      showToastError(err?.response?.data?.message || "Failed to save whiteboard notes");
+    } finally {
+      setSavingNotes(false);
+    }
+  }, [bookingId, counterpartName, classDate, showToastError, showToastSuccess]);
+
+  const isWhiteboardActive = sideTab === "whiteboard";
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
 
   return (
-    <div className="flex h-[calc(100vh-56px)] flex-col gap-4 p-4">
-      <div className="grid flex-1 min-h-0 grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="relative min-h-0">
+    <div className="flex h-[calc(100dvh-44px)] sm:h-[calc(100dvh-52px)] flex-col p-2 sm:p-4 gap-2 sm:gap-4 overflow-hidden">
+      {/* ── Timer bar ── */}
+      {timeLeft !== null && (
+        <div className={`shrink-0 flex items-center justify-center gap-2 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold shadow-sm ${
+          isOvertime
+            ? "bg-red-100 text-red-700 border border-red-300"
+            : timeLeft <= "05:00"
+              ? "bg-amber-100 text-amber-800 border border-amber-300"
+              : "bg-slate-100 text-slate-700 border border-slate-200"
+        }`}>
+          <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          {isOvertime ? "Time ended — wrap up" : `Time remaining: ${timeLeft}`}
+        </div>
+      )}
+
+      <div className="flex-1 min-h-0 relative grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-2 sm:gap-4">
+        {/* ── Main area ── */}
+        <div className="relative min-h-0 h-full overflow-hidden">
           {!hasBothJoined && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 text-sm text-slate-700">
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 text-sm text-slate-700 px-4 text-center">
               Waiting room: the class will start when both participants join.
             </div>
           )}
-          <LivekitStage />
+
+          {isWhiteboardActive ? (
+            <div className="absolute inset-0 rounded-2xl border bg-white overflow-hidden">
+              <Whiteboard bookingId={bookingId} className="w-full h-full" />
+            </div>
+          ) : (
+            <LivekitStage />
+          )}
         </div>
-        <div className="rounded-2xl border bg-white p-4 flex flex-col min-h-0">
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+
+        {/* ── Mobile toggle button (visible only on small screens) ── */}
+        <button
+          type="button"
+          onClick={() => setSidePanelOpen(!sidePanelOpen)}
+          className="lg:hidden fixed bottom-20 right-3 z-40 flex items-center justify-center h-12 w-12 rounded-full bg-slate-900 text-white shadow-lg active:scale-95 transition-transform"
+          aria-label={sidePanelOpen ? "Close panel" : "Open panel"}
+        >
+          {sidePanelOpen ? <X className="h-5 w-5" /> : <PanelRightOpen className="h-5 w-5" />}
+        </button>
+
+        {/* ── Side panel backdrop (mobile only) ── */}
+        {sidePanelOpen && (
+          <button
+            type="button"
+            aria-label="Close panel"
+            className="lg:hidden fixed inset-0 z-30 bg-black/40 backdrop-blur-sm border-0 cursor-default"
+            onClick={() => setSidePanelOpen(false)}
+          />
+        )}
+
+        {/* ── Side panel ── */}
+        <div className={`
+          /* Mobile: slide-over drawer from right */
+          fixed inset-y-0 right-0 z-30 w-[85vw] max-w-[340px] transition-transform duration-300 ease-in-out
+          ${sidePanelOpen ? "translate-x-0" : "translate-x-full"}
+          /* Desktop: static in grid */
+          lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:transition-none
+          rounded-l-2xl lg:rounded-2xl border bg-white p-4 flex flex-col min-h-0 overflow-hidden shadow-xl lg:shadow-none
+        `}>
+          {/* Mobile panel header */}
+          <div className="lg:hidden flex items-center justify-between mb-3 pb-2 border-b shrink-0">
+            <span className="text-sm font-bold text-slate-900">Panel</span>
+            <button
+              type="button"
+              onClick={() => setSidePanelOpen(false)}
+              className="rounded-lg p-1.5 hover:bg-slate-100"
+            >
+              <X className="h-4 w-4 text-slate-500" />
+            </button>
+          </div>
+
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900 shrink-0">
             <button
               type="button"
               onClick={() => setSideTab("participants")}
-              className={
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 sm:py-1 transition-colors ${
                 sideTab === "participants"
-                  ? "rounded-lg bg-slate-900 px-3 py-1 text-white"
-                  : "rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100"
-              }
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
             >
+              <Users className="h-3.5 w-3.5" />
               Participants
             </button>
             <button
               type="button"
               onClick={() => setSideTab("whiteboard")}
-              className={
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 sm:py-1 transition-colors ${
                 sideTab === "whiteboard"
-                  ? "rounded-lg bg-slate-900 px-3 py-1 text-white"
-                  : "rounded-lg px-3 py-1 text-slate-600 hover:bg-slate-100"
-              }
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
             >
+              <PenTool className="h-3.5 w-3.5" />
               Whiteboard
             </button>
           </div>
-          <div className="flex-1 min-h-0">
-            {sideTab === "participants" ? (
-              <ParticipantList />
-            ) : (
-              <div className="h-full rounded-xl border">
-                <Whiteboard bookingId={bookingId} className="h-full min-h-[360px]" />
+          <div className="flex-1 min-h-0 overflow-auto">
+            {isWhiteboardActive ? (
+              /* Video + participants in sidebar when whiteboard is main */
+              <div className="flex flex-col gap-3">
+                <div className="h-[180px] sm:h-[200px] rounded-lg overflow-hidden border">
+                  <LivekitStage />
+                </div>
+                <ParticipantList />
               </div>
+            ) : (
+              <ParticipantList />
             )}
           </div>
         </div>
       </div>
+
+      {/* ── Bottom control bar ── */}
       {hasBothJoined ? (
-        <div className="sticky bottom-0 z-20 rounded-2xl border bg-white/95 p-2 shadow-sm backdrop-blur">
-          <ControlBar />
+        <div className="shrink-0 flex items-center justify-between rounded-2xl border bg-white/95 px-2 py-1.5 sm:p-2 shadow-sm backdrop-blur gap-2 overflow-x-auto">
+          <div className="flex-1 min-w-0 [&_.lk-control-bar]:flex [&_.lk-control-bar]:gap-1 [&_.lk-control-bar]:flex-wrap [&_.lk-button]:!px-2 [&_.lk-button]:!py-1.5 [&_.lk-button]:!text-xs sm:[&_.lk-button]:!px-3 sm:[&_.lk-button]:!py-2 sm:[&_.lk-button]:!text-sm">
+            <ControlBar />
+          </div>
+          {isTutor && (
+            <button
+              type="button"
+              disabled={savingNotes || notesSaved}
+              onClick={handleSaveWhiteboardNotes}
+              className="shrink-0 rounded-lg bg-emerald-600 px-2 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 whitespace-nowrap"
+            >
+              {notesSaved ? "✓ Shared" : savingNotes ? "Saving…" : "Share Notes"}
+            </button>
+          )}
         </div>
       ) : null}
     </div>
@@ -156,6 +314,8 @@ export default function CallPage() {
   const [token, setToken] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
+  const [isTutor, setIsTutor] = useState(false);
+  const [counterpartName, setCounterpartName] = useState("");
 
   // Use auth context user which has student/tutor profile IDs
   // Fallback to JWT payload if auth context not available
@@ -220,6 +380,8 @@ export default function CallPage() {
         self: { id: data.studentId, name: data.student?.name || "Student", email: data.student?.email },
         other: { id: data.tutorId, name: data.tutor?.name || "Tutor", email: data.tutor?.email },
       };
+      setIsTutor(false);
+      setCounterpartName(data.tutor?.name || "Tutor");
     } else if (tutorId && data.tutorId === tutorId) {
       // User is the tutor
       perspective = {
@@ -228,9 +390,15 @@ export default function CallPage() {
         self: { id: data.tutorId, name: data.tutor?.name || "Tutor", email: data.tutor?.email },
         other: { id: data.studentId, name: data.student?.name || "Student", email: data.student?.email },
       };
+      setIsTutor(true);
+      setCounterpartName(data.student?.name || "Student");
     } else {
       // Fallback to original function (handles encrypted emails)
       perspective = getBookingPerspective({ id: me.id, email: me.email, name: me.name }, data);
+      if (perspective) {
+        setIsTutor(!!perspective.isTutor);
+        setCounterpartName(perspective.other?.name || "Participant");
+      }
     }
     
     if (!perspective) {
@@ -333,10 +501,10 @@ export default function CallPage() {
 
   return (
     <div className="h-screen bg-slate-50">
-      <div className="flex items-center justify-between border-b bg-white px-4 py-3">
-        <div className="font-semibold text-slate-900">Live class</div>
+      <div className="flex items-center justify-between border-b bg-white px-3 sm:px-4 py-2.5 sm:py-3">
+        <div className="font-semibold text-sm sm:text-base text-slate-900">Live class</div>
         <button
-          className="rounded-lg border px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          className="rounded-lg border px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-slate-700 hover:bg-slate-50"
           onClick={() => navigate(`/class/${bookingId}`)}
         >
           Leave
@@ -344,7 +512,30 @@ export default function CallPage() {
       </div>
 
       {disconnected ? (
-        <div className="p-6 text-slate-700">Call ended.</div>
+        <div className="max-w-lg mx-auto mt-8 sm:mt-16 rounded-2xl border bg-white p-6 sm:p-8 shadow-sm text-center space-y-4 mx-3 sm:mx-auto">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+            <svg className="h-7 w-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Class Ended</h2>
+          <p className="text-sm text-slate-600">Your live class session has ended.</p>
+          <div className="flex flex-col gap-3 pt-2">
+            {isTutor && data && (
+              <button
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
+                onClick={() => navigate(`/tutor/performance-tracking?bookingId=${bookingId}&studentId=${data.studentId}`)}
+              >
+                <FileText className="h-5 w-5" />
+                Create Performance Report
+              </button>
+            )}
+            <button
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              onClick={() => navigate(`/class/${bookingId}`)}
+            >
+              Back to Class Details
+            </button>
+          </div>
+        </div>
       ) : (
         <LiveKitRoom
           token={token!}
@@ -370,7 +561,13 @@ export default function CallPage() {
           }}
           className="h-full"
         >
-          <CallRoomContent bookingId={bookingId} />
+          <CallRoomContent
+            bookingId={bookingId}
+            endTime={data?.endTime}
+            isTutor={isTutor}
+            counterpartName={counterpartName}
+            classDate={data?.startTime || undefined}
+          />
         </LiveKitRoom>
       )}
     </div>

@@ -229,11 +229,25 @@ export class AvailabilityService {
     // align start to grid
     const stepMs = stepMin * 60_000;
     const durMs = durationMin * 60_000;
+    const yielded = new Set<number>();
+
+    // Always include exact window start when it can fit a full duration.
+    // This prevents losing valid slots like 02:25-03:25 when step=15 and duration=60.
+    if (start.getTime() + durMs <= end.getTime()) {
+      const exactEnd = new Date(start.getTime() + durMs);
+      yielded.add(start.getTime());
+      yield [new Date(start), exactEnd];
+    }
+
     let t = new Date(Math.ceil(start.getTime() / stepMs) * stepMs);
 
     while (t.getTime() + durMs <= end.getTime()) {
-      const sliceEnd = new Date(t.getTime() + durMs);
-      yield [new Date(t), sliceEnd];
+      const tMs = t.getTime();
+      if (!yielded.has(tMs)) {
+        const sliceEnd = new Date(tMs + durMs);
+        yielded.add(tMs);
+        yield [new Date(tMs), sliceEnd];
+      }
       t = new Date(t.getTime() + stepMs);
     }
   }
@@ -291,8 +305,8 @@ export class AvailabilityService {
     await this.ensureNoBookingOverlap(tutor.id, start, end);
 
     const slot = await this.prisma.availabilitySlot.create({
-      data: { tutorId: tutor.id, startTime: start, endTime: end },
-      select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
+      data: { tutorId: tutor.id, startTime: start, endTime: end, title: dto.title?.trim() || null },
+      select: { id: true, tutorId: true, startTime: true, endTime: true, title: true, createdAt: true },
     });
 
     // Notify waiting students about new availability
@@ -311,7 +325,7 @@ export class AvailabilityService {
     return this.prisma.availabilitySlot.findMany({
       where: { tutorId: tutor.id },
       orderBy: { startTime: 'asc' },
-      select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
+      select: { id: true, tutorId: true, startTime: true, endTime: true, title: true, createdAt: true },
     });
   }
 
@@ -326,7 +340,7 @@ export class AvailabilityService {
     return this.prisma.availabilitySlot.findMany({
       where,
       orderBy: { startTime: 'asc' },
-      select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
+      select: { id: true, tutorId: true, startTime: true, endTime: true, title: true, createdAt: true },
     });
   }
 
@@ -349,8 +363,12 @@ export class AvailabilityService {
 
     const updated = await this.prisma.availabilitySlot.update({
       where: { id: slotId },
-      data: { startTime: start, endTime: end },
-      select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
+      data: {
+        startTime: start,
+        endTime: end,
+        ...(dto.title === undefined ? {} : { title: dto.title?.trim() || null }),
+      },
+      select: { id: true, tutorId: true, startTime: true, endTime: true, title: true, createdAt: true },
     });
 
     this.trackingService.updateTutorAvailabilityMetrics(tutor.id).catch(err => {
@@ -539,7 +557,7 @@ export class AvailabilityService {
     const slots = await this.prisma.availabilitySlot.findMany({
       where: { tutorId: resolvedTutorId },
       orderBy: { startTime: 'asc' },
-      select: { id: true, tutorId: true, startTime: true, endTime: true, createdAt: true },
+      select: { id: true, tutorId: true, startTime: true, endTime: true, title: true, createdAt: true },
     });
 
     // Get all confirmed/pending bookings for this tutor
@@ -630,7 +648,7 @@ export class AvailabilityService {
           AND: [{ startTime: { lt: windowEnd } }, { endTime: { gt: windowStart } }],
         },
         orderBy: { startTime: 'asc' },
-        select: { startTime: true, endTime: true },
+        select: { id: true, startTime: true, endTime: true, title: true, createdAt: true },
       }),
       this.prisma.booking.findMany({
         where: {
@@ -643,9 +661,32 @@ export class AvailabilityService {
       }),
     ]);
 
+    const overlapsAny = (
+      start: Date,
+      end: Date,
+      intervals: Array<{ startTime: Date; endTime: Date }>,
+    ) => intervals.some((existing) => existing.endTime > start && existing.startTime < end);
+
+    // Keep latest explicit slot when overlapping historical/stale records exist.
+    const explicitKept: Array<{ startTime: Date; endTime: Date; subject?: string }> = [];
+    const slotsByRecency = [...slots].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    for (const slot of slotsByRecency) {
+      if (overlapsAny(slot.startTime, slot.endTime, explicitKept)) continue;
+      explicitKept.push({
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        subject: slot.title || undefined,
+      });
+    }
+
+    // Add template slots only when they don't overlap explicit slots.
     const templateSlots = await this.buildTemplateSlots(resolvedTutorId, windowStart, windowEnd);
+    const templateKept = templateSlots
+      .filter((slot) => !overlapsAny(slot.startTime, slot.endTime, explicitKept))
+      .map((slot) => ({ ...slot, subject: undefined as string | undefined }));
+
     const dedupe = new Set<string>();
-    const mergedSlots = [...slots, ...templateSlots]
+    const mergedSlots = [...explicitKept, ...templateKept]
       .filter((s) => {
         const key = `${s.startTime.toISOString()}::${s.endTime.toISOString()}`;
         if (dedupe.has(key)) return false;
@@ -663,7 +704,7 @@ export class AvailabilityService {
     }
 
     const freeWindows: Array<{ startTime: string; endTime: string }> = [];
-    const slices: Array<{ startTime: string; endTime: string }> = [];
+    const slices: Array<{ startTime: string; endTime: string; subject?: string }> = [];
 
     for (const s of mergedSlots) {
       const clamped = this.clampInterval(s.startTime, s.endTime, windowStart, windowEnd);
@@ -674,9 +715,15 @@ export class AvailabilityService {
         freeWindows.push({ startTime: fp[0].toISOString(), endTime: fp[1].toISOString() });
 
         for (const [ss, ee] of this.generateSlices(fp, durationMin, stepMin)) {
-          slices.push({ startTime: ss.toISOString(), endTime: ee.toISOString() });
+          slices.push({ startTime: ss.toISOString(), endTime: ee.toISOString(), subject: s.subject });
         }
       }
+    }
+
+    const uniqueSlices = new Map<string, { startTime: string; endTime: string; subject?: string }>();
+    for (const slice of slices) {
+      const key = `${slice.startTime}::${slice.endTime}`;
+      if (!uniqueSlices.has(key)) uniqueSlices.set(key, slice);
     }
 
     return {
@@ -689,10 +736,10 @@ export class AvailabilityService {
         slots: slots.length,
         bookings: bookings.length,
         freeWindowCount: freeWindows.length,
-        sliceCount: slices.length,
+        sliceCount: uniqueSlices.size,
       },
       freeWindows,
-      slices,
+      slices: Array.from(uniqueSlices.values()),
     };
   }
 }

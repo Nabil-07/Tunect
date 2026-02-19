@@ -330,6 +330,9 @@ function App() {
         {/* Role Chooser */}
         <Route path="/choose-role" element={<ProtectedRoute><ChooseRole /></ProtectedRoute>} />
 
+        {/* Call page - full screen, no layout chrome */}
+        <Route path="/call/:bookingId" element={<ProtectedRoute><CallPage /></ProtectedRoute>} />
+
         {/* Shared class join routes */}
         <Route
           element={
@@ -339,7 +342,6 @@ function App() {
           }
         >
           <Route path="/class/:bookingId" element={<ClassPage />} />
-          <Route path="/call/:bookingId" element={<CallPage />} />
           <Route path="/whiteboard/:bookingId" element={<WhiteboardPage />} />
           <Route path="/account/security" element={<AccountSecurity />} />
         </Route>
