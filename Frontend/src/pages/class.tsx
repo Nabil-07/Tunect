@@ -5,7 +5,7 @@ import { getBookingDetails, type BookingDetailsDto } from "../services/bookingsS
 import { whiteboardService } from "../services/whiteboardService";
 import { useToast } from "../contexts/ToastContext";
 import { loadUser } from "../utils/authStorage";
-import { exportToBlob } from "@excalidraw/excalidraw";
+import { exportToBlob } from "@excalidraw/utils";
 import { jsPDF } from "jspdf";
 
 export default function ClassPage() {
