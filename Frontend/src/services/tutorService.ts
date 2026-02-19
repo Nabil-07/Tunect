@@ -697,7 +697,132 @@ const KYC_SUBMIT_TIMEOUT_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 120_000;
 })();
 
+const KYC_MAX_FILE_BYTES = 8 * 1024 * 1024;
+const KYC_ALLOWED_MIMES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+
+type KycDocUploadEntry = {
+  docType: string;
+  file: File;
+};
+
+function inferMimeType(file: File): string {
+  const provided = String(file.type || '').trim().toLowerCase();
+  if (provided) return provided;
+
+  const name = String(file.name || '').toLowerCase();
+  if (name.endsWith('.pdf')) return 'application/pdf';
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  return '';
+}
+
+function collectKycUploadEntries(files: KycFiles): KycDocUploadEntry[] {
+  const out: KycDocUploadEntry[] = [];
+
+  if (files.selfie) out.push({ docType: 'selfie', file: files.selfie });
+  if (files.aadhaarFront) out.push({ docType: 'aadhaarFront', file: files.aadhaarFront });
+  if (files.aadhaarBack) out.push({ docType: 'aadhaarBack', file: files.aadhaarBack });
+
+  for (const cert of files.degreeCertificates || []) {
+    out.push({ docType: 'degreeCertificates', file: cert });
+  }
+
+  return out;
+}
+
+function validateKycFiles(entries: KycDocUploadEntry[]) {
+  for (const entry of entries) {
+    const mimeType = inferMimeType(entry.file);
+    if (!KYC_ALLOWED_MIMES.has(mimeType)) {
+      throw new Error('Only PDF, JPG, PNG, and WEBP files are allowed for KYC.');
+    }
+    if (entry.file.size > KYC_MAX_FILE_BYTES) {
+      throw new Error('Each KYC file must be 8MB or smaller.');
+    }
+  }
+}
+
+async function uploadKycDocsWithPresign(entries: KycDocUploadEntry[]) {
+  const uploadedDocs: Array<{ docType: string; key: string }> = [];
+
+  for (const entry of entries) {
+    const mimeType = inferMimeType(entry.file);
+    const presign = await api.post<{ key: string; uploadUrl: string }>(
+      '/uploads/presign',
+      {
+        useCase: 'kyc',
+        docType: entry.docType,
+        mimeType,
+        size: entry.file.size,
+      },
+      {
+        timeout: KYC_SUBMIT_TIMEOUT_MS,
+      },
+    );
+
+    const key = String(presign?.data?.key || '').trim();
+    const uploadUrl = String(presign?.data?.uploadUrl || '').trim();
+    if (!key || !uploadUrl) {
+      throw new Error('Invalid upload URL received for KYC file.');
+    }
+
+    const putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': mimeType,
+      },
+      body: entry.file,
+    });
+
+    if (!putRes.ok) {
+      throw new Error(`Failed to upload KYC file to storage (HTTP ${putRes.status}).`);
+    }
+
+    uploadedDocs.push({ docType: entry.docType, key });
+  }
+
+  return uploadedDocs;
+}
+
 export async function submitKyc(payload: KycPayload, files: KycFiles) {
+  const entries = collectKycUploadEntries(files);
+  validateKycFiles(entries);
+
+  try {
+    const uploadedDocs = await uploadKycDocsWithPresign(entries);
+    await api.post(
+      '/kyc/submit',
+      {
+        ...payload,
+        uploadedDocs,
+      },
+      {
+        timeout: KYC_SUBMIT_TIMEOUT_MS,
+      },
+    );
+    return;
+  } catch (err: any) {
+    const requestUrl = String(err?.config?.url || '');
+    const responseStatus = Number(err?.response?.status || 0);
+    const message = String(err?.message || '').toLowerCase();
+    const isPresignOrStorageTransportFailure =
+      requestUrl.includes('/uploads/presign') ||
+      message.includes('failed to fetch') ||
+      message.includes('network') ||
+      message.includes('load failed');
+    const isServerSideUploadLimit = responseStatus === 413 || responseStatus === 408 || responseStatus >= 500;
+
+    if (!isPresignOrStorageTransportFailure && !isServerSideUploadLimit) {
+      throw err;
+    }
+  }
+
   const fd = new FormData();
   // Send JSON as a plain string so Nest's Body('data') reads it correctly in multipart
   fd.append('data', JSON.stringify(payload));

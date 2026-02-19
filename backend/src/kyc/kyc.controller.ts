@@ -67,8 +67,16 @@ export class KycController {
       }
     },
   }))
-  submitUnified(@CurrentUser('id') userId: string, @UploadedFiles() files: Array<Express.Multer.File>, @Body('data') data: string) {
-    return this.svc.submitUnified(userId, data, files || []);
+  submitUnified(
+    @CurrentUser('id') userId: string,
+    @UploadedFiles() files: Array<any>,
+    @Body('data') data: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const payload = typeof data === 'string' && data.trim().length > 0
+      ? data
+      : JSON.stringify(body || {});
+    return this.svc.submitUnified(userId, payload, files || []);
   }
 
   // Simple status for current tutor KYC application

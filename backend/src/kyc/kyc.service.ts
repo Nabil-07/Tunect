@@ -20,6 +20,11 @@ type KycCorrectionRequest = {
   requestedBy: string;
 };
 
+type KycUploadedDocRef = {
+  docType: string;
+  key: string;
+};
+
 const KYC_EDITABLE_FIELDS = new Set([
   'fullName',
   'dob',
@@ -394,14 +399,13 @@ export class KycService {
       select: { id: true, status: true, createdAt: true },
     });
 
+    const uploadedDocs = this.extractUploadedDocRefs(data?.uploadedDocs);
+
     // Persist any provided files into KycDocument for review
     const docs = files || [];
     for (const f of docs) {
       const docType = f.fieldname || 'FILE';
-      const safeDocType = String(docType)
-        .trim()
-        .toLowerCase()
-        .replaceAll(/[^a-z0-9_-]/g, '-');
+      const safeDocType = this.toSafeDocType(docType);
       const s3Url = await this.s3Service.uploadFile(
         f.buffer,
         f.originalname,
@@ -413,6 +417,24 @@ export class KycService {
           tutorId: tutor.id,
           docType,
           url: s3Url,
+          status: KycStatus.PENDING,
+        },
+      });
+    }
+
+    for (const doc of uploadedDocs) {
+      const key = await this.uploadsService.assertKeyAllowedForUseCase({
+        userId,
+        useCase: 'kyc',
+        keyOrUrl: doc.key,
+        docType: doc.docType,
+      });
+
+      await this.prisma.kycDocument.create({
+        data: {
+          tutorId: tutor.id,
+          docType: doc.docType,
+          url: this.uploadsService.toStoredReference(key),
           status: KycStatus.PENDING,
         },
       });
@@ -514,6 +536,32 @@ export class KycService {
     if (value === null || value === undefined) return '';
     if (typeof value === 'object') return '';
     return String(value).trim();
+  }
+
+  private toSafeDocType(value: unknown): string {
+    const raw = typeof value === 'string' ? value : '';
+    return (raw || 'file')
+      .trim()
+      .toLowerCase()
+      .replaceAll(/[^a-z0-9_-]/g, '-')
+      .replaceAll(/-+/g, '-')
+      .replaceAll(/(^-|-$)/g, '') || 'file';
+  }
+
+  private extractUploadedDocRefs(raw: unknown): KycUploadedDocRef[] {
+    if (!Array.isArray(raw)) return [];
+
+    return raw
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+
+        const record = entry as Record<string, unknown>;
+        const key = typeof record.key === 'string' ? record.key.trim() : '';
+        const docType = this.toSafeDocType(record.docType || 'document');
+        if (!key) return null;
+        return { docType, key };
+      })
+      .filter((entry): entry is KycUploadedDocRef => !!entry);
   }
 
   private normalizeForCompareByField(field: string, value: unknown): string {
