@@ -30,6 +30,9 @@ class UpdateMeDto {
   grade?: string;
   @IsOptional()
   @IsString()
+  board?: string;
+  @IsOptional()
+  @IsString()
   name?: string;
   @IsOptional()
   @IsString()
@@ -77,7 +80,7 @@ export class StudentsController {
     return checkStudentProfileCompletion(student);
   }
 
-  @ApiOperation({ summary: 'Update my student profile (grade)' })
+  @ApiOperation({ summary: 'Update my student profile (grade, board, preferences)' })
   @Patch('me')
   @Roles(Role.STUDENT)
   patchMe(@CurrentUser('id') userId: string, @Body() dto: UpdateMeDto) {

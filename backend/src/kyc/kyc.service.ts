@@ -4,10 +4,63 @@ import { CreateKycDto } from './dto/create-kyc.dto';
 import { FinalizeKycDto } from './dto/finalize-kyc.dto';
 import { QueryKycDto } from './dto/query-kyc.dto';
 import { ReviewKycDto } from './dto/review-kyc.dto';
+import { RequestResubmissionDto } from './dto/request-resubmission.dto';
 import { KycStatus, KycAppStatus, TutorStatus, AuditEntityType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { S3Service } from '../common/services/s3.service';
 import { UploadsService } from '../uploads/uploads.service';
+
+const CORRECTION_NOTES_PREFIX = 'KYC_CORRECTION::';
+
+type KycCorrectionRequest = {
+  version: 1;
+  fields: string[];
+  message?: string;
+  requestedAt: string;
+  requestedBy: string;
+};
+
+const KYC_EDITABLE_FIELDS = new Set([
+  'fullName',
+  'dob',
+  'phone',
+  'country',
+  'addressLine1',
+  'addressLine2',
+  'city',
+  'state',
+  'postalCode',
+  'bankAccountHolder',
+  'bankName',
+  'bankBranch',
+  'accountNumber',
+  'ifsc',
+  'upiId',
+  'iban',
+  'swift',
+  'selfie',
+  'degreeCertificates',
+]);
+
+const DATA_FIELDS_FOR_CHANGE_CHECK: string[] = [
+  'fullName',
+  'dob',
+  'phone',
+  'country',
+  'addressLine1',
+  'addressLine2',
+  'city',
+  'state',
+  'postalCode',
+  'bankAccountHolder',
+  'bankName',
+  'bankBranch',
+  'accountNumber',
+  'ifsc',
+  'upiId',
+  'iban',
+  'swift',
+];
 
 @Injectable()
 export class KycService {
@@ -166,10 +219,74 @@ export class KycService {
       select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
     });
 
+    const parsed = this.parseCorrectionRequest(application?.notes);
+
     return {
       tutor,
-      application,
+      application: application
+        ? {
+            ...application,
+            notes: parsed.notes,
+            correctionRequest: parsed.request,
+          }
+        : null,
       documents: await this.decorateDocUrls(documents),
+    };
+  }
+
+  async requestResubmission(tutorId: string, dto: RequestResubmissionDto, adminId: string) {
+    const tutor = await this.prisma.tutor.findUnique({ where: { id: tutorId }, select: { id: true } });
+    if (!tutor) throw new NotFoundException('Tutor not found');
+
+    const last = await this.prisma.tutorKycApplication.findFirst({
+      where: { tutorId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, notes: true, status: true },
+    });
+    if (!last) throw new NotFoundException('No KYC application found for tutor');
+
+    const fields = Array.from(new Set((dto.fields || []).map((f) => String(f || '').trim()).filter(Boolean)));
+    const invalid = fields.filter((f) => !KYC_EDITABLE_FIELDS.has(f));
+    if (invalid.length) {
+      throw new ForbiddenException(`Invalid resubmission fields: ${invalid.join(', ')}`);
+    }
+
+    const request: KycCorrectionRequest = {
+      version: 1,
+      fields,
+      message: dto.message,
+      requestedAt: new Date().toISOString(),
+      requestedBy: adminId,
+    };
+
+    const updated = await this.prisma.tutorKycApplication.update({
+      where: { id: last.id },
+      data: {
+        status: KycAppStatus.REJECTED,
+        notes: this.encodeCorrectionRequest(request),
+      },
+      select: { id: true, status: true, notes: true, updatedAt: true },
+    });
+
+    await this.prisma.tutor.update({
+      where: { id: tutorId },
+      data: { status: TutorStatus.REJECTED },
+    });
+
+    this.audit.log({
+      adminId,
+      action: 'KYC_RESUBMISSION_REQUESTED',
+      entityType: AuditEntityType.KYC,
+      entityId: last.id,
+      beforeData: { status: last.status, notes: last.notes, tutorId },
+      afterData: { status: updated.status, notes: updated.notes, tutorId, fields },
+    });
+
+    return {
+      ok: true,
+      applicationId: updated.id,
+      status: updated.status,
+      correctionRequest: request,
     };
   }
 
@@ -201,6 +318,55 @@ export class KycService {
       return { error: 'Reapply not allowed yet', reapplyAfter: last.reapplyAfter };
     }
 
+    const parsedCorrection = this.parseCorrectionRequest(last?.notes);
+    const correctionRequest = last?.status === KycAppStatus.REJECTED ? parsedCorrection.request : null;
+    if (correctionRequest?.fields?.length) {
+      const requestedFields = new Set(correctionRequest.fields);
+      const previousValues: Record<string, unknown> = this.mapApplicationToSubmissionData(last);
+      const currentValues: Record<string, unknown> = {
+        ...previousValues,
+        fullName: data.fullName,
+        dob: data.dob,
+        phone: data.phone,
+        country: data.country,
+        addressLine1: data.addressLine1,
+        addressLine2: data.addressLine2,
+        city: data.city,
+        state: data.state,
+        postalCode: data.postalCode,
+        bankAccountHolder: data.bankAccountHolder,
+        bankName: data.bankName,
+        bankBranch: data.bankBranch,
+        accountNumber: data.accountNumber,
+        ifsc: data.ifsc,
+        upiId: data.upiId,
+        iban: data.iban,
+        swift: data.swift,
+      };
+
+      const changedNonRequested: string[] = [];
+      for (const key of DATA_FIELDS_FOR_CHANGE_CHECK) {
+        if (requestedFields.has(key)) continue;
+        const prev = this.normalizeForCompareByField(key, previousValues[key]);
+        const curr = this.normalizeForCompareByField(key, currentValues[key]);
+        if (prev !== curr) changedNonRequested.push(key);
+      }
+
+      const changedDocFields = (files || [])
+        .map((f) => String(f?.fieldname || '').trim())
+        .filter(Boolean)
+        .filter((f) => !requestedFields.has(f));
+
+      if (changedNonRequested.length || changedDocFields.length) {
+        const details = Array.from(new Set([...changedNonRequested, ...changedDocFields]));
+        const requestedLabel = Array.from(requestedFields).join(', ');
+        const detailLabel = details.length ? `. Detected changes in: ${details.join(', ')}` : '';
+        throw new ForbiddenException(
+          `Only requested fields can be updated: ${requestedLabel}${detailLabel}`,
+        );
+      }
+    }
+
     const app = await this.prisma.tutorKycApplication.create({
       data: {
         tutorId: tutor.id,
@@ -223,6 +389,7 @@ export class KycService {
         aadhaarNumber: data.aadhaarNumber,
         iban: data.iban,
         swift: data.swift,
+        notes: undefined,
       },
       select: { id: true, status: true, createdAt: true },
     });
@@ -265,9 +432,11 @@ export class KycService {
 
     const last = await this.prisma.tutorKycApplication.findFirst({ where: { tutorId: tutor.id }, orderBy: { createdAt: 'desc' } });
     if (!last) return { status: 'none' };
+    const parsed = this.parseCorrectionRequest(last.notes);
     return {
       status: last.status,
-      reason: last.notes || undefined,
+      reason: parsed.notes || undefined,
+      correctionRequest: parsed.request || undefined,
       reapplyAfter: last.reapplyAfter || undefined,
       rejectionCount: last.rejectionCount,
       updatedAt: last.updatedAt,
@@ -329,10 +498,100 @@ export class KycService {
       });
     }
 
+    const parsed = this.parseCorrectionRequest(application.notes);
+
     return {
-      application,
+      application: {
+        ...application,
+        notes: parsed.notes,
+        correctionRequest: parsed.request,
+      },
       documents: await this.decorateDocUrls(documents),
     };
+  }
+
+  private normalizeForCompare(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') return '';
+    return String(value).trim();
+  }
+
+  private normalizeForCompareByField(field: string, value: unknown): string {
+    const raw = this.normalizeForCompare(value);
+    if (!raw) return '';
+
+    if (field === 'dob') {
+      const date = new Date(raw);
+      return Number.isNaN(date.getTime()) ? raw : date.toISOString().slice(0, 10);
+    }
+
+    if (field === 'ifsc' || field === 'swift' || field === 'iban' || field === 'country') {
+      return raw.replaceAll(/\s+/g, '').toUpperCase();
+    }
+
+    if (field === 'accountNumber' || field === 'phone') {
+      return raw.replaceAll(/\D/g, '');
+    }
+
+    if (field === 'addressLine1' || field === 'addressLine2' || field === 'city' || field === 'state' || field === 'bankName' || field === 'bankBranch' || field === 'bankAccountHolder') {
+      return raw.replaceAll(/\s+/g, ' ');
+    }
+
+    return raw;
+  }
+
+  private mapApplicationToSubmissionData(app: any) {
+    return {
+      fullName: app?.fullName,
+      dob: app?.dob ? new Date(app.dob).toISOString().slice(0, 10) : undefined,
+      phone: app?.phone,
+      country: app?.country,
+      addressLine1: app?.address1,
+      addressLine2: app?.address2,
+      city: app?.city,
+      state: app?.state,
+      postalCode: app?.postalCode,
+      bankAccountHolder: app?.bankAccountHolder,
+      bankName: app?.bankName,
+      bankBranch: app?.bankBranch,
+      accountNumber: app?.accountNumber,
+      ifsc: app?.ifsc,
+      upiId: app?.upiId,
+      iban: app?.iban,
+      swift: app?.swift,
+      aadhaarNumber: app?.aadhaarNumber,
+    };
+  }
+
+  private encodeCorrectionRequest(request: KycCorrectionRequest): string {
+    return `${CORRECTION_NOTES_PREFIX}${JSON.stringify(request)}`;
+  }
+
+  private parseCorrectionRequest(notes?: string | null): { notes?: string; request?: KycCorrectionRequest } {
+    if (!notes) return {};
+    const trimmed = String(notes).trim();
+    if (!trimmed.startsWith(CORRECTION_NOTES_PREFIX)) {
+      return { notes: trimmed };
+    }
+
+    const raw = trimmed.slice(CORRECTION_NOTES_PREFIX.length);
+    try {
+      const parsed = JSON.parse(raw) as KycCorrectionRequest;
+      if (!Array.isArray(parsed?.fields)) return {};
+      const fields = parsed.fields
+        .map((f) => String(f || '').trim())
+        .filter((f) => KYC_EDITABLE_FIELDS.has(f));
+      return {
+        notes: parsed.message,
+        request: {
+          ...parsed,
+          version: 1,
+          fields,
+        },
+      };
+    } catch {
+      return {};
+    }
   }
 
   private async decorateDocUrl<T extends { url: string }>(item: T): Promise<T> {

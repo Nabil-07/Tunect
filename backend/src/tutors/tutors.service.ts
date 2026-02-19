@@ -12,6 +12,8 @@ export type TutorPublic = {
   subject?: string | null;
   subjects?: string[] | null;
   classesTeach?: string[] | null;
+  boards?: string[] | null;
+  classSubjectMappings?: Array<{ classRange: string; subjects: string[] }> | null;
   languages?: string[] | null;
   rating?: number | null;
   reviews?: number | null;
@@ -36,6 +38,168 @@ function parseAttendance(data: unknown): { studentJoinedAt?: string; tutorJoined
   };
 }
 
+function normalizeClassSubjectMappings(raw: unknown): Array<{ classRange: string; subjects: string[] }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry: any) => {
+      const classRange = String(entry?.classRange || '').trim();
+      const subjects = Array.isArray(entry?.subjects)
+        ? entry.subjects.map((s: any) => String(s || '').trim()).filter(Boolean)
+        : [];
+      if (!classRange || !subjects.length) return null;
+      return {
+        classRange,
+        subjects: Array.from(new Set(subjects)),
+      };
+    })
+    .filter((entry): entry is { classRange: string; subjects: string[] } => !!entry);
+}
+
+function mergeUniqueStrings(...arrays: Array<string[] | null | undefined>): string[] {
+  return Array.from(
+    new Set(
+      arrays
+        .flatMap((arr) => arr || [])
+        .map((v) => String(v || '').trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function normalizeSpaces(value: string): string {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function toTitleCase(value: string): string {
+  return normalizeSpaces(value)
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => {
+      if (/^[ivxlcdm]+$/i.test(word)) return word.toUpperCase();
+      if (/^[A-Z0-9]{2,6}$/.test(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+const SUBJECT_SHORTFORM_MAP: Record<string, string> = {
+  phy: 'Physics',
+  phys: 'Physics',
+  chemistry: 'Chemistry',
+  chem: 'Chemistry',
+  chm: 'Chemistry',
+  bio: 'Biology',
+  maths: 'Mathematics',
+  math: 'Mathematics',
+  mth: 'Mathematics',
+  eng: 'English',
+  cs: 'Computer Science',
+  comp: 'Computer Science',
+  cse: 'Computer Science',
+  ip: 'Informatics Practices',
+  it: 'Information Technology',
+  ai: 'Artificial Intelligence',
+  eco: 'Economics',
+  econ: 'Economics',
+  acc: 'Accountancy',
+  acct: 'Accountancy',
+  bst: 'Business Studies',
+  pe: 'Physical Education',
+  evs: 'Environmental Studies (EVS)',
+  sst: 'Social Science (General)',
+  gk: 'General Knowledge',
+};
+
+function normalizeAliasKey(value: string): string {
+  return normalizeSpaces(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function standardizeSubjectText(value: string): string {
+  const titled = toTitleCase(value);
+  const aliasKey = normalizeAliasKey(titled);
+  return SUBJECT_SHORTFORM_MAP[aliasKey] || titled;
+}
+
+function standardizeGradeText(value: string): string {
+  const cleaned = normalizeSpaces(value);
+  if (!cleaned) return '';
+
+  const normalized = cleaned.replace(/\bclass\b/gi, 'Grade').replace(/\bstd\b/gi, 'Grade');
+  const single = normalized.match(/^(?:grade|standard)\s*(\d{1,2})$/i) || normalized.match(/^(\d{1,2})$/);
+  if (single) return `Grade ${single[1]}`;
+
+  const range = normalized.match(/^(?:grade|standard)?\s*(\d{1,2})\s*(?:-|to)\s*(\d{1,2})$/i);
+  if (range) return `Grade ${range[1]}-${range[2]}`;
+
+  return toTitleCase(normalized);
+}
+
+function normalizeForMatch(value: string): string {
+  return normalizeSpaces(value).toLowerCase();
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => i);
+  for (let j = 1; j <= b.length; j++) {
+    let prevDiagonal = dp[0];
+    dp[0] = j;
+    for (let i = 1; i <= a.length; i++) {
+      const temp = dp[i];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i] = Math.min(
+        dp[i] + 1,
+        dp[i - 1] + 1,
+        prevDiagonal + cost,
+      );
+      prevDiagonal = temp;
+    }
+  }
+  return dp[a.length];
+}
+
+function maybeAutoCorrect(value: string, candidates: string[]): string {
+  const source = normalizeForMatch(value);
+  if (!source || !candidates.length) return value;
+
+  let best: { candidate: string; dist: number } | null = null;
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeForMatch(candidate);
+    if (!normalizedCandidate) continue;
+    if (normalizedCandidate === source) return candidate;
+    const dist = levenshteinDistance(source, normalizedCandidate);
+    if (!best || dist < best.dist) {
+      best = { candidate, dist };
+    }
+  }
+
+  if (!best) return value;
+  const threshold = source.length <= 4 ? 1 : Math.max(2, Math.floor(source.length * 0.25));
+  return best.dist <= threshold ? best.candidate : value;
+}
+
+function standardizeAndAutoCorrect(
+  values: string[],
+  candidates: string[],
+  formatter: (value: string) => string,
+): string[] {
+  const output: string[] = [];
+  for (const raw of values) {
+    const formatted = formatter(raw);
+    if (!formatted) continue;
+    const corrected = maybeAutoCorrect(formatted, [...candidates, ...output]);
+    const finalValue = formatter(corrected);
+    if (!finalValue) continue;
+    if (!output.some((item) => normalizeForMatch(item) === normalizeForMatch(finalValue))) {
+      output.push(finalValue);
+    }
+  }
+  return output;
+}
+
 function hasVerifiedAttendance(data: unknown): boolean {
   const attendance = parseAttendance(data);
   return !!attendance.studentJoinedAt && !!attendance.tutorJoinedAt;
@@ -44,7 +208,9 @@ function hasVerifiedAttendance(data: unknown): boolean {
 function normalizeTutor(row: any): TutorPublic { // NOSONAR
   const subjectsArr: string[] = Array.isArray(row?.subjects) ? row.subjects : [];
   const classesTeachArr: string[] = Array.isArray(row?.classesTeach) ? row.classesTeach : [];
+  const boardsArr: string[] = Array.isArray(row?.boards) ? row.boards : [];
   const languagesArr: string[] = Array.isArray(row?.languages) ? row.languages : [];
+  const classSubjectMappings = normalizeClassSubjectMappings(row?.classSubjectMappings);
   const subject = row?.subject ?? (subjectsArr.length ? subjectsArr.join(', ') : null);
 
   const emailSource: string | null = (row?.email ?? row?.user?.email ?? null) as string | null;
@@ -90,6 +256,8 @@ function normalizeTutor(row: any): TutorPublic { // NOSONAR
     subject,
     subjects: subjectsArr.length ? subjectsArr : null,
     classesTeach: classesTeachArr.length ? classesTeachArr : null,
+    boards: boardsArr.length ? boardsArr : null,
+    classSubjectMappings: classSubjectMappings.length ? classSubjectMappings : null,
     languages: languagesArr.length ? languagesArr : null,
     hourlyRate: Number.isFinite(hourlyRate) ? hourlyRate : null,
     rating: Number.isFinite(rating) ? rating : null,
@@ -132,6 +300,7 @@ export class TutorsService {
     term?: string;
     subject?: string;
     classTeach?: string;
+    board?: string;
     language?: string;
     ts?: number;
   }> {
@@ -154,6 +323,7 @@ export class TutorsService {
       select: {
         subjects: true,
         classesTeach: true,
+        boards: true,
         languages: true,
         reviews: {
           select: { rating: true },
@@ -176,6 +346,7 @@ export class TutorsService {
     // Extract unique languages
     const languagesSet = new Set<string>();
     const classesSet = new Set<string>();
+    const boardsSet = new Set<string>();
     tutors.forEach((tutor) => {
       if (Array.isArray(tutor.languages)) {
         tutor.languages.forEach((language) => {
@@ -188,6 +359,13 @@ export class TutorsService {
         tutor.classesTeach.forEach((cls) => {
           if (cls?.trim()) {
             classesSet.add(cls.trim());
+          }
+        });
+      }
+      if (Array.isArray(tutor.boards)) {
+        tutor.boards.forEach((board) => {
+          if (board?.trim()) {
+            boardsSet.add(board.trim());
           }
         });
       }
@@ -214,6 +392,7 @@ export class TutorsService {
     return {
       subjects: Array.from(subjectsSet).sort((a, b) => a.localeCompare(b)),
       classesTeach: Array.from(classesSet).sort((a, b) => a.localeCompare(b)),
+      boards: Array.from(boardsSet).sort((a, b) => a.localeCompare(b)),
       languages: Array.from(languagesSet).sort((a, b) => a.localeCompare(b)),
       ratingOptions: ratingOptions.map((opt) => ({
         value: opt.value,
@@ -229,6 +408,7 @@ export class TutorsService {
     subject?: string;
     language?: string;
     classTeach?: string;
+    board?: string;
     sortBy?: 'updatedAt' | 'rating' | 'hourlyRate';
     sortOrder?: 'asc' | 'desc';
   }) {
@@ -270,6 +450,17 @@ export class TutorsService {
           { classesTeach: { has: cls } },
           { classesTeach: { has: cls.toUpperCase() } },
           { classesTeach: { has: cls.toLowerCase() } },
+        ],
+      });
+    }
+
+    if (params?.board?.trim()) {
+      const board = params.board.trim();
+      andConditions.push({
+        OR: [
+          { boards: { has: board } },
+          { boards: { has: board.toUpperCase() } },
+          { boards: { has: board.toLowerCase() } },
         ],
       });
     }
@@ -338,7 +529,7 @@ export class TutorsService {
       try {
         student = await this.prisma.student.findUnique({
           where: { userId },
-          select: { id: true, grade: true },
+          select: { id: true, grade: true, board: true },
         });
       } catch (dbError: any) {
         this.logger.error(`[getRecommendedForStudent] Database error fetching student:`, dbError?.message);
@@ -351,6 +542,7 @@ export class TutorsService {
 
     const interestSubjects = new Set<string>();
     const interestClasses = new Set<string>();
+    const interestBoards = new Set<string>();
     const interestLanguages = new Set<string>();
     const searchTerms = new Set<string>();
     const bookedTutorIds = new Set<string>();
@@ -360,16 +552,20 @@ export class TutorsService {
       const term = this.normalizeValue(s?.term);
       const subject = this.normalizeValue(s?.subject);
       const classTeach = this.normalizeValue(s?.classTeach);
+      const board = this.normalizeValue(s?.board);
       const language = this.normalizeValue(s?.language);
       if (term) searchTerms.add(term);
       if (subject) interestSubjects.add(subject);
       if (classTeach) interestClasses.add(classTeach);
+      if (board) interestBoards.add(board);
       if (language) interestLanguages.add(language);
     });
 
     // Use student grade as a weak hint for classTeach
     const studentGrade = this.normalizeValue(student?.grade);
     if (studentGrade) interestClasses.add(studentGrade);
+    const studentBoard = this.normalizeValue((student as any)?.board);
+    if (studentBoard) interestBoards.add(studentBoard);
 
     // Extract interests from recent bookings
     if (student?.id) {
@@ -383,6 +579,7 @@ export class TutorsService {
             select: {
               subjects: true,
               classesTeach: true,
+              boards: true,
               languages: true,
             },
           },
@@ -399,6 +596,10 @@ export class TutorsService {
           const v = this.normalizeValue(c);
           if (v) interestClasses.add(v);
         });
+        (b.tutor?.boards || []).forEach((board) => {
+          const v = this.normalizeValue(board);
+          if (v) interestBoards.add(v);
+        });
         (b.tutor?.languages || []).forEach((l) => {
           const v = this.normalizeValue(l);
           if (v) interestLanguages.add(v);
@@ -409,6 +610,7 @@ export class TutorsService {
     const hasSignals =
       interestSubjects.size > 0 ||
       interestClasses.size > 0 ||
+      interestBoards.size > 0 ||
       interestLanguages.size > 0 ||
       searchTerms.size > 0 ||
       bookedTutorIds.size > 0;
@@ -450,6 +652,7 @@ export class TutorsService {
     const scored = candidates.map((t) => {
       const tutorSubjects = (t.subjects || []).map((s) => this.normalizeValue(s));
       const tutorClasses = (t.classesTeach || []).map((c) => this.normalizeValue(c));
+      const tutorBoards = (t.boards || []).map((b) => this.normalizeValue(b));
       const tutorLanguages = (t.languages || []).map((l) => this.normalizeValue(l));
 
       let score = 0;
@@ -461,6 +664,10 @@ export class TutorsService {
       // Class match weight
       const classMatches = tutorClasses.filter((c) => interestClasses.has(c)).length;
       score += Math.min(classMatches, 3) * 2;
+
+      // Board match weight
+      const boardMatches = tutorBoards.filter((b) => interestBoards.has(b)).length;
+      score += Math.min(boardMatches, 3) * 3;
 
       // Language match weight
       const languageMatches = tutorLanguages.filter((l) => interestLanguages.has(l)).length;
@@ -531,6 +738,7 @@ export class TutorsService {
     subject?: string;
     language?: string;
     classTeach?: string;
+    board?: string;
     minRating?: number;
     priceMin?: number;
     priceMax?: number;
@@ -597,6 +805,17 @@ export class TutorsService {
             { classesTeach: { has: cls } },
             { classesTeach: { has: cls.toUpperCase() } },
             { classesTeach: { has: cls.toLowerCase() } },
+          ],
+        });
+      }
+
+      if (params?.board?.trim()) {
+        const board = params.board.trim();
+        AND.push({
+          OR: [
+            { boards: { has: board } },
+            { boards: { has: board.toUpperCase() } },
+            { boards: { has: board.toLowerCase() } },
           ],
         });
       }
@@ -710,6 +929,33 @@ export class TutorsService {
             `[search] Filtered out ${beforeFilter - filteredRows.length} tutors that didn't match class "${params.classTeach}"`
           );
         }
+      }
+
+      if (params?.board?.trim()) {
+        const boardLower = params.board.trim().toLowerCase();
+        const beforeFilter = filteredRows.length;
+        filteredRows = filteredRows.filter((tutor) => {
+          const tutorBoards = (tutor.boards || []).map((b: string) => String(b || '').toLowerCase());
+          return tutorBoards.includes(boardLower);
+        });
+        if (filteredRows.length < beforeFilter) {
+          finalTotal = filteredRows.length;
+        }
+      }
+
+      if (params?.classTeach?.trim() && params?.subject?.trim()) {
+        const classFilter = params.classTeach.trim().toLowerCase();
+        const subjectFilter = params.subject.trim().toLowerCase();
+        filteredRows = filteredRows.filter((tutor) => {
+          const mappings = normalizeClassSubjectMappings(tutor.classSubjectMappings);
+          if (!mappings.length) return true;
+          return mappings.some((mapping) => {
+            const classMatch = mapping.classRange.toLowerCase() === classFilter;
+            const subjectMatch = mapping.subjects.some((s) => s.toLowerCase() === subjectFilter);
+            return classMatch && subjectMatch;
+          });
+        });
+        finalTotal = filteredRows.length;
       }
 
       // Apply text search (q parameter) filtering for partial matches on bio, name, subjects, classes, languages
@@ -1147,6 +1393,8 @@ export class TutorsService {
       bio: t.bio ?? null,
       summary: t.summary ?? null,
       subjects: t.subjects ?? [],
+      boards: t.boards ?? [],
+      classSubjectMappings: normalizeClassSubjectMappings(t.classSubjectMappings),
       languages: t.languages ?? [],
       degrees: t.degrees ?? [],
       classesTeach: t.classesTeach ?? [],
@@ -1183,6 +1431,8 @@ export class TutorsService {
       bio: t.bio ?? null,
       summary: t.summary ?? null,
       subjects: t.subjects ?? [],
+      boards: t.boards ?? [],
+      classSubjectMappings: normalizeClassSubjectMappings(t.classSubjectMappings),
       languages: t.languages ?? [],
       degrees: t.degrees ?? [],
       classesTeach: t.classesTeach ?? [],
@@ -1212,9 +1462,60 @@ export class TutorsService {
     if (typeof body?.summary === 'string') updatesTutor.summary = body.summary;
     if (typeof body?.qualifications === 'string') updatesTutor.qualifications = body.qualifications;
 
+    const allTutors = await this.prisma.tutor.findMany({
+      select: {
+        subjects: true,
+        classesTeach: true,
+        classSubjectMappings: true,
+      },
+    });
+
+    const subjectCorpus = new Set<string>();
+    const gradeCorpus = new Set<string>();
+
+    allTutors.forEach((tutorRow) => {
+      (tutorRow.subjects || []).forEach((s) => {
+        const v = standardizeSubjectText(String(s || ''));
+        if (v) subjectCorpus.add(v);
+      });
+      (tutorRow.classesTeach || []).forEach((c) => {
+        const v = standardizeGradeText(String(c || ''));
+        if (v) gradeCorpus.add(v);
+      });
+      normalizeClassSubjectMappings(tutorRow.classSubjectMappings).forEach((mapping) => {
+        const range = standardizeGradeText(mapping.classRange);
+        if (range) gradeCorpus.add(range);
+        mapping.subjects.forEach((s) => {
+          const sub = standardizeSubjectText(String(s || ''));
+          if (sub) subjectCorpus.add(sub);
+        });
+      });
+    });
+
+    if (Array.isArray(t.subjects)) {
+      t.subjects.forEach((s) => {
+        const v = standardizeSubjectText(String(s || ''));
+        if (v) subjectCorpus.add(v);
+      });
+    }
+    if (Array.isArray(t.classesTeach)) {
+      t.classesTeach.forEach((c) => {
+        const v = standardizeGradeText(String(c || ''));
+        if (v) gradeCorpus.add(v);
+      });
+    }
+
     if (Array.isArray(body?.subjects)) {
-      updatesTutor.subjects = body.subjects
-        .map((s: any) => String(s).trim())
+      updatesTutor.subjects = standardizeAndAutoCorrect(
+        body.subjects.map((s: any) => String(s || '')),
+        Array.from(subjectCorpus),
+        standardizeSubjectText,
+      );
+    }
+
+    if (Array.isArray(body?.boards)) {
+      updatesTutor.boards = body.boards
+        .map((b: any) => String(b).trim())
         .filter(Boolean);
     }
 
@@ -1231,9 +1532,41 @@ export class TutorsService {
     }
 
     if (Array.isArray(body?.classesTeach)) {
-      updatesTutor.classesTeach = body.classesTeach
-        .map((c: any) => String(c).trim())
-        .filter(Boolean);
+      updatesTutor.classesTeach = standardizeAndAutoCorrect(
+        body.classesTeach.map((c: any) => String(c || '')),
+        Array.from(gradeCorpus),
+        standardizeGradeText,
+      );
+    }
+
+    if (Array.isArray(body?.classSubjectMappings)) {
+      const mappings = normalizeClassSubjectMappings(body.classSubjectMappings).map((mapping) => ({
+        classRange: standardizeAndAutoCorrect(
+          [mapping.classRange],
+          Array.from(gradeCorpus),
+          standardizeGradeText,
+        )[0] || '',
+        subjects: standardizeAndAutoCorrect(
+          mapping.subjects,
+          Array.from(subjectCorpus),
+          standardizeSubjectText,
+        ),
+      })).filter((mapping) => mapping.classRange && mapping.subjects.length > 0);
+      updatesTutor.classSubjectMappings = mappings as any;
+
+      const mappedClasses = mappings.map((m) => m.classRange);
+      const mappedSubjects = mappings.flatMap((m) => m.subjects);
+
+      updatesTutor.classesTeach = mergeUniqueStrings(
+        updatesTutor.classesTeach,
+        mappedClasses,
+        Array.isArray(t.classesTeach) ? t.classesTeach : [],
+      );
+      updatesTutor.subjects = mergeUniqueStrings(
+        updatesTutor.subjects,
+        mappedSubjects,
+        Array.isArray(t.subjects) ? t.subjects : [],
+      );
     }
 
     if (body?.yearsExperience !== undefined && Number.isFinite(Number(body.yearsExperience))) {

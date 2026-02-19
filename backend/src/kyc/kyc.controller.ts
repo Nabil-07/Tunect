@@ -5,6 +5,7 @@ import { CreateKycDto } from './dto/create-kyc.dto';
 import { FinalizeKycDto } from './dto/finalize-kyc.dto';
 import { QueryKycDto } from './dto/query-kyc.dto';
 import { ReviewKycDto } from './dto/review-kyc.dto';
+import { RequestResubmissionDto } from './dto/request-resubmission.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -99,6 +100,22 @@ export class KycController {
   @Get('admin/:tutorId')
   getTutorBundle(@Param('tutorId') tutorId: string) {
     return this.svc.getTutorBundle(tutorId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('admin/:tutorId/request-resubmission')
+  @Patch('admin/:tutorId/requestResubmission')
+  @Post('admin/:tutorId/requestResubmission')
+  @Patch('admin/:tutorId/resubmission-request')
+  @Post('admin/:tutorId/resubmission-request')
+  @Patch('admin/:tutorId/request-resubmission')
+  requestResubmission(
+    @Param('tutorId') tutorId: string,
+    @Body() dto: RequestResubmissionDto,
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.svc.requestResubmission(tutorId, dto, adminId);
   }
 
   // Admin: approve/reject a KYC document

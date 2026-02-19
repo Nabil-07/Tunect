@@ -15,6 +15,8 @@ export type TutorCardProps = {
     name?: string;
     subjects?: string[];
     classesTeach?: string[];
+    boards?: string[];
+    classSubjectMappings?: Array<{ classRange: string; subjects: string[] }>;
     languages?: string[];
     tags?: string[];
     rating?: number | null;
@@ -159,6 +161,37 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
     [priceInInr, convertFromINR]
   );
 
+  const mappingRows = useMemo(() => {
+    const rows = Array.isArray(tutor.classSubjectMappings) ? tutor.classSubjectMappings : [];
+    const normalizedRows = rows
+      .map((row) => ({
+        classRange: String(row?.classRange || '').trim(),
+        subjects: Array.isArray(row?.subjects)
+          ? row.subjects.map((s) => String(s || '').trim()).filter(Boolean)
+          : [],
+      }))
+      .filter((row) => row.classRange && row.subjects.length);
+
+    if (normalizedRows.length > 0) return normalizedRows;
+
+    const classFallback = (tutor.classesTeach ?? [])
+      .map((cls) => String(cls || '').trim())
+      .filter(Boolean);
+    const subjectFallback = (sortedSubjects ?? [])
+      .map((s) => String(s || '').trim())
+      .filter(Boolean);
+
+    if (!classFallback.length || !subjectFallback.length) return [];
+
+    const pairCount = Math.min(classFallback.length, subjectFallback.length, 3);
+    return Array.from({ length: pairCount }, (_, index) => ({
+      classRange: classFallback[index],
+      subjects: [subjectFallback[index]],
+    }));
+  }, [tutor.classSubjectMappings, tutor.classesTeach, sortedSubjects]);
+
+  const showStandaloneStudyChips = mappingRows.length === 0;
+
   const goBook = () => {
     if (user?.role === 'TUTOR') {
       setToast({ type: 'warning', message: 'Tutor accounts cannot book demos or slots with other tutors' });
@@ -274,7 +307,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
         )}
 
         {/* Subjects - sorted with searched subject first */}
-        {sortedSubjects.length > 0 && (
+        {showStandaloneStudyChips && sortedSubjects.length > 0 && (
           <div className="mt-3">
             <div className="flex flex-wrap gap-2">
               {sortedSubjects.slice(0, 3).map((s) => {
@@ -298,7 +331,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
         )}
 
         {/* Classes/Grades */}
-        {(tutor.classesTeach ?? []).length > 0 && (
+        {showStandaloneStudyChips && (tutor.classesTeach ?? []).length > 0 && (
           <div className="mt-2">
             <div className="flex flex-wrap gap-2">
               {(tutor.classesTeach ?? []).slice(0, 3).map((cls) => (
@@ -308,6 +341,47 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
                 >
                   {cls}
                 </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Boards */}
+        {(tutor.boards ?? []).length > 0 && (
+          <div className="mt-2">
+            <div className="flex flex-wrap gap-2">
+              {(tutor.boards ?? []).slice(0, 3).map((board) => (
+                <span
+                  key={board}
+                  className="rounded-full bg-cyan-100 px-2.5 py-1 text-xs font-medium text-cyan-700"
+                >
+                  {board}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Teaches: Grade -> Subjects */}
+        {mappingRows.length > 0 && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Teaches</div>
+            <div className="mt-2 space-y-2">
+              {mappingRows.slice(0, 3).map((row) => (
+                <div key={`${row.classRange}-${row.subjects.join('-')}`} className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                    {row.classRange}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-400">→</span>
+                  {row.subjects.map((subject) => (
+                    <span
+                      key={`${row.classRange}-${subject}`}
+                      className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700"
+                    >
+                      {subject}
+                    </span>
+                  ))}
+                </div>
               ))}
             </div>
           </div>

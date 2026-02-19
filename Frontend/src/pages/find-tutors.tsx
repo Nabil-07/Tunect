@@ -43,11 +43,12 @@ function writeSearchHistory(entry: TutorSearchHistoryEntry) {
       term: entry.term?.trim() || undefined,
       subject: entry.subject?.trim() || undefined,
       classTeach: entry.classTeach?.trim() || undefined,
+      board: entry.board?.trim() || undefined,
       language: entry.language?.trim() || undefined,
       ts: entry.ts ?? Date.now(),
     };
 
-    const isEmpty = !normalized.term && !normalized.subject && !normalized.classTeach && !normalized.language;
+    const isEmpty = !normalized.term && !normalized.subject && !normalized.classTeach && !normalized.board && !normalized.language;
     if (isEmpty) return;
 
     const last = existing[0];
@@ -56,6 +57,7 @@ function writeSearchHistory(entry: TutorSearchHistoryEntry) {
       last.term === normalized.term &&
       last.subject === normalized.subject &&
       last.classTeach === normalized.classTeach &&
+      last.board === normalized.board &&
       last.language === normalized.language;
 
     const next = isDuplicate ? existing : [normalized, ...existing];
@@ -74,6 +76,7 @@ export default function FindTutors() {
   const qRaw = sp.get('q') || '';
   const subject = sp.get('subject') || '';
   const classTeach = sp.get('class') || '';
+  const board = sp.get('board') || '';
   const language = sp.get('language') || '';
   const sort = (sp.get('sort') || 'rating_desc') as 'rating_desc' | 'price_asc' | 'price_desc';
   const minRating = Number(sp.get('minRating') || 0);
@@ -104,6 +107,7 @@ export default function FindTutors() {
   // Dynamic filter options
   const [availableSubjects, setAvailableSubjects] = useState<string[]>([]);
   const [availableClassesTeach, setAvailableClassesTeach] = useState<string[]>([]);
+  const [availableBoards, setAvailableBoards] = useState<string[]>([]);
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const [availableRatingOptions, setAvailableRatingOptions] = useState<Array<{ value: number; label: string }>>([
     { value: 0, label: 'Any rating' },
@@ -117,6 +121,7 @@ export default function FindTutors() {
     getFilterOptions().then((options) => {
       setAvailableSubjects(options.subjects);
       setAvailableClassesTeach(options.classesTeach);
+      setAvailableBoards(options.boards || []);
       setAvailableLanguages(options.languages);
       setAvailableRatingOptions(options.ratingOptions);
     });
@@ -127,12 +132,13 @@ export default function FindTutors() {
     q.length > 0 ||
     !!subject ||
     !!classTeach ||
+    !!board ||
     !!language ||
     !!minRating ||
     priceMin !== undefined ||
     priceMax !== undefined ||
     sort !== 'rating_desc',
-    [q, subject, classTeach, language, minRating, priceMin, priceMax, sort]
+    [q, subject, classTeach, board, language, minRating, priceMin, priceMax, sort]
   );
 
   useEffect(() => {
@@ -145,8 +151,8 @@ export default function FindTutors() {
 
         // 1) fetch tutors - use search API if there are any filters, otherwise use list API
         const res = shouldUseSearch
-          ? await searchTutors({ q, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize })
-          : await listTutors({ page, pageSize, subject: subject || undefined, classTeach: classTeach || undefined, language: language || undefined });
+          ? await searchTutors({ q, subject, classTeach, board, language, minRating, priceMin, priceMax, sort, page, pageSize })
+          : await listTutors({ page, pageSize, subject: subject || undefined, classTeach: classTeach || undefined, board: board || undefined, language: language || undefined });
 
         if (!mounted) return;
 
@@ -188,7 +194,7 @@ export default function FindTutors() {
       mounted = false;
     };
     // Depend on debounced q and shouldUseSearch (which includes q in its calculation)
-  }, [q, subject, classTeach, language, minRating, priceMin, priceMax, sort, page, pageSize, shouldUseSearch]);
+  }, [q, subject, classTeach, board, language, minRating, priceMin, priceMax, sort, page, pageSize, shouldUseSearch]);
 
   // Track recent searches and filters for recommendations
   useEffect(() => {
@@ -196,10 +202,11 @@ export default function FindTutors() {
       term: q || undefined,
       subject: subject || undefined,
       classTeach: classTeach || undefined,
+      board: board || undefined,
       language: language || undefined,
       ts: Date.now(),
     });
-  }, [q, subject, classTeach, language]);
+  }, [q, subject, classTeach, board, language]);
 
   // Listen for demo status changes and refresh
   useEffect(() => {
@@ -271,7 +278,7 @@ export default function FindTutors() {
       <h1 className="text-2xl font-bold">Find Tutors</h1>
 
       {/* Filters */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_200px_200px_200px_160px_160px]">
+      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_180px_180px_180px_180px_160px_160px]">
         <input
           value={qRaw}
           onChange={(e) => setParam('q', e.target.value)}
@@ -301,6 +308,19 @@ export default function FindTutors() {
           {availableClassesTeach.map((cls) => (
             <option key={cls} value={cls}>
               {cls}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={board}
+          onChange={(e) => setParam('board', e.target.value)}
+          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">All boards</option>
+          {availableBoards.map((b) => (
+            <option key={b} value={b}>
+              {b}
             </option>
           ))}
         </select>
@@ -392,7 +412,7 @@ export default function FindTutors() {
                 <>No tutors found</>
               )}
             </span>
-            {(q || subject || classTeach || language) && (
+            {(q || subject || classTeach || board || language) && (
               <div className="flex flex-wrap gap-2">
                 {q && (
                   <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-700">
@@ -407,6 +427,11 @@ export default function FindTutors() {
                 {classTeach && (
                   <span className="rounded-full bg-purple-100 px-3 py-1 text-purple-700">
                     Class: {classTeach}
+                  </span>
+                )}
+                {board && (
+                  <span className="rounded-full bg-cyan-100 px-3 py-1 text-cyan-700">
+                    Board: {board}
                   </span>
                 )}
                 {language && (

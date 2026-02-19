@@ -35,6 +35,7 @@ export class TutorsController {
   @ApiQuery({ name: 'pageSize', required: false, example: 8 })
   @ApiQuery({ name: 'subject', required: false, example: 'Math' })
   @ApiQuery({ name: 'class', required: false, example: 'Grade 10' })
+  @ApiQuery({ name: 'board', required: false, example: 'CBSE' })
   @ApiQuery({ name: 'language', required: false, example: 'English' })
   @ApiQuery({ name: 'sortBy', required: false, example: 'hourlyRate' })
   @ApiQuery({ name: 'sortOrder', required: false, example: 'desc' })
@@ -44,6 +45,7 @@ export class TutorsController {
     @Query('pageSize') pageSize?: string,
     @Query('subject') subject?: string,
     @Query('class') classTeach?: string,
+    @Query('board') board?: string,
     @Query('language') language?: string,
     @Query('sortBy') sortBy?: 'updatedAt' | 'rating' | 'hourlyRate',
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
@@ -53,6 +55,7 @@ export class TutorsController {
       pageSize: pageSize ? Number(pageSize) : undefined,
       subject: subject || undefined,
       classTeach: classTeach || undefined,
+      board: board || undefined,
       language: language || undefined,
       sortBy,
       sortOrder,
@@ -119,6 +122,7 @@ export class TutorsController {
     @Query('q') q?: string,
     @Query('subject') subject?: string,
     @Query('class') classTeach?: string,
+    @Query('board') board?: string,
     @Query('language') language?: string,
     @Query('minRating') minRating?: string,
     @Query('priceMin') priceMin?: string,
@@ -132,6 +136,7 @@ export class TutorsController {
         q: q || undefined,
         subject: subject || undefined,
         classTeach: classTeach || undefined,
+        board: board || undefined,
         language: language || undefined,
         minRating: minRating ? Number(minRating) : undefined,
         priceMin: priceMin ? Number(priceMin) : undefined,

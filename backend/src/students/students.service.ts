@@ -88,6 +88,7 @@ export class StudentsService {
           select: {
             id: true,
             grade: true,
+            board: true,
             tokens: true,
             bio: true,
             timezone: true,
@@ -114,6 +115,7 @@ export class StudentsService {
       select: {
         id: true,
         grade: true,
+        board: true,
         tokens: true,
         bio: true,
         timezone: true,
@@ -214,6 +216,7 @@ export class StudentsService {
     userId: string,
     data: {
       grade?: string;
+      board?: string;
       name?: string;
       phone?: string;
       bio?: string;
@@ -229,11 +232,13 @@ export class StudentsService {
 
     const studentUpdates: {
       grade?: string;
+      board?: string;
       bio?: string;
       timezone?: string | null;
       preferredLanguage?: string | null;
     } = {};
     if (data.grade !== undefined) studentUpdates.grade = data.grade;
+    if (data.board !== undefined) studentUpdates.board = data.board;
     if (typeof data.bio === 'string') studentUpdates.bio = data.bio;
     if (data.timezone !== undefined) studentUpdates.timezone = data.timezone || null;
     if (data.preferredLanguage !== undefined)
@@ -254,7 +259,7 @@ export class StudentsService {
 
     const updated = await this.prisma.student.findUnique({
       where: { id: studentId },
-      select: { id: true, grade: true, tokens: true, updatedAt: true },
+      select: { id: true, grade: true, board: true, tokens: true, updatedAt: true },
     });
     return { ...updated, tokens: toNum(updated!.tokens) };
   }

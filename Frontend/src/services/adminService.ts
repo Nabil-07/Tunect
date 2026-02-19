@@ -4,6 +4,14 @@ export type TutorStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type KycReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type KycApplicationStatus = 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PENDING';
 
+export interface KycCorrectionRequest {
+	version: 1;
+	fields: string[];
+	message?: string;
+	requestedAt: string;
+	requestedBy: string;
+}
+
 export interface AdminDashboard {
 	totals: {
 		users: number;
@@ -93,6 +101,7 @@ export interface KycApplication {
 	rejectionCount?: number;
 	reapplyAfter?: string | null;
 	notes?: string | null;
+	correctionRequest?: KycCorrectionRequest | null;
 	fullName: string;
 	dob: string;
 	phone: string;
@@ -215,6 +224,17 @@ export async function reviewKyc(id: string, status: 'PENDING' | 'APPROVED' | 'RE
 export async function fetchKycBundle(tutorId: string): Promise<KycBundle> {
 	const { data } = await api.get(`/kyc/admin/${tutorId}`);
 	return data as KycBundle;
+}
+
+export async function requestKycResubmission(tutorId: string, fields: string[], message?: string) {
+	const body = { fields, message };
+	const { data } = await api.post(`/kyc/admin/${tutorId}/request-resubmission`, body);
+	return data as {
+		ok: boolean;
+		applicationId: string;
+		status: KycApplicationStatus;
+		correctionRequest: KycCorrectionRequest;
+	};
 }
 
 export async function sendSubjectBroadcast(subject: string, message: string) {

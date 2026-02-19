@@ -8,7 +8,97 @@ import { getCountries } from '../../utils/countryData';
 import { formatCurrency, getUsdRates } from '../../utils/currency';
 import { SUBJECT_OPTIONS } from '../../constants/subjects';
 import { LANGUAGE_OPTIONS } from '../../constants/languages';
+import { BOARD_OPTIONS } from '../../constants/boards';
 import AvatarUploadModal from '../../components/AvatarUploadModal';
+
+const normalizeSpaces = (value: string) => String(value || '').replace(/\s+/g, ' ').trim();
+const toTitleCase = (value: string) =>
+  normalizeSpaces(value)
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => {
+      if (/^[ivxlcdm]+$/i.test(word)) return word.toUpperCase();
+      if (/^[A-Z0-9]{2,6}$/.test(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+
+const SUBJECT_SHORTFORM_MAP: Record<string, string> = {
+  phy: 'Physics',
+  phys: 'Physics',
+  chemistry: 'Chemistry',
+  chem: 'Chemistry',
+  chm: 'Chemistry',
+  bio: 'Biology',
+  maths: 'Mathematics',
+  math: 'Mathematics',
+  mth: 'Mathematics',
+  eng: 'English',
+  cs: 'Computer Science',
+  comp: 'Computer Science',
+  cse: 'Computer Science',
+  ip: 'Informatics Practices',
+  it: 'Information Technology',
+  ai: 'Artificial Intelligence',
+  eco: 'Economics',
+  econ: 'Economics',
+  acc: 'Accountancy',
+  acct: 'Accountancy',
+  bst: 'Business Studies',
+  pe: 'Physical Education',
+  evs: 'Environmental Studies (EVS)',
+  sst: 'Social Science (General)',
+  gk: 'General Knowledge',
+};
+
+const normalizeAliasKey = (value: string) =>
+  normalizeSpaces(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const standardizeSubject = (value: string) => {
+  const titled = toTitleCase(value);
+  const aliasKey = normalizeAliasKey(titled);
+  return SUBJECT_SHORTFORM_MAP[aliasKey] || titled;
+};
+
+const SUBJECT_AUTOCOMPLETE_OPTIONS = Array.from(
+  new Set([...SUBJECT_OPTIONS, ...Object.values(SUBJECT_SHORTFORM_MAP)]),
+).sort((a, b) => a.localeCompare(b));
+
+const getSubjectSuggestion = (query: string, exclude: string[] = []) => {
+  const q = normalizeSpaces(query).toLowerCase();
+  if (!q) return '';
+  const excluded = new Set(exclude.map((v) => v.toLowerCase()));
+  const startsWith = SUBJECT_AUTOCOMPLETE_OPTIONS.find(
+    (option) => option.toLowerCase().startsWith(q) && !excluded.has(option.toLowerCase()),
+  );
+  if (startsWith) return startsWith;
+  const contains = SUBJECT_AUTOCOMPLETE_OPTIONS.find(
+    (option) => option.toLowerCase().includes(q) && !excluded.has(option.toLowerCase()),
+  );
+  return contains || '';
+};
+const standardizeGrade = (value: string) => {
+  const cleaned = normalizeSpaces(value);
+  if (!cleaned) return '';
+  const normalized = cleaned.replace(/\bclass\b/gi, 'Grade').replace(/\bstd\b/gi, 'Grade');
+  const single = normalized.match(/^(?:grade|standard)\s*(\d{1,2})$/i) || normalized.match(/^(\d{1,2})$/);
+  if (single) return `Grade ${single[1]}`;
+  const range = normalized.match(/^(?:grade|standard)?\s*(\d{1,2})\s*(?:-|to)\s*(\d{1,2})$/i);
+  if (range) return `Grade ${range[1]}-${range[2]}`;
+  return toTitleCase(normalized);
+};
+
+const mergeUniqueCaseInsensitive = (base: string[], additions: string[]) => {
+  const out = [...base];
+  additions.forEach((item) => {
+    const value = normalizeSpaces(item);
+    if (!value) return;
+    if (!out.some((existing) => existing.toLowerCase() === value.toLowerCase())) {
+      out.push(value);
+    }
+  });
+  return out;
+};
 
 type ProfileData = {
   name: string;
@@ -24,6 +114,8 @@ type ProfileData = {
   degrees?: string[];
   qualifications?: string;
   classesTeach?: string[];
+  boards?: string[];
+  classSubjectMappings?: Array<{ classRange: string; subjects: string[] }>;
 };
 
 export default function Profile() {
@@ -37,7 +129,9 @@ export default function Profile() {
     yearsExperience: undefined,
     degrees: [],
     qualifications: '',
-    classesTeach: []
+    classesTeach: [],
+    boards: [],
+    classSubjectMappings: [],
   });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -47,10 +141,10 @@ export default function Profile() {
   );
   const [subjectQuery, setSubjectQuery] = useState('');
   const [languageQuery, setLanguageQuery] = useState('');
-  const [showSubjectOptions, setShowSubjectOptions] = useState(false);
   const [showLanguageOptions, setShowLanguageOptions] = useState(false);
   const [degreeInput, setDegreeInput] = useState('');
   const [classInput, setClassInput] = useState('');
+  const [mappingSubjectDrafts, setMappingSubjectDrafts] = useState<Record<number, string>>({});
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
 
@@ -86,6 +180,10 @@ export default function Profile() {
         degrees: Array.isArray(raw?.degrees) ? raw.degrees : raw?.tutor?.degrees ?? [],
         qualifications: raw?.qualifications ?? raw?.tutor?.qualifications ?? '',
         classesTeach: Array.isArray(raw?.classesTeach) ? raw.classesTeach : raw?.tutor?.classesTeach ?? [],
+        boards: Array.isArray(raw?.boards) ? raw.boards : raw?.tutor?.boards ?? [],
+        classSubjectMappings: Array.isArray(raw?.classSubjectMappings)
+          ? raw.classSubjectMappings
+          : raw?.tutor?.classSubjectMappings ?? [],
       };
       setData(next);
     } catch (e) {
@@ -101,16 +199,6 @@ export default function Profile() {
   const selectedSubjects = data.subjects ?? [];
   const selectedLanguages = data.languages ?? [];
 
-  const filteredSubjectOptions = useMemo(() => {
-    const query = subjectQuery.trim().toLowerCase();
-    const taken = new Set(selectedSubjects.map((s) => s.toLowerCase()));
-    return SUBJECT_OPTIONS.filter((option) => {
-      if (taken.has(option.toLowerCase())) return false;
-      if (!query) return true;
-      return option.toLowerCase().includes(query);
-    });
-  }, [selectedSubjects, subjectQuery]);
-
   const filteredLanguageOptions = useMemo(() => {
     const query = languageQuery.trim().toLowerCase();
     const taken = new Set(selectedLanguages.map((l) => l.toLowerCase()));
@@ -121,17 +209,22 @@ export default function Profile() {
     });
   }, [selectedLanguages, languageQuery]);
 
-  const visibleSubjectOptions = filteredSubjectOptions;
+  const subjectInputSuggestion = useMemo(
+    () => getSubjectSuggestion(subjectQuery, selectedSubjects),
+    [subjectQuery, selectedSubjects],
+  );
+
   const addSubject = (subject: string) => {
+    const normalizedSubject = standardizeSubject(subject);
+    if (!normalizedSubject) return;
     setData((prev) => {
       const current = prev.subjects ?? [];
-      if (current.some((s) => s.toLowerCase() === subject.toLowerCase())) {
+      if (current.some((s) => s.toLowerCase() === normalizedSubject.toLowerCase())) {
         return prev;
       }
-      return { ...prev, subjects: [...current, subject] };
+      return { ...prev, subjects: [...current, normalizedSubject] };
     });
     setSubjectQuery('');
-    setShowSubjectOptions(false);
   };
 
   const removeSubject = (subject: string) => {
@@ -139,6 +232,19 @@ export default function Profile() {
       ...prev,
       subjects: (prev.subjects ?? []).filter((s) => s !== subject),
     }));
+  };
+
+  const addClassTeach = (classValue: string) => {
+    const normalizedClass = standardizeGrade(classValue);
+    if (!normalizedClass) return;
+    setData((prev) => {
+      const current = prev.classesTeach ?? [];
+      if (current.some((c) => c.toLowerCase() === normalizedClass.toLowerCase())) {
+        return prev;
+      }
+      return { ...prev, classesTeach: [...current, normalizedClass] };
+    });
+    setClassInput('');
   };
 
   const addLanguage = (language: string) => {
@@ -150,7 +256,7 @@ export default function Profile() {
       return { ...prev, languages: [...current, language] };
     });
     setLanguageQuery('');
-    setShowLanguageOptions(false);
+    setShowLanguageOptions(true);
   };
 
   const removeLanguage = (language: string) => {
@@ -160,16 +266,100 @@ export default function Profile() {
     }));
   };
 
+  const toggleBoard = (board: string) => {
+    setData((prev) => {
+      const current = prev.boards ?? [];
+      const exists = current.some((b) => b.toLowerCase() === board.toLowerCase());
+      return {
+        ...prev,
+        boards: exists
+          ? current.filter((b) => b.toLowerCase() !== board.toLowerCase())
+          : [...current, board],
+      };
+    });
+  };
+
+  const addClassSubjectMapping = () => {
+    setData((prev) => ({
+      ...prev,
+      classSubjectMappings: [...(prev.classSubjectMappings ?? []), { classRange: '', subjects: [] }],
+    }));
+  };
+
+  const removeClassSubjectMapping = (index: number) => {
+    setData((prev) => ({
+      ...prev,
+      classSubjectMappings: (prev.classSubjectMappings ?? []).filter((_, idx) => idx !== index),
+    }));
+    setMappingSubjectDrafts((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+  };
+
+  const updateClassSubjectMappingRange = (index: number, classRange: string) => {
+    setData((prev) => ({
+      ...prev,
+      classSubjectMappings: (prev.classSubjectMappings ?? []).map((row, idx) =>
+        idx === index ? { ...row, classRange } : row
+      ),
+    }));
+  };
+
+  const addSubjectToClassMapping = (index: number, subject: string) => {
+    const normalizedSubject = standardizeSubject(subject);
+    if (!normalizedSubject) return;
+    setData((prev) => ({
+      ...prev,
+      classSubjectMappings: (prev.classSubjectMappings ?? []).map((row, idx) => {
+        if (idx !== index) return row;
+        const exists = (row.subjects ?? []).some((s) => s.toLowerCase() === normalizedSubject.toLowerCase());
+        if (exists) return row;
+        return { ...row, subjects: [...(row.subjects ?? []), normalizedSubject] };
+      }),
+      classesTeach: (() => {
+        const mapping = (prev.classSubjectMappings ?? [])[index];
+        const normalizedClass = standardizeGrade(mapping?.classRange ?? '');
+        return normalizedClass
+          ? mergeUniqueCaseInsensitive(prev.classesTeach ?? [], [normalizedClass])
+          : (prev.classesTeach ?? []);
+      })(),
+      subjects: mergeUniqueCaseInsensitive(prev.subjects ?? [], [normalizedSubject]),
+    }));
+    setMappingSubjectDrafts((prev) => ({ ...prev, [index]: '' }));
+  };
+
+  const removeSubjectFromClassMapping = (index: number, subject: string) => {
+    setData((prev) => ({
+      ...prev,
+      classSubjectMappings: (prev.classSubjectMappings ?? []).map((row, idx) => {
+        if (idx !== index) return row;
+        return {
+          ...row,
+          subjects: (row.subjects ?? []).filter((s) => s !== subject),
+        };
+      }),
+    }));
+  };
+
   const handleAvatarUpload = async (file: File) => {
     try {
       setUploadingAvatar(true);
-      await uploadMyAvatar(file);
-      await loadProfile();
+      const uploaded = await uploadMyAvatar(file);
 
       const freshMe = await fetchMe();
       const resolved = (freshMe as any)?.user ?? freshMe ?? null;
       if (resolved) {
         setUser(resolved as any);
+      }
+
+      const latestAvatarUrl = uploaded?.avatarUrl || resolved?.avatarUrl || null;
+      if (latestAvatarUrl) {
+        setData((prev) => ({
+          ...prev,
+          avatarUrl: latestAvatarUrl,
+        }));
       }
 
       setToast('Profile image updated successfully! ✓');
@@ -230,21 +420,43 @@ export default function Profile() {
     try {
       setSaving(true);
       const normalizedSubjects = Array.from(
-        new Set(selectedSubjects.map((s) => s.trim()).filter(Boolean))
+        new Set(selectedSubjects.map((s) => standardizeSubject(s)).filter(Boolean))
       );
       const normalizedLanguages = Array.from(
         new Set(selectedLanguages.map((l) => l.trim()).filter(Boolean))
       );
+      const normalizedClasses = Array.from(
+        new Set((data.classesTeach ?? []).map((c) => standardizeGrade(c)).filter(Boolean))
+      );
+      const normalizedMappings = (data.classSubjectMappings ?? [])
+        .map((row) => ({
+          classRange: standardizeGrade(row.classRange ?? ''),
+          subjects: Array.from(new Set((row.subjects ?? []).map((subject) => standardizeSubject(subject)).filter(Boolean))),
+        }))
+        .filter((row) => row.classRange && row.subjects.length > 0);
+
+      const inferredMappings =
+        normalizedMappings.length === 0 && normalizedClasses.length > 0 && normalizedSubjects.length > 0
+          ? Array.from({ length: Math.min(normalizedClasses.length, normalizedSubjects.length) }, (_, index) => ({
+              classRange: normalizedClasses[index],
+              subjects: [normalizedSubjects[index]],
+            }))
+          : [];
+
+      const effectiveMappings = normalizedMappings.length > 0 ? normalizedMappings : inferredMappings;
+
       const payload: any = {
         name: data.name?.trim(),
         bio: data.bio?.trim(),
         summary: data.summary?.trim(),
         subjects: normalizedSubjects,
+        boards: Array.from(new Set((data.boards ?? []).map((board) => board.trim()).filter(Boolean))),
         languages: normalizedLanguages,
         yearsExperience: data.yearsExperience,
         degrees: data.degrees,
         qualifications: data.qualifications?.trim(),
-        classesTeach: data.classesTeach,
+        classesTeach: normalizedClasses,
+        classSubjectMappings: effectiveMappings,
       };
       if (Number.isFinite(data.hourlyRate as any)) {
         payload.hourlyRate = Math.round(Number(data.hourlyRate));
@@ -462,6 +674,30 @@ export default function Profile() {
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-slate-700">Boards</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {BOARD_OPTIONS.map((board) => {
+                  const selected = (data.boards ?? []).some((b) => b.toLowerCase() === board.toLowerCase());
+                  return (
+                    <button
+                      key={board}
+                      type="button"
+                      onClick={() => toggleBoard(board)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium border transition ${
+                        selected
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {board}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Select all boards you can teach.</p>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-slate-700">
                 Classes/Grades I Teach <span className="text-red-500">*</span>
               </label>
@@ -501,11 +737,7 @@ export default function Profile() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && classInput.trim()) {
                         e.preventDefault();
-                        setData((d) => ({
-                          ...d,
-                          classesTeach: [...(d.classesTeach || []), classInput.trim()],
-                        }));
-                        setClassInput('');
+                        addClassTeach(classInput);
                       }
                     }}
                     className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -513,15 +745,7 @@ export default function Profile() {
                   />
                   <button
                     type="button"
-                    onClick={() => {
-                      if (classInput.trim()) {
-                        setData((d) => ({
-                          ...d,
-                          classesTeach: [...(d.classesTeach || []), classInput.trim()],
-                        }));
-                        setClassInput('');
-                      }
-                    }}
+                    onClick={() => addClassTeach(classInput)}
                     className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700"
                   >
                     Add
@@ -532,6 +756,118 @@ export default function Profile() {
                 </p>
               </div>
             </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-slate-700">Class to Subject Mapping</label>
+                <button
+                  type="button"
+                  onClick={addClassSubjectMapping}
+                  className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200"
+                >
+                  Add Mapping
+                </button>
+              </div>
+              <div className="mt-2 space-y-3">
+                {(data.classSubjectMappings ?? []).length > 0 ? (
+                  <>
+                    {(data.classSubjectMappings ?? []).map((row, idx) => {
+                      const chosen = row.subjects ?? [];
+                      const mappingSuggestion = getSubjectSuggestion(mappingSubjectDrafts[idx] ?? '', chosen);
+                      return (
+                        <div key={idx} className="rounded-lg border border-slate-200 p-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-start">
+                            <input
+                              value={row.classRange ?? ''}
+                              onChange={(e) => updateClassSubjectMappingRange(idx, e.target.value)}
+                              className="sm:col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              placeholder="e.g., Grade 9-10"
+                            />
+                            <div className="flex gap-2">
+                              <input
+                                value={mappingSubjectDrafts[idx] ?? ''}
+                                onChange={(e) => setMappingSubjectDrafts((prev) => ({ ...prev, [idx]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Tab' && mappingSuggestion) {
+                                    e.preventDefault();
+                                    setMappingSubjectDrafts((prev) => ({ ...prev, [idx]: mappingSuggestion }));
+                                    return;
+                                  }
+                                  if (e.key === 'Enter' && (mappingSubjectDrafts[idx] ?? '').trim()) {
+                                    e.preventDefault();
+                                    addSubjectToClassMapping(idx, mappingSuggestion || (mappingSubjectDrafts[idx] ?? ''));
+                                  }
+                                }}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                placeholder="Add subject"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => addSubjectToClassMapping(idx, mappingSubjectDrafts[idx] ?? '')}
+                                className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                          {mappingSuggestion && (
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Press Tab to autocomplete: {mappingSuggestion}
+                            </p>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {chosen.length > 0 ? (
+                              chosen.map((subject) => (
+                                <span
+                                  key={`${idx}-${subject}`}
+                                  className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700"
+                                >
+                                  {subject}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSubjectFromClassMapping(idx, subject)}
+                                    className="ml-1 text-indigo-400 hover:text-indigo-600"
+                                    aria-label={`Remove ${subject}`}
+                                  >
+                                    x
+                                  </button>
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-slate-500">No subjects mapped yet.</span>
+                            )}
+                          </div>
+                          <div className="mt-2">
+                            <button
+                              type="button"
+                              onClick={() => removeClassSubjectMapping(idx)}
+                              className="text-xs font-medium text-rose-600 hover:text-rose-700"
+                            >
+                              Remove mapping
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={addClassSubjectMapping}
+                        className="text-xs font-semibold text-indigo-700 hover:text-indigo-800"
+                      >
+                        + Add another mapping
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-500">No class-to-subject mapping added. Add mappings to improve student matching.</p>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Example: Grade 9-10 → Mathematics, Physics.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700">Subjects</label>
@@ -561,16 +897,16 @@ export default function Profile() {
                   <div className="relative mt-2">
                     <input
                       value={subjectQuery}
-                      onChange={(e) => {
-                        setSubjectQuery(e.target.value);
-                        setShowSubjectOptions(true);
-                      }}
-                      onFocus={() => setShowSubjectOptions(true)}
-                      onBlur={() => setTimeout(() => setShowSubjectOptions(false), 120)}
+                      onChange={(e) => setSubjectQuery(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && visibleSubjectOptions.length > 0) {
+                        if (e.key === 'Tab' && subjectInputSuggestion) {
                           e.preventDefault();
-                          addSubject(visibleSubjectOptions[0]);
+                          setSubjectQuery(subjectInputSuggestion);
+                          return;
+                        }
+                        if (e.key === 'Enter' && subjectQuery.trim()) {
+                          e.preventDefault();
+                          addSubject(subjectInputSuggestion || subjectQuery);
                         }
                         if (e.key === 'Backspace' && !subjectQuery && selectedSubjects.length > 0) {
                           e.preventDefault();
@@ -578,31 +914,17 @@ export default function Profile() {
                         }
                       }}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="Start typing to search subjects"
+                      placeholder="Type subject and press Enter"
                     />
-                    {showSubjectOptions && (
-                      <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-                        {visibleSubjectOptions.length > 0 ? (
-                          visibleSubjectOptions.map((option) => (
-                            <button
-                              type="button"
-                              key={option}
-                              className="block w-full px-3 py-2 text-left text-sm hover:bg-indigo-50"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => addSubject(option)}
-                            >
-                              {option}
-                            </button>
-                          ))
-                        ) : (
-                          <div className="px-3 py-2 text-sm text-slate-500">No matches</div>
-                        )}
-                      </div>
+                    {subjectInputSuggestion && (
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Press Tab to autocomplete: {subjectInputSuggestion}
+                      </p>
                     )}
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Pick from the supported subjects list. Students use the same options when filtering tutors.
+                  Enter your own subject names. We normalize case and spelling while saving.
                 </p>
               </div>
               <div>

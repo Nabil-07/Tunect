@@ -26,7 +26,11 @@ type KycLocalSnapshot = {
 /* ----------------- Component ----------------- */
 
 export default function TutorKYC() {
-  const [status, setStatus] = useState<{ status: 'none'|'submitted'|'under_review'|'approved'|'rejected'; reason?: string }|null>(null);
+  const [status, setStatus] = useState<{
+    status: 'none'|'submitted'|'under_review'|'approved'|'rejected';
+    reason?: string;
+    correctionRequest?: { fields: string[]; message?: string };
+  }|null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -35,6 +39,8 @@ export default function TutorKYC() {
   const [modal, setModal] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
   const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: string; docType: string; url: string; status: string; createdAt: string }>>([]);
   const [submittedFileNames, setSubmittedFileNames] = useState<string[]>([]);
+  const [requestedCorrectionFields, setRequestedCorrectionFields] = useState<string[]>([]);
+  const [requestedCorrectionMessage, setRequestedCorrectionMessage] = useState<string>('');
 
   // Countries from countryData (single source of truth)
   const countries = useMemo<CountryOption[]>(() => getCountries(), []);
@@ -66,6 +72,9 @@ export default function TutorKYC() {
 
   const isEditable = !status || status.status === 'none' || status.status === 'rejected';
   const formLocked = !isEditable;
+  const restrictedCorrectionMode = !!(status?.status === 'rejected' && requestedCorrectionFields.length);
+  const canEditField = (field: string) => !formLocked && (!restrictedCorrectionMode || requestedCorrectionFields.includes(field));
+  const showReadOnlyDocs = formLocked || (!canEditField('selfie') && !canEditField('degreeCertificates'));
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -121,6 +130,9 @@ export default function TutorKYC() {
       ]);
 
       setStatus(statusRes);
+      const statusCorrection = 'correctionRequest' in statusRes ? statusRes.correctionRequest : undefined;
+      setRequestedCorrectionFields(statusCorrection?.fields || []);
+      setRequestedCorrectionMessage(statusCorrection?.message || '');
 
       const local = readLocalSnapshot();
       if (local?.degreeNames?.length || local?.selfieName) {
@@ -138,6 +150,13 @@ export default function TutorKYC() {
       setUploadedDocs(docs);
 
       if (!app) return;
+
+      if (Array.isArray(app.correctionRequest?.fields) && app.correctionRequest.fields.length > 0) {
+        setRequestedCorrectionFields(app.correctionRequest.fields);
+      }
+      if (app.correctionRequest?.message) {
+        setRequestedCorrectionMessage(app.correctionRequest.message);
+      }
 
       setFullName(app.fullName || '');
       setDob(toInputDate(app.dob));
@@ -223,8 +242,8 @@ export default function TutorKYC() {
     }
     // For other countries, no bank field is strictly required beyond the common ones
 
-    if (!selfie) e.selfie = 'A clear profile photo is required';
-    if (degrees.length === 0) e.degrees = 'Please upload at least one degree certificate';
+    if (canEditField('selfie') && !selfie) e.selfie = 'A clear profile photo is required';
+    if (canEditField('degreeCertificates') && degrees.length === 0) e.degrees = 'Please upload at least one degree certificate';
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -327,6 +346,12 @@ export default function TutorKYC() {
         <div className="text-sm text-slate-700">
           <div className="font-semibold">Current status: {status?.status || 'none'}</div>
           {status?.reason && <div className="text-rose-700">Reason: {status.reason}</div>}
+          {restrictedCorrectionMode && (
+            <div className="text-amber-700 mt-1">
+              Requested updates: {requestedCorrectionFields.join(', ')}
+              {requestedCorrectionMessage ? ` — ${requestedCorrectionMessage}` : ''}
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -381,12 +406,12 @@ export default function TutorKYC() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">Full name *</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={fullName} onChange={e=>setFullName(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={fullName} onChange={e=>setFullName(e.target.value)} disabled={!canEditField('fullName')} />
               {errors.fullName && <p className="text-rose-600 text-xs mt-1">{errors.fullName}</p>}
             </label>
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">Date of birth *</span>
-              <input type="date" className="w-full border rounded-lg px-3 py-2" value={dob} onChange={e=>setDob(e.target.value)} />
+              <input type="date" className="w-full border rounded-lg px-3 py-2" value={dob} onChange={e=>setDob(e.target.value)} disabled={!canEditField('dob')} />
               {errors.dob && <p className="text-rose-600 text-xs mt-1">{errors.dob}</p>}
             </label>
             <label className="text-sm">
@@ -395,7 +420,8 @@ export default function TutorKYC() {
                      value={phone}
                      onChange={e=>setPhone(e.target.value)}
                      placeholder={phonePlaceholder}
-                     inputMode="tel" />
+                     inputMode="tel"
+                     disabled={!canEditField('phone')} />
               {errors.phone && <p className="text-rose-600 text-xs mt-1">{errors.phone}</p>}
             </label>
 
@@ -404,6 +430,7 @@ export default function TutorKYC() {
               <select
                 className="w-full border rounded-lg px-3 py-2"
                 value={countryCode}
+                disabled={!canEditField('country')}
                 onChange={(e)=>{
                   const raw = String(e.target.value || '').toUpperCase();
                   const found = findCountry(raw) || countries.find(c => c.name.toUpperCase() === raw);
@@ -420,25 +447,25 @@ export default function TutorKYC() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
             <label className="text-sm md:col-span-2">
               <span className="block text-slate-600 mb-1">Address line 1 *</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={address1} onChange={e=>setAddress1(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={address1} onChange={e=>setAddress1(e.target.value)} disabled={!canEditField('addressLine1')} />
               {errors.address1 && <p className="text-rose-600 text-xs mt-1">{errors.address1}</p>}
             </label>
             <label className="text-sm md:col-span-2">
               <span className="block text-slate-600 mb-1">Address line 2 (optional)</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={address2} onChange={e=>setAddress2(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={address2} onChange={e=>setAddress2(e.target.value)} disabled={!canEditField('addressLine2')} />
             </label>
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">City *</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={city} onChange={e=>setCity(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={city} onChange={e=>setCity(e.target.value)} disabled={!canEditField('city')} />
               {errors.city && <p className="text-rose-600 text-xs mt-1">{errors.city}</p>}
             </label>
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">{isUAE ? 'Emirate' : 'State/Province'}</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={state} onChange={e=>setState(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={state} onChange={e=>setState(e.target.value)} disabled={!canEditField('state')} />
             </label>
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">{isUAE ? 'PO Box' : 'Postal code'}</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={postal} onChange={e=>setPostal(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={postal} onChange={e=>setPostal(e.target.value)} disabled={!canEditField('postalCode')} />
             </label>
           </div>
         </section>
@@ -450,17 +477,17 @@ export default function TutorKYC() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="text-sm md:col-span-2">
               <span className="block text-slate-600 mb-1">Account holder name *</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={holder} onChange={e=>setHolder(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={holder} onChange={e=>setHolder(e.target.value)} disabled={!canEditField('bankAccountHolder')} />
               {errors.holder && <p className="text-rose-600 text-xs mt-1">{errors.holder}</p>}
             </label>
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">Bank name *</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={bankName} onChange={e=>setBankName(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={bankName} onChange={e=>setBankName(e.target.value)} disabled={!canEditField('bankName')} />
               {errors.bankName && <p className="text-rose-600 text-xs mt-1">{errors.bankName}</p>}
             </label>
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">Branch (optional)</span>
-              <input className="w-full border rounded-lg px-3 py-2" value={bankBranch} onChange={e=>setBankBranch(e.target.value)} />
+              <input className="w-full border rounded-lg px-3 py-2" value={bankBranch} onChange={e=>setBankBranch(e.target.value)} disabled={!canEditField('bankBranch')} />
             </label>
           </div>
 
@@ -470,7 +497,7 @@ export default function TutorKYC() {
               <label className="text-sm">
                 <span className="block text-slate-600 mb-1">Account number *</span>
                 <input className="w-full border rounded-lg px-3 py-2" inputMode="numeric"
-                       value={accNumber} onChange={e=>setAccNumber(e.target.value)} />
+                       value={accNumber} onChange={e=>setAccNumber(e.target.value)} disabled={!canEditField('accountNumber')} />
                 {errors.accNumber && <p className="text-rose-600 text-xs mt-1">{errors.accNumber}</p>}
               </label>
               <label className="text-sm">
@@ -479,17 +506,18 @@ export default function TutorKYC() {
                        value={accNumber2}
                        onChange={e=>setAccNumber2(e.target.value)}
                        onPaste={blockPaste} onDrop={blockDrop}
+                       disabled={!canEditField('accountNumber')}
                        placeholder="Typing only; paste disabled" />
                 {errors.accNumber2 && <p className="text-rose-600 text-xs mt-1">{errors.accNumber2}</p>}
               </label>
               <label className="text-sm">
                 <span className="block text-slate-600 mb-1">IFSC *</span>
-                <input className="w-full border rounded-lg px-3 py-2" value={ifsc} onChange={e=>setIfsc(e.target.value)} placeholder="e.g. HDFC0001234" />
+                <input className="w-full border rounded-lg px-3 py-2" value={ifsc} onChange={e=>setIfsc(e.target.value)} placeholder="e.g. HDFC0001234" disabled={!canEditField('ifsc')} />
                 {errors.ifsc && <p className="text-rose-600 text-xs mt-1">{errors.ifsc}</p>}
               </label>
               <label className="text-sm">
                 <span className="block text-slate-600 mb-1">UPI ID (optional)</span>
-                <input className="w-full border rounded-lg px-3 py-2" value={upi} onChange={e=>setUpi(e.target.value)} placeholder="name@bank" />
+                <input className="w-full border rounded-lg px-3 py-2" value={upi} onChange={e=>setUpi(e.target.value)} placeholder="name@bank" disabled={!canEditField('upiId')} />
               </label>
             </div>
           )}
@@ -499,12 +527,12 @@ export default function TutorKYC() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
               <label className="text-sm md:col-span-2">
                 <span className="block text-slate-600 mb-1">IBAN *</span>
-                <input className="w-full border rounded-lg px-3 py-2" value={iban} onChange={e=>setIban(e.target.value)} placeholder="AE*********************" />
+                <input className="w-full border rounded-lg px-3 py-2" value={iban} onChange={e=>setIban(e.target.value)} placeholder="AE*********************" disabled={!canEditField('iban')} />
                 {errors.iban && <p className="text-rose-600 text-xs mt-1">{errors.iban}</p>}
               </label>
               <label className="text-sm">
                 <span className="block text-slate-600 mb-1">SWIFT/BIC (optional)</span>
-                <input className="w-full border rounded-lg px-3 py-2" value={swift} onChange={e=>setSwift(e.target.value)} />
+                <input className="w-full border rounded-lg px-3 py-2" value={swift} onChange={e=>setSwift(e.target.value)} disabled={!canEditField('swift')} />
                 {errors.swift && <p className="text-rose-600 text-xs mt-1">{errors.swift}</p>}
               </label>
             </div>
@@ -515,11 +543,11 @@ export default function TutorKYC() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
               <label className="text-sm md:col-span-2">
                 <span className="block text-slate-600 mb-1">IBAN / Account number (optional)</span>
-                <input className="w-full border rounded-lg px-3 py-2" placeholder="Enter your IBAN or account number" />
+                <input className="w-full border rounded-lg px-3 py-2" placeholder="Enter your IBAN or account number" disabled />
               </label>
               <label className="text-sm">
                 <span className="block text-slate-600 mb-1">SWIFT/BIC (optional)</span>
-                <input className="w-full border rounded-lg px-3 py-2" />
+                <input className="w-full border rounded-lg px-3 py-2" disabled />
               </label>
             </div>
           )}
@@ -552,7 +580,7 @@ export default function TutorKYC() {
             </div>
           )}
 
-          {formLocked ? (
+          {showReadOnlyDocs ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
               <div className="font-medium text-slate-800 mb-2">Submitted documents</div>
               {uploadedDocs.length > 0 ? (
@@ -578,13 +606,13 @@ export default function TutorKYC() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <label className="text-sm">
                 <span className="block text-slate-600 mb-1">Clear photo (selfie) *</span>
-                <input type="file" accept="image/*" onChange={e=>setSelfie(e.target.files?.[0] ?? null)} />
+                <input type="file" accept="image/*" onChange={e=>setSelfie(e.target.files?.[0] ?? null)} disabled={!canEditField('selfie')} />
                 {errors.selfie && <p className="text-rose-600 text-xs mt-1">{errors.selfie}</p>}
                 <p className="text-[11px] text-slate-500 mt-1">Good lighting, no sunglasses; JPG/PNG up to ~5 MB.</p>
               </label>
               <label className="text-sm">
                 <span className="block text-slate-600 mb-1">Degree certificate(s) *</span>
-                <input type="file" accept=".pdf,image/*" multiple onChange={e=>limitFiles(e.target.files, setDegrees)} />
+                <input type="file" accept=".pdf,image/*" multiple onChange={e=>limitFiles(e.target.files, setDegrees)} disabled={!canEditField('degreeCertificates')} />
                 {errors.degrees && <p className="text-rose-600 text-xs mt-1">{errors.degrees}</p>}
                 {degrees.length > 0 && (
                   <p className="text-[11px] text-slate-500 mt-1"><CheckCircle2 className="inline" size={14}/> {degrees.length} file(s) selected</p>

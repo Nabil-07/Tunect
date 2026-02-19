@@ -8,6 +8,7 @@ import { me as fetchMe } from '../../services/authService';
 import { useToast } from '../../contexts/ToastContext';
 import AvatarUploadModal from '../../components/AvatarUploadModal';
 import { decryptObject } from '../../utils/decryption';
+import { BOARD_OPTIONS } from '../../constants/boards';
 
 type StudentProfile = {
   id: string;
@@ -16,6 +17,7 @@ type StudentProfile = {
   timezone?: string | null;
   preferredLanguage?: string | null;
   grade?: string | null;
+  board?: string | null;
   user: {
     id: string;
     name: string | null;
@@ -24,7 +26,7 @@ type StudentProfile = {
     avatarUrl?: string | null;
     createdAt?: string;
   };
-  student?: { createdAt?: string; grade?: string | null };
+  student?: { createdAt?: string; grade?: string | null; board?: string | null };
 };
 
 export default function StudentProfile() {
@@ -43,6 +45,7 @@ export default function StudentProfile() {
     timezone: '',
     preferredLanguage: '',
     grade: '',
+    board: '',
   });
 
   useEffect(() => {
@@ -64,6 +67,7 @@ export default function StudentProfile() {
           timezone: decrypted.timezone ?? '',
           preferredLanguage: decrypted.preferredLanguage ?? '',
           grade: decrypted.student?.grade ?? decrypted.grade ?? '',
+          board: decrypted.student?.board ?? decrypted.board ?? '',
         });
       }
     } catch (err: any) {
@@ -96,6 +100,7 @@ export default function StudentProfile() {
         timezone: profile.timezone ?? '',
         preferredLanguage: profile.preferredLanguage ?? '',
         grade: profile.student?.grade ?? profile.grade ?? '',
+        board: profile.student?.board ?? profile.board ?? '',
       });
     }
     setEditing(false);
@@ -295,6 +300,30 @@ export default function StudentProfile() {
             ) : (
               <p className="text-slate-800 px-4 py-2 bg-slate-50 rounded-lg">
                 {formData.grade || 'Not set'}
+              </p>
+            )}
+          </div>
+
+          {/* Board */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              <Calendar className="inline h-4 w-4 mr-2" />
+              Board
+            </label>
+            {editing ? (
+              <select
+                value={formData.board || ''}
+                onChange={(e) => setFormData({ ...formData, board: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select board</option>
+                {BOARD_OPTIONS.map((board) => (
+                  <option key={board} value={board}>{board}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-slate-800 px-4 py-2 bg-slate-50 rounded-lg">
+                {formData.board || 'Not set'}
               </p>
             )}
           </div>
