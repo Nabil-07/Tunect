@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateKycDto } from './dto/create-kyc.dto';
 import { FinalizeKycDto } from './dto/finalize-kyc.dto';
@@ -69,6 +69,8 @@ const DATA_FIELDS_FOR_CHANGE_CHECK: string[] = [
 
 @Injectable()
 export class KycService {
+  private readonly logger = new Logger(KycService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -376,14 +378,22 @@ export class KycService {
 
     // Persist any provided files into KycDocument for review
     const docs = files || [];
+    const failedUploads: string[] = [];
     for (const f of docs) {
       const docType = f.fieldname || 'FILE';
       const safeDocType = this.toSafeDocType(docType);
-      const s3Url = await this.s3Service.uploadFile(
-        f.buffer,
-        f.originalname,
-        `kyc/${tutor.id}/${safeDocType || 'file'}`,
-      );
+      let s3Url: string;
+      try {
+        s3Url = await this.s3Service.uploadFile(
+          f.buffer,
+          f.originalname,
+          `kyc/${tutor.id}/${safeDocType || 'file'}`,
+        );
+      } catch (error_: any) {
+        this.logger.error(`KYC file upload failed for ${docType}: ${error_?.message}`);
+        failedUploads.push(docType);
+        continue;
+      }
 
       await this.prisma.kycDocument.create({
         data: {
@@ -393,6 +403,13 @@ export class KycService {
           status: KycStatus.PENDING,
         },
       });
+    }
+
+    if (failedUploads.length && failedUploads.length === docs.length) {
+      // All file uploads failed — reject the submission
+      throw new ForbiddenException(
+        `File upload failed for: ${failedUploads.join(', ')}. Please check your files and try again.`,
+      );
     }
 
     for (const doc of uploadedDocs) {

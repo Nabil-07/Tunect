@@ -338,7 +338,12 @@ export default function TutorKYC() {
       setModal({ kind: 'success', message: msg });
     } catch (err: any) {
       console.error(err);
-      const msg = err?.response?.data?.message || err?.message || 'Failed to submit KYC. Please try again.';
+      let msg: string;
+      if (err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')) {
+        msg = 'Upload timed out. Please check your internet connection and try again with smaller files (max 8 MB each).';
+      } else {
+        msg = err?.response?.data?.message || err?.message || 'Failed to submit KYC. Please try again.';
+      }
       setSubmitError(msg);
       setModal({ kind: 'error', message: msg });
     } finally {

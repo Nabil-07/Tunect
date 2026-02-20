@@ -17,6 +17,8 @@ export class S3Service {
   private readonly region: string;
   private readonly isEnabled: boolean;
   private readonly allowedTopLevelPrefixes = new Set(['avatars', 'kyc', 'certificates', 'study-materials', 'test']);
+  /** Per-request timeout in ms for S3 operations */
+  private readonly requestTimeoutMs = 30_000;
 
   constructor(private readonly configService: ConfigService) {
     this.bucketName = this.configService.get<string>('AWS_S3_BUCKET_NAME') || '';
@@ -28,6 +30,10 @@ export class S3Service {
         region: this.region,
         requestChecksumCalculation: 'WHEN_REQUIRED',
         responseChecksumValidation: 'WHEN_REQUIRED',
+        requestHandler: {
+          requestTimeout: this.requestTimeoutMs,
+          connectionTimeout: 10_000,
+        } as any,
         credentials: {
           accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID') || '',
           secretAccessKey: this.configService.get<string>('AWS_SECRET_ACCESS_KEY') || '',
@@ -77,11 +83,21 @@ export class S3Service {
       if (!this.s3Client) {
         throw new Error('S3 client not initialized');
       }
-      await this.s3Client.send(command);
+      const abortController = new AbortController();
+      const timer = setTimeout(() => abortController.abort(), this.requestTimeoutMs);
+      try {
+        await this.s3Client.send(command, { abortSignal: abortController.signal });
+      } finally {
+        clearTimeout(timer);
+      }
       const fileUrl = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${fileName}`;
       this.logger.log(`File uploaded successfully: ${fileUrl}`);
       return fileUrl;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'AbortError' || error?.code === 'ECONNABORTED') {
+        this.logger.error(`S3 upload timed out after ${this.requestTimeoutMs}ms for ${fileName}`);
+        throw new Error(`S3 upload timed out after ${this.requestTimeoutMs / 1000}s`);
+      }
       this.logger.error('S3 upload error:', error);
       throw new Error('Failed to upload file to S3');
     }
