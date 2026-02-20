@@ -206,11 +206,11 @@ export default function StudentProfile() {
                 {avatarInitial}
               </div>
             )}
-            <div className="text-white">
-              <h2 className="text-2xl font-bold mb-1">
+            <div className="text-white min-w-0 overflow-hidden">
+              <h2 className="text-2xl font-bold mb-1 truncate">
                 {formData.name || authUser?.name || 'Student'}
               </h2>
-              <p className="text-blue-100">
+              <p className="text-blue-100 truncate">
                 {profile.user?.email || authUser?.email || 'No email'}
               </p>
               <div className="mt-3">
@@ -256,7 +256,7 @@ export default function StudentProfile() {
               <Mail className="inline h-4 w-4 mr-2" />
               Email Address
             </label>
-            <p className="text-slate-800 px-4 py-2 bg-slate-50 rounded-lg">
+            <p className="text-slate-800 px-4 py-2 bg-slate-50 rounded-lg break-all">
               {profile.user?.email ?? authUser?.email ?? 'No email'}
             </p>
             <p className="text-xs text-slate-500 mt-1">Email cannot be changed</p>

@@ -137,7 +137,7 @@ export default function TutorWaitlist() {
                       Priority {entry.priority}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-600">{entry.student?.email}</p>
+                  <p className="text-sm text-slate-600 truncate">{entry.student?.email}</p>
                 </div>
               </div>
 

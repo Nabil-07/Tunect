@@ -160,7 +160,7 @@ export default function MyWaitlist() {
                     <h3 className="text-lg font-semibold text-slate-800 mb-1">
                       {entry.tutor?.name || "Tutor"}
                     </h3>
-                    <p className="text-sm text-slate-600">{entry.tutor?.email}</p>
+                    <p className="text-sm text-slate-600 truncate">{entry.tutor?.email}</p>
                   </div>
                   {getStatusBadge(entry.status)}
                 </div>

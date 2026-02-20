@@ -39,6 +39,7 @@ export type AvailabilitySlot = {
   endTime: string;
   title?: string;
   booked?: boolean;
+  bookingStatus?: string | null;
 };
 
 export type RawSlot = {
@@ -48,6 +49,7 @@ export type RawSlot = {
   endTime: string;   // ISO
   title?: string;
   booked?: boolean;
+  bookingStatus?: string | null;
 };
 
 type ListResponse<T> = {
@@ -330,6 +332,7 @@ function normalizeAnyToAvailability(arr: any[]): AvailabilitySlot[] {
         endTime: hhmm(end),
         title: s.title,
         booked: !!s.booked,
+        bookingStatus: s.bookingStatus ?? null,
       });
     } else {
       const date = s.date || s.day;
@@ -344,6 +347,7 @@ function normalizeAnyToAvailability(arr: any[]): AvailabilitySlot[] {
           endTime,
           title: s.title,
           booked: !!s.booked,
+          bookingStatus: s.bookingStatus ?? null,
         });
       }
     }

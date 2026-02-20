@@ -5,7 +5,7 @@ import type { AvailabilitySlot } from '../../services/tutorService';
 import api from '../../lib/apiClient';
 
 type DayKey = string; // "YYYY-MM-DD"
-type SlotVM = { id?: string; start: string; end: string; title?: string; booked?: boolean; templateId?: string };
+type SlotVM = { id?: string; start: string; end: string; title?: string; booked?: boolean; bookingStatus?: string | null; templateId?: string };
 type SlotsByDay = Record<DayKey, SlotVM[]>;
 type ToastType = 'error' | 'success' | 'warning';
 
@@ -81,6 +81,7 @@ function toSlotsByDay(api: AvailabilitySlot[]): SlotsByDay {
       end: clampHHMM(s.endTime),
       title: s.title,
       booked: !!s.booked,
+      bookingStatus: (s as any).bookingStatus ?? null,
     });
   }
   for (const k of Object.keys(out)) out[k].sort((a, b) => compareHHMM(a.start, b.start));
@@ -155,6 +156,9 @@ export default function TutorAvailability() {
   const [draftSubject, setDraftSubject] = useState<string>('');
   const [draftBooked, setDraftBooked] = useState<boolean>(false); // if the slot is booked
   const [tutorSubjects, setTutorSubjects] = useState<string[]>([]);
+
+  // mobile: selected day for detail panel
+  const [selectedDay, setSelectedDay] = useState<DayKey | null>(null);
 
   // template editor state
   const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
@@ -549,101 +553,305 @@ export default function TutorAvailability() {
 
           {error && <div className="mb-3 text-sm text-red-600">{error}</div>}
 
-          {/* Week header */}
-          <div className="grid grid-cols-7 gap-3 mb-2 max-sm:hidden">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-              <div key={d} className="text-xs font-semibold text-slate-500 px-2">{d}</div>
-            ))}
+          {/* =================== DESKTOP LAYOUT (lg+) =================== */}
+          <div className="hidden lg:block">
+            {/* Week header */}
+            <div className="grid grid-cols-7 gap-2 mb-2">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+                <div key={d} className="text-xs font-semibold text-slate-500 px-2">{d}</div>
+              ))}
+            </div>
+
+            {/* Calendar grid — full cards */}
+            {loading ? (
+              <div className="p-6 text-slate-600">Loading calendar…</div>
+            ) : (
+              <div className="grid grid-cols-7 gap-3">
+                {cells.map((dateOrNull, i) => {
+                  if (!dateOrNull) return <div key={`pad-${i}`} />;
+
+                  const d = dateOrNull;
+                  const key = ymd(d);
+                  const daySlots = slots[key] || [];
+                  const tplSlots = templateSlotsByDay[key] || [];
+                  const past = isPastDay(key, now);
+                  const today = isToday(key, now);
+
+                  return (
+                    <div
+                      key={key}
+                      className={`relative rounded-xl border bg-white p-2 hover:shadow-sm transition min-h-[128px] ${today ? 'ring-2 ring-blue-400' : ''}`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-sm font-semibold flex items-center gap-1.5">
+                          {d.getDate()}
+                          {today && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">Today</span>}
+                        </div>
+                        <button
+                          disabled={past}
+                          className={`text-xs inline-flex items-center gap-1 rounded-lg px-2 py-1 ${
+                            past ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+                          }`}
+                          onClick={() => openAddEditor(d)}
+                          title={past ? 'Cannot add slots in the past' : 'Add a slot'}
+                        >
+                          <Plus size={14} /> Slot
+                        </button>
+                      </div>
+
+                      {daySlots.length === 0 && tplSlots.length === 0 ? (
+                        <div className="text-[11px] text-slate-500">No slots</div>
+                      ) : (
+                        <div className="space-y-1">
+                          {tplSlots.map((s, idx) => (
+                            <button
+                              key={`template-${s.start}-${idx}`}
+                              className="w-full text-left flex items-center justify-between text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1 hover:bg-emerald-100/70"
+                              title="Edit recurring template"
+                              onClick={() => openTemplateEditor(s.templateId)}
+                            >
+                              <span className="truncate text-emerald-700">
+                                <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
+                                {s.title ? <span className="ml-1 text-emerald-700">• {s.title}</span> : null}
+                              </span>
+                              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Template</span>
+                            </button>
+                          ))}
+                          {daySlots.map((s, idx) => {
+                            const isCompleted = s.bookingStatus === 'COMPLETED';
+                            return (
+                            <button
+                              key={`${s.start}-${idx}`}
+                              className={`w-full text-left flex items-center justify-between text-xs rounded-lg px-2 py-1 group ${
+                                isCompleted ? 'bg-green-50 cursor-default' : s.booked ? 'bg-amber-50 cursor-default' : 'bg-slate-50 hover:bg-slate-100'
+                              }`}
+                              onClick={() => !s.booked && openEditEditor(key, idx)}
+                              title={isCompleted ? 'Session completed' : s.booked ? 'This slot has an active booking' : 'Edit slot'}
+                            >
+                              <span className="truncate">
+                                <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
+                                {s.title ? <span className="ml-1 text-slate-600">• {s.title}</span> : null}
+                              </span>
+                              {isCompleted ? (
+                                <span className="inline-flex items-center gap-1 text-green-700 text-[10px] font-semibold">
+                                  <CheckCircle2 size={12} /> Done
+                                </span>
+                              ) : s.booked ? (
+                                <span className="inline-flex items-center gap-1 text-amber-700">
+                                  <Lock size={12} />
+                                </span>
+                              ) : (
+                                <span
+                                  className="opacity-0 group-hover:opacity-100 transition text-red-600 hover:text-red-700"
+                                  onClick={(e) => { e.stopPropagation(); removeSlot(key, idx); }}
+                                  title="Delete slot"
+                                >
+                                  <Trash2 size={14} />
+                                </span>
+                              )}
+                            </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Calendar grid */}
-          {loading ? (
-            <div className="p-6 text-slate-600">Loading calendar…</div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-              {cells.map((dateOrNull, i) => {
-                if (!dateOrNull) return <div key={`pad-${i}`} className="hidden sm:block" />;
+          {/* =================== MOBILE LAYOUT (< lg) =================== */}
+          <div className="lg:hidden">
+            {loading ? (
+              <div className="p-6 text-slate-600">Loading calendar…</div>
+            ) : (
+              <>
+                {/* Compact month calendar */}
+                <div className="grid grid-cols-7 gap-0.5 mb-1">
+                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+                    <div key={`hdr-${d}-${i}`} className="text-[10px] font-semibold text-slate-400 text-center py-1">{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-0.5">
+                  {cells.map((dateOrNull, i) => {
+                    if (!dateOrNull) return <div key={`pad-${i}`} />;
 
-                const d = dateOrNull;
-                const key = ymd(d);
-                const daySlots = slots[key] || [];
-                const templateSlots = templateSlotsByDay[key] || [];
-                const past = isPastDay(key, now);
-                const today = isToday(key, now);
+                    const d = dateOrNull;
+                    const key = ymd(d);
+                    const daySlots = slots[key] || [];
+                    const tplSlots = templateSlotsByDay[key] || [];
+                    const totalSlots = daySlots.length + tplSlots.length;
+                    const past = isPastDay(key, now);
+                    const today = isToday(key, now);
+                    const isSelected = selectedDay === key;
+                    const hasBooked = daySlots.some((s) => s.booked);
+                    const hasCompleted = daySlots.some((s) => s.bookingStatus === 'COMPLETED');
 
-                return (
-                  <div
-                    key={key}
-                    className={`relative rounded-xl border bg-white p-2 hover:shadow-sm transition min-h-[128px] ${today ? 'ring-2 ring-blue-400' : ''}`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-sm font-semibold flex items-center gap-2">
-                        {d.getDate()}
-                        {today && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">Today</span>}
-                      </div>
+                    return (
                       <button
-                        disabled={past}
-                        className={`text-xs inline-flex items-center gap-1 rounded-lg px-2 py-1 ${
-                          past ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                        onClick={() => openAddEditor(d)}
-                        title={past ? 'Cannot add slots in the past' : 'Add a slot'}
+                        key={key}
+                        type="button"
+                        onClick={() => setSelectedDay(isSelected ? null : key)}
+                        className={`relative flex flex-col items-center justify-center rounded-lg py-2 px-0.5 transition-all text-center
+                          ${today ? 'ring-2 ring-blue-400 ring-inset' : ''}
+                          ${isSelected ? 'bg-blue-600 text-white shadow-md' : past ? 'bg-slate-50 text-slate-400' : 'bg-white hover:bg-blue-50 text-slate-800'}
+                        `}
                       >
-                        <Plus size={14} /> Slot
-                      </button>
-                    </div>
-
-                    {daySlots.length === 0 && templateSlots.length === 0 ? (
-                      <div className="text-[11px] text-slate-500">No slots</div>
-                    ) : (
-                      <div className="space-y-1">
-                        {templateSlots.map((s, idx) => (
-                          <button
-                            key={`template-${s.start}-${idx}`}
-                            className="w-full text-left flex items-center justify-between text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1 hover:bg-emerald-100/70"
-                            title="Edit recurring template"
-                            onClick={() => openTemplateEditor(s.templateId)}
-                          >
-                            <span className="truncate text-emerald-700">
-                              <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
-                              {s.title ? <span className="ml-1 text-emerald-700">• {s.title}</span> : null}
-                            </span>
-                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Template</span>
-                          </button>
-                        ))}
-                        {daySlots.map((s, idx) => (
-                          <button
-                            key={`${s.start}-${idx}`}
-                            className="w-full text-left flex items-center justify-between text-xs bg-slate-50 hover:bg-slate-100 rounded-lg px-2 py-1 group"
-                            onClick={() => openEditEditor(key, idx)}
-                            title={s.booked ? 'This slot has a booking' : 'Edit slot'}
-                          >
-                            <span className="truncate">
-                              <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
-                              {s.title ? <span className="ml-1 text-slate-600">• {s.title}</span> : null}
-                            </span>
-                            {s.booked ? (
-                              <span className="inline-flex items-center gap-1 text-amber-700">
-                                <Lock size={12} />
-                              </span>
-                            ) : (
-                              <span
-                                className="opacity-0 group-hover:opacity-100 transition text-red-600 hover:text-red-700"
-                                onClick={(e) => { e.stopPropagation(); removeSlot(key, idx); }}
-                                title="Delete slot"
-                              >
-                                <Trash2 size={14} />
-                              </span>
+                        <span className={`text-sm font-semibold leading-none ${isSelected ? 'text-white' : today ? 'text-blue-600' : ''}`}>
+                          {d.getDate()}
+                        </span>
+                        {/* Dot indicators */}
+                        {totalSlots > 0 && (
+                          <div className="flex items-center gap-0.5 mt-1">
+                            {tplSlots.length > 0 && (
+                              <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-emerald-300' : 'bg-emerald-500'}`} />
                             )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                            {daySlots.length > 0 && (
+                              <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-blue-200' : hasCompleted ? 'bg-green-500' : hasBooked ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                            )}
+                            {totalSlots > 2 && (
+                              <span className={`text-[8px] font-bold leading-none ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>+{totalSlots - 1}</span>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Legend */}
+                <div className="flex items-center gap-3 mt-2 px-1">
+                  <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                    <span className="w-2 h-2 rounded-full bg-blue-500" /> Slots
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" /> Templates
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" /> Booked
+                  </div>
+                </div>
+
+                {/* Selected day detail panel */}
+                {selectedDay && (
+                  <div className="mt-3 rounded-xl border bg-white shadow-sm overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    {(() => {
+                      const selDate = new Date(selectedDay + 'T00:00:00');
+                      const daySlots = slots[selectedDay] || [];
+                      const tplSlots = templateSlotsByDay[selectedDay] || [];
+                      const past = isPastDay(selectedDay, now);
+                      const today = isToday(selectedDay, now);
+                      const dateLabel = selDate.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+
+                      return (
+                        <>
+                          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b">
+                            <div>
+                              <h3 className="font-semibold text-slate-900 text-sm">{dateLabel}</h3>
+                              <p className="text-[11px] text-slate-500">
+                                {daySlots.length + tplSlots.length === 0
+                                  ? 'No slots scheduled'
+                                  : `${daySlots.length + tplSlots.length} slot${daySlots.length + tplSlots.length > 1 ? 's' : ''}`}
+                                {today && ' • Today'}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {!past && (
+                                <button
+                                  className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors"
+                                  onClick={() => openAddEditor(selDate)}
+                                >
+                                  <Plus size={14} /> Add Slot
+                                </button>
+                              )}
+                              <button
+                                className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
+                                onClick={() => setSelectedDay(null)}
+                              >
+                                <X size={16} className="text-slate-500" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="p-3 space-y-2">
+                            {tplSlots.map((s, idx) => (
+                              <button
+                                key={`tpl-${s.start}-${idx}`}
+                                className="w-full flex items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50 p-3 hover:bg-emerald-100/70 transition-colors text-left"
+                                onClick={() => openTemplateEditor(s.templateId)}
+                              >
+                                <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                                  <Clock size={16} className="text-emerald-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-emerald-800">{s.start} – {s.end}</div>
+                                  <div className="text-[11px] text-emerald-600">{s.title || 'Recurring template'}</div>
+                                </div>
+                                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full shrink-0">Template</span>
+                              </button>
+                            ))}
+                            {daySlots.map((s, idx) => {
+                              const isCompleted = s.bookingStatus === 'COMPLETED';
+                              return (
+                              <div
+                                key={`slot-${s.start}-${idx}`}
+                                className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
+                                  isCompleted ? 'bg-green-50 border-green-200' : s.booked ? 'bg-amber-50 border-amber-200' : 'bg-white hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                                  isCompleted ? 'bg-green-100' : s.booked ? 'bg-amber-100' : 'bg-blue-100'
+                                }`}>
+                                  {isCompleted ? <CheckCircle2 size={16} className="text-green-600" /> : s.booked ? <Lock size={16} className="text-amber-600" /> : <Clock size={16} className="text-blue-600" />}
+                                </div>
+                                <button
+                                  className="flex-1 min-w-0 text-left"
+                                  onClick={() => !past && !s.booked && openEditEditor(selectedDay, idx)}
+                                  disabled={past || !!s.booked}
+                                >
+                                  <div className="text-sm font-medium text-slate-800">{s.start} – {s.end}</div>
+                                  <div className="text-[11px] text-slate-500">
+                                    {s.title || 'Slot'}
+                                    {isCompleted && <span className="ml-1 text-green-600 font-medium">• Completed</span>}
+                                    {s.booked && !isCompleted && <span className="ml-1 text-amber-600 font-medium">• Booked</span>}
+                                  </div>
+                                </button>
+                                {!past && !s.booked && (
+                                  <button
+                                    className="p-2 rounded-lg hover:bg-red-50 text-red-500 hover:text-red-600 transition-colors shrink-0"
+                                    onClick={() => removeSlot(selectedDay, idx)}
+                                    title="Delete slot"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
+                              );
+                            })}
+                            {daySlots.length === 0 && tplSlots.length === 0 && (
+                              <div className="text-center py-6 text-slate-400">
+                                <Clock size={24} className="mx-auto mb-2 text-slate-300" />
+                                <p className="text-sm">No slots for this day</p>
+                                {!past && (
+                                  <button
+                                    className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                    onClick={() => openAddEditor(selDate)}
+                                  >
+                                    + Add your first slot
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           <div className="mt-6 flex items-center justify-between">
             <p className="text-xs text-slate-500">Templates are shown in green and can be edited here.</p>

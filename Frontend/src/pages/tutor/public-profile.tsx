@@ -841,11 +841,11 @@ export default function TutorPublicProfile() { // NOSONAR
           )}
 
           {/* Available Slots */}
-          <div id="slots-anchor" className="card p-6 rounded-xl border bg-white shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+          <div id="slots-anchor" className="card p-3 sm:p-6 rounded-xl border bg-white shadow-sm overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                  <svg className="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
+                  <svg className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   Available Slots
@@ -875,49 +875,52 @@ export default function TutorPublicProfile() { // NOSONAR
               </div>
             </div>
 
-            <div className="grid grid-cols-7 gap-2 text-xs text-slate-500 mb-2 font-medium">
+            {/* Day headers - hidden on small screens */}
+            <div className="hidden sm:grid grid-cols-7 gap-1 sm:gap-2 text-xs text-slate-500 mb-2 font-medium">
               {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
                 <div key={d} className="text-center">{d}</div>
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-7 gap-1 sm:gap-2">
               {days.map((d, i) => {
                 const slotsForDay = bookable.filter(s => sameDay(new Date(s.startTime), d));
                 const inMonth = d.getMonth() === month.getMonth();
                 const isToday = sameDay(d, new Date());
+                const dayLabel = d.toLocaleDateString(undefined, { weekday: 'short' });
                 return (
                   <div 
                     key={i} 
-                    className={`border rounded-lg p-2 min-h-[80px] ${
+                    className={`border rounded-lg p-1.5 sm:p-2 min-h-[70px] sm:min-h-[80px] ${
                       inMonth ? 'bg-white' : 'bg-slate-50'
                     } ${isToday ? 'ring-2 ring-indigo-500' : ''}`}
                   >
                     <div className={`text-xs mb-1 font-medium ${isToday ? 'text-indigo-600' : 'text-slate-700'}`}>
+                      <span className="sm:hidden text-[9px] text-slate-400 mr-0.5">{dayLabel}</span>
                       {d.getDate()}
                     </div>
                     <div className="space-y-1">
                       {slotsForDay.length === 0 ? (
-                        <div className="text-[10px] text-slate-400">No slots</div>
+                        <div className="text-[9px] sm:text-[10px] text-slate-400">No slots</div>
                       ) : (
-                        slotsForDay.slice(0, 3).map((s, idx) => (
-                          <div key={`${s.startTime}-${idx}`} className="flex flex-col gap-1">
-                            <div className="text-[10px] text-slate-600">
-                              {new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        slotsForDay.slice(0, 2).map((s, idx) => (
+                          <div key={`${s.startTime}-${idx}`} className="flex flex-col gap-0.5">
+                            <div className="text-[9px] sm:text-[10px] text-slate-600 truncate">
+                              {new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                             </div>
                             <button
                               disabled={busy}
                               onClick={() => bookSlot(s)}
-                              className="text-[10px] px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition"
+                              className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition"
                             >
                               {busy ? '...' : 'Book'}
                             </button>
                           </div>
                         ))
                       )}
-                      {slotsForDay.length > 3 && (
-                        <div className="text-[10px] text-indigo-600 font-medium">
-                          +{slotsForDay.length - 3} more
+                      {slotsForDay.length > 2 && (
+                        <div className="text-[9px] sm:text-[10px] text-indigo-600 font-medium">
+                          +{slotsForDay.length - 2} more
                         </div>
                       )}
                     </div>

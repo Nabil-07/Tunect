@@ -79,21 +79,21 @@ export default function StudentProgress() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
       {/* Header */}
-      <div className="rounded-3xl bg-gradient-to-r from-ocean-700 to-green-500 p-8 text-white shadow-lg">
-        <div className="flex items-center justify-between">
+      <div className="rounded-3xl bg-gradient-to-r from-ocean-700 to-green-500 p-4 sm:p-8 text-white shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
-              <TrendingUp className="h-10 w-10" />
+            <h1 className="text-2xl sm:text-4xl font-bold mb-2 flex items-center gap-3">
+              <TrendingUp className="h-8 w-8 sm:h-10 sm:w-10" />
               Your Learning Progress
             </h1>
-            <p className="text-lg text-white/90">Track your journey to mastery</p>
+            <p className="text-base sm:text-lg text-white/90">Track your journey to mastery</p>
           </div>
           <div className="text-center">
             {loadingHours ? (
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
             ) : (
               <>
-                <div className="text-5xl font-bold">{totalHours}h</div>
+                <div className="text-3xl sm:text-5xl font-bold">{totalHours}h</div>
                 <div className="text-sm text-white/80 mt-1">Total Hours</div>
               </>
             )}
