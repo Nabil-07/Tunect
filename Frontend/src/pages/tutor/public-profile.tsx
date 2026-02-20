@@ -440,10 +440,6 @@ export default function TutorPublicProfile() { // NOSONAR
             },
             timezone,
           );
-        } else {
-          // Demo already CONFIRMED or COMPLETED
-          setErrorModal('You already have a demo session with this tutor.');
-          return;
         }
         
         // Refresh demo status after successful booking
