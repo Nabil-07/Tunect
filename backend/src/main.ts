@@ -122,6 +122,8 @@ async function bootstrap() {
       'Origin',
       'X-Requested-With',
       'X-Timezone',
+      'Cache-Control',
+      'Pragma',
     ],
     optionsSuccessStatus: 204,
   });

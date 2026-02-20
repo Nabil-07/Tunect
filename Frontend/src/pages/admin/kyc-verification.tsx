@@ -3,6 +3,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { fetchKycQueue, fetchKycBundle, requestKycResubmission, reviewKyc, type KycItem, type KycBundle } from '../../services/adminService';
 
+/** Resolve a doc URL so it always points at the API server, not the frontend SPA. */
+const resolveDocUrl = (url: string | undefined | null): string => {
+  if (!url) return '';
+  // Already absolute → use as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  // Relative path (e.g. /uploads/open/…) → prefix with API base
+  const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  return `${apiBase}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
 const RESUBMISSION_FIELD_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'fullName', label: 'Full name' },
   { key: 'dob', label: 'Date of birth' },
@@ -342,7 +352,7 @@ export default function AdminKYCVerification() {
                             <div className="font-medium text-slate-900">{doc.docType}</div>
                             <div className="text-xs text-slate-500">Submitted: {new Date(doc.createdAt).toLocaleString()}</div>
                             <div className="text-sm text-indigo-600">
-                              {doc.url ? <a href={doc.url} target="_blank" rel="noreferrer">View</a> : 'No file'}
+                              {doc.url ? <a href={resolveDocUrl(doc.url)} target="_blank" rel="noreferrer">View</a> : 'No file'}
                             </div>
                             {doc.notes && <div className="text-xs text-slate-600">Notes: {doc.notes}</div>}
                           </div>

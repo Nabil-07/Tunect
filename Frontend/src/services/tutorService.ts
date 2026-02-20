@@ -825,12 +825,17 @@ export async function submitKyc(payload: KycPayload, files: KycFiles) {
         requestUrl.includes('/uploads/presign') ||
         message.includes('failed to fetch') ||
         message.includes('network') ||
-        message.includes('load failed');
+        message.includes('load failed') ||
+        message.includes('cors') ||
+        message.includes('err_failed') ||
+        message.includes('blocked') ||
+        err?.name === 'TypeError'; // fetch() throws TypeError on CORS/network errors
       const isServerSideUploadLimit = responseStatus === 413 || responseStatus === 408 || responseStatus >= 500;
 
       if (!isPresignOrStorageTransportFailure && !isServerSideUploadLimit) {
         throw err;
       }
+      console.warn('[KYC] Presigned upload failed, falling back to multipart upload:', message);
     }
   }
 

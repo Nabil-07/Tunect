@@ -648,10 +648,22 @@ export class KycService {
     const latestApp = await this.prisma.tutorKycApplication.findFirst({
       where: { tutorId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, createdAt: true },
+      select: { id: true, createdAt: true, status: true, notes: true },
     });
 
     if (!latestApp) return;
+
+    // If the application has an active correction/resubmission request,
+    // do NOT overwrite its REJECTED status based on document-level statuses.
+    // The admin explicitly set this status; it should remain until the tutor resubmits.
+    const hasActiveCorrectionRequest =
+      latestApp.status === KycAppStatus.REJECTED &&
+      typeof latestApp.notes === 'string' &&
+      latestApp.notes.startsWith(CORRECTION_NOTES_PREFIX);
+
+    if (hasActiveCorrectionRequest && typeof reviewNotes !== 'string') {
+      return;
+    }
 
     const docs = await this.prisma.kycDocument.findMany({
       where: {

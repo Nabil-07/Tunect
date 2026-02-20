@@ -158,8 +158,7 @@ export class BookingsController {
     @CurrentUser('sub') userId: string,
     @Param('tutorId') tutorId: string,
   ) {
-    const used = await this.service.hasUsedDemo(userId, tutorId);
-    return { used };
+    return this.service.getDemoDetail(userId, tutorId);
   }
 
   @ApiOperation({

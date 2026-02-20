@@ -148,13 +148,30 @@ export async function cancelBooking(bookingId: string) {
   return data;
 }
 
+/** Demo status detail type */
+export type DemoStatusDetail = {
+  used: boolean;
+  bookingId?: string;
+  bookingStatus?: string;
+};
+
 /** Demo status helpers (bulk first, fallback fan-out) */
 export async function getDemoStatusForTutor(tutorId: string): Promise<boolean> {
   try {
-    const { data } = await api.get<{ used: boolean }>(`/bookings/demo-status/${tutorId}`);
+    const { data } = await api.get<DemoStatusDetail>(`/bookings/demo-status/${tutorId}`);
     return !!data?.used;
   } catch {
     return false;
+  }
+}
+
+/** Get detailed demo status including booking ID and status */
+export async function getDemoDetailForTutor(tutorId: string): Promise<DemoStatusDetail> {
+  try {
+    const { data } = await api.get<DemoStatusDetail>(`/bookings/demo-status/${tutorId}`);
+    return data || { used: false };
+  } catch {
+    return { used: false };
   }
 }
 

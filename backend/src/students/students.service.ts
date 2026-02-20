@@ -366,7 +366,8 @@ export class StudentsService {
       (b) =>
         b.status === 'CONFIRMED' &&
         b.startTime &&
-        new Date(b.startTime) > now,
+        b.endTime &&
+        new Date(b.endTime) > now,
     );
 
     // Include attended sessions that are completed or have already ended
