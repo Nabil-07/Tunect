@@ -89,12 +89,12 @@ export default function Certificates() {
   return (
     <div className="container mx-auto px-4 py-6 space-y-8">
       {/* Header */}
-      <div className="rounded-3xl bg-gradient-to-r from-ocean-700 to-green-500 p-8 text-white shadow-lg">
-        <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
-          <Award className="h-10 w-10" />
+      <div className="rounded-3xl bg-gradient-to-r from-ocean-700 to-green-500 p-4 sm:p-8 text-white shadow-lg">
+        <h1 className="text-2xl sm:text-4xl font-bold mb-2 flex items-center gap-3">
+          <Award className="h-8 w-8 sm:h-10 sm:w-10" />
           Your Certificates
         </h1>
-        <p className="text-lg text-white/90">Celebrate your learning achievements</p>
+        <p className="text-base sm:text-lg text-white/90">Celebrate your learning achievements</p>
       </div>
 
       {/* Stats */}

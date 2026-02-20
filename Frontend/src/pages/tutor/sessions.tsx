@@ -17,6 +17,7 @@ type Session = {
   endTime: string;
   status?: 'UPCOMING' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED';
   isGroupSession?: boolean;
+  isDemo?: boolean;
   maxStudents?: number;
   currentEnrollment?: number;
   pricePerStudent?: number;
@@ -196,6 +197,11 @@ export default function MySessions() {
                       }`}>
                         {isGroup ? 'Group Session' : '1:1 Session'}
                       </span>
+                      {session.isDemo && (
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                          Demo
+                        </span>
+                      )}
                     </div>
                     <p className="text-lg font-semibold text-slate-800">
                       {session.subject ?? 'Session'}

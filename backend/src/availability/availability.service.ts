@@ -320,13 +320,56 @@ export class AvailabilityService {
     return slot;
   }
 
+  /**
+   * Cross-reference slots with bookings to set a `booked` flag.
+   * A slot is considered booked if any non-cancelled booking overlaps its time range.
+   */
+  private async enrichSlotsWithBookingStatus(
+    tutorId: string,
+    slots: { id: string; tutorId: string; startTime: Date; endTime: Date; title: string | null; createdAt: Date }[],
+  ) {
+    if (!slots.length) return [];
+
+    const earliest = slots.reduce((min, s) => (s.startTime < min ? s.startTime : min), slots[0].startTime);
+    const latest = slots.reduce((max, s) => (s.endTime > max ? s.endTime : max), slots[0].endTime);
+
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        tutorId,
+        startTime: { lt: latest },
+        endTime: { gt: earliest },
+        status: {
+          notIn: [
+            BookingStatus.CANCELED,
+            BookingStatus.FAILED_TECHNICAL,
+            BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW,
+            BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW,
+          ],
+        },
+      },
+      select: { startTime: true, endTime: true, status: true },
+    });
+
+    return slots.map((slot) => {
+      const overlapping = bookings.find(
+        (b) => b.startTime && b.endTime && b.startTime < slot.endTime && b.endTime > slot.startTime,
+      );
+      return {
+        ...slot,
+        booked: !!overlapping,
+        bookingStatus: overlapping?.status ?? null,
+      };
+    });
+  }
+
   async listMine(userId: string) {
     const tutor = await this.getTutorByUser(userId);
-    return this.prisma.availabilitySlot.findMany({
+    const slots = await this.prisma.availabilitySlot.findMany({
       where: { tutorId: tutor.id },
       orderBy: { startTime: 'asc' },
       select: { id: true, tutorId: true, startTime: true, endTime: true, title: true, createdAt: true },
     });
+    return this.enrichSlotsWithBookingStatus(tutor.id, slots);
   }
 
   async listMineWindow(userId: string, from?: string, to?: string) {
@@ -337,11 +380,12 @@ export class AvailabilityService {
       const end = to ? new Date(to) : new Date(8640000000000000); // far future
       where.AND = [{ startTime: { lt: end } }, { endTime: { gt: start } }];
     }
-    return this.prisma.availabilitySlot.findMany({
+    const slots = await this.prisma.availabilitySlot.findMany({
       where,
       orderBy: { startTime: 'asc' },
       select: { id: true, tutorId: true, startTime: true, endTime: true, title: true, createdAt: true },
     });
+    return this.enrichSlotsWithBookingStatus(tutor.id, slots);
   }
 
   async updateMine(userId: string, slotId: string, dto: UpdateSlotDto) {
@@ -353,6 +397,26 @@ export class AvailabilityService {
     });
     if (!slot) throw new NotFoundException('Slot not found');
     if (slot.tutorId !== tutor.id) throw new ForbiddenException('Not your slot');
+
+    // Prevent editing a slot that has an active or completed booking
+    const existingBooking = await this.prisma.booking.findFirst({
+      where: {
+        tutorId: tutor.id,
+        startTime: { lt: slot.endTime },
+        endTime: { gt: slot.startTime },
+        status: {
+          notIn: [
+            BookingStatus.CANCELED,
+            BookingStatus.FAILED_TECHNICAL,
+            BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW,
+            BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW,
+          ],
+        },
+      },
+    });
+    if (existingBooking) {
+      throw new BadRequestException('Cannot edit a slot that has an active or completed booking.');
+    }
 
     const start = dto.startTime ? new Date(dto.startTime) : slot.startTime;
     const end = this.normalizeOvernightEnd(start, dto.endTime ? new Date(dto.endTime) : slot.endTime);
@@ -383,10 +447,30 @@ export class AvailabilityService {
 
     const slot = await this.prisma.availabilitySlot.findUnique({
       where: { id: slotId },
-      select: { id: true, tutorId: true },
+      select: { id: true, tutorId: true, startTime: true, endTime: true },
     });
     if (!slot) throw new NotFoundException('Slot not found');
     if (slot.tutorId !== tutor.id) throw new ForbiddenException('Not your slot');
+
+    // Prevent deleting a slot that has an active or completed booking
+    const existingBooking = await this.prisma.booking.findFirst({
+      where: {
+        tutorId: tutor.id,
+        startTime: { lt: slot.endTime },
+        endTime: { gt: slot.startTime },
+        status: {
+          notIn: [
+            BookingStatus.CANCELED,
+            BookingStatus.FAILED_TECHNICAL,
+            BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW,
+            BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW,
+          ],
+        },
+      },
+    });
+    if (existingBooking) {
+      throw new BadRequestException('Cannot delete a slot that has an active or completed booking.');
+    }
 
     await this.prisma.availabilitySlot.delete({ where: { id: slotId } });
 

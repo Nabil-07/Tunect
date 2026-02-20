@@ -174,7 +174,7 @@ export default function TutorManageAccount() {
             </div>
             <div>
               <span className="text-slate-500">User ID:</span>
-              <span className="ml-2 font-mono text-xs text-slate-600">{user?.id}</span>
+              <span className="ml-2 font-mono text-xs text-slate-600 break-all">{user?.id}</span>
             </div>
           </div>
         </section>

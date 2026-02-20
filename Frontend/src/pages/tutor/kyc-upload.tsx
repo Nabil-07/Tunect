@@ -384,8 +384,8 @@ export default function TutorKYC() {
         </button>
       </section>
 
-      <section className="mb-4 rounded-xl border bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-4 text-sm font-medium text-slate-700">
+      <section className="mb-4 rounded-xl border bg-white p-4 shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm font-medium text-slate-700">
           {[
             { key: 'submitted', label: 'Submitted' },
             { key: 'under_review', label: 'Under Review' },
@@ -394,15 +394,15 @@ export default function TutorKYC() {
             const active = (status?.status || 'none') === step.key;
             const done = ['approved', 'under_review', 'submitted'].includes(status?.status || '') && arr.findIndex(s => s.key === status?.status) >= idx;
             return (
-              <div key={step.key} className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full border ${done ? 'bg-emerald-500 border-emerald-500' : active ? 'bg-amber-400 border-amber-400' : 'bg-slate-200 border-slate-300'}`} />
-                <span className={done || active ? 'text-slate-900' : 'text-slate-500'}>{step.label}</span>
-                {idx < arr.length - 1 && <div className="w-10 h-px bg-slate-200" />}
+              <div key={step.key} className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <div className={`w-3 h-3 shrink-0 rounded-full border ${done ? 'bg-emerald-500 border-emerald-500' : active ? 'bg-amber-400 border-amber-400' : 'bg-slate-200 border-slate-300'}`} />
+                <span className={`whitespace-nowrap ${done || active ? 'text-slate-900' : 'text-slate-500'}`}>{step.label}</span>
+                {idx < arr.length - 1 && <div className="w-6 sm:w-10 h-px bg-slate-200 shrink-0" />}
               </div>
             );
           })}
         </div>
-        <p className="text-xs text-slate-500 mt-2">Next step: {displayStatus === 'pending' ? 'Pending your resubmission for requested fields.' : displayStatus === 'submitted' ? 'Under review (ETA 12–24h)' : displayStatus === 'under_review' ? 'Approval (ETA soon)' : displayStatus === 'approved' ? 'Completed' : 'Submit your details to begin review.'}</p>
+        <p className="text-xs text-slate-500 mt-2 break-words">Next step: {displayStatus === 'pending' ? 'Pending your resubmission for requested fields.' : displayStatus === 'submitted' ? 'Under review (ETA 12–24h)' : displayStatus === 'under_review' ? 'Approval (ETA soon)' : displayStatus === 'approved' ? 'Completed' : 'Submit your details to begin review.'}</p>
       </section>
 
       {submitError && (

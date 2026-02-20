@@ -1265,7 +1265,16 @@ export class TutorsService {
         booking.status === BookingStatus.WAITING_ROOM ||
         booking.status === BookingStatus.LIVE
       ) {
-        status = new Date(booking.endTime!) > now ? 'UPCOMING' : 'CONFIRMED';
+        const sessionEnded = new Date(booking.endTime!) <= now;
+        if (sessionEnded) {
+          // If the session has ended and both participants attended, show as COMPLETED
+          // even before the nightly cron updates the DB status
+          status = hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data)
+            ? 'COMPLETED'
+            : 'CONFIRMED';
+        } else {
+          status = 'UPCOMING';
+        }
       }
 
       return {
