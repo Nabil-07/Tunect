@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getAvailability, saveAvailabilityForMonth, createSlot, updateSlot, deleteSlot, getMyProfile } from '../../services/tutorService';
 import type { AvailabilitySlot } from '../../services/tutorService';
 import api from '../../lib/apiClient';
 
-type DayKey = string; // "YYYY-MM-DD"
 type SlotVM = { id?: string; start: string; end: string; title?: string; booked?: boolean; bookingStatus?: string | null; templateId?: string };
-type SlotsByDay = Record<DayKey, SlotVM[]>;
+type SlotsByDay = Record<string, SlotVM[]>;
 type ToastType = 'error' | 'success' | 'warning';
 
 type RecurringTemplate = {
@@ -60,12 +60,14 @@ function addMinutes(hhmm: string, mins: number) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 function compareHHMM(a: string, b: string) {
-  return (a > b) ? 1 : (a < b) ? -1 : 0;
+  if (a > b) return 1;
+  if (a < b) return -1;
+  return 0;
 }
-function isPastDay(dayKey: DayKey, now = new Date()) {
+function isPastDay(dayKey: string, now = new Date()) {
   return new Date(dayKey) < new Date(ymd(now));
 }
-function isToday(dayKey: DayKey, now = new Date()) {
+function isToday(dayKey: string, now = new Date()) {
   return dayKey === ymd(now);
 }
 
@@ -136,6 +138,104 @@ function buildTemplateSlots(month: Date, templates: RecurringTemplate[]): SlotsB
   return out;
 }
 
+// ─── Helper functions extracted to reduce cognitive complexity ────────
+
+function toastClassName(type: ToastType): string {
+  switch (type) {
+    case 'error': return 'bg-red-50 text-red-900 border border-red-200';
+    case 'success': return 'bg-green-50 text-green-900 border border-green-200';
+    default: return 'bg-amber-50 text-amber-900 border border-amber-200';
+  }
+}
+
+function toastIcon(type: ToastType) {
+  switch (type) {
+    case 'error': return <AlertCircle className="h-5 w-5 text-red-600" />;
+    case 'success': return <CheckCircle2 className="h-5 w-5 text-green-600" />;
+    default: return <AlertCircle className="h-5 w-5 text-amber-600" />;
+  }
+}
+
+function toastNotification(
+  toast: { message: string; type: ToastType },
+  setToast: (v: null) => void,
+) {
+  return (
+    <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-5 duration-300">
+      <div className={`flex items-center gap-3 rounded-lg px-4 py-3 shadow-lg min-w-[300px] max-w-md ${toastClassName(toast.type)}`}>
+        {toastIcon(toast.type)}
+        <p className="flex-1 text-sm font-medium">{toast.message}</p>
+        <button
+          onClick={() => setToast(null)}
+          className="rounded-lg p-1 hover:bg-black/5 transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function slotRowClassName(isCompleted: boolean, booked?: boolean): string {
+  if (isCompleted) return 'bg-green-50 cursor-default';
+  if (booked) return 'bg-amber-50 cursor-default';
+  return 'bg-slate-50 hover:bg-slate-100';
+}
+
+function slotTitle(isCompleted: boolean, booked?: boolean): string {
+  if (isCompleted) return 'Session completed';
+  if (booked) return 'This slot has an active booking';
+  return 'Edit slot';
+}
+
+function slotCardClassName(isCompleted: boolean, booked?: boolean): string {
+  if (isCompleted) return 'bg-green-50 border-green-200';
+  if (booked) return 'bg-amber-50 border-amber-200';
+  return 'bg-white hover:bg-slate-50';
+}
+
+function slotIconBgClassName(isCompleted: boolean, booked?: boolean): string {
+  if (isCompleted) return 'bg-green-100';
+  if (booked) return 'bg-amber-100';
+  return 'bg-blue-100';
+}
+
+function slotIcon(isCompleted: boolean, booked?: boolean) {
+  if (isCompleted) return <CheckCircle2 size={16} className="text-green-600" />;
+  if (booked) return <Lock size={16} className="text-amber-600" />;
+  return <Clock size={16} className="text-blue-600" />;
+}
+
+function dotClassName(isSelected: boolean, hasCompleted: boolean, hasBooked: boolean): string {
+  if (isSelected) return 'bg-blue-200';
+  if (hasCompleted) return 'bg-green-500';
+  if (hasBooked) return 'bg-amber-500';
+  return 'bg-blue-500';
+}
+
+function cellClassName(isSelected: boolean, past: boolean): string {
+  if (isSelected) return 'bg-blue-600 text-white shadow-md';
+  if (past) return 'bg-slate-50 text-slate-400';
+  return 'bg-white hover:bg-blue-50 text-slate-800';
+}
+
+function cellTextClassName(isSelected: boolean, today: boolean): string {
+  if (isSelected) return 'text-white';
+  if (today) return 'text-blue-600';
+  return '';
+}
+
+function slotCountLabel(total: number): string {
+  if (total === 0) return 'No slots scheduled';
+  return `${total} slot${total > 1 ? 's' : ''}`;
+}
+
+function saveButtonLabel(loading: boolean, editingIndex: number | null): string {
+  if (loading) return 'Saving...';
+  if (editingIndex === null) return 'Add slot';
+  return 'Save';
+}
+
 export default function TutorAvailability() {
   const [month, setMonth] = useState<Date>(() => firstOfMonth(new Date()));
   const [slots, setSlots] = useState<SlotsByDay>({});
@@ -149,7 +249,7 @@ export default function TutorAvailability() {
 
   // modal editor state
   const [editorOpen, setEditorOpen] = useState(false);
-  const [activeDay, setActiveDay] = useState<DayKey | null>(null);
+  const [activeDay, setActiveDay] = useState<string | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null); // null => add, number => edit
   const [draftStart, setDraftStart] = useState('09:00');
   const [draftEnd,   setDraftEnd]   = useState('10:00');
@@ -158,7 +258,7 @@ export default function TutorAvailability() {
   const [tutorSubjects, setTutorSubjects] = useState<string[]>([]);
 
   // mobile: selected day for detail panel
-  const [selectedDay, setSelectedDay] = useState<DayKey | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   // template editor state
   const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
@@ -287,7 +387,7 @@ export default function TutorAvailability() {
     setEditorOpen(true);
   }
 
-  function openEditEditor(dayKey: DayKey, idx: number) {
+  function openEditEditor(dayKey: string, idx: number) {
     const item = slots[dayKey]?.[idx];
     if (!item) return;
     if (isPastDay(dayKey, now)) return; // block past days entirely
@@ -435,7 +535,7 @@ export default function TutorAvailability() {
     }
   }
 
-  async function removeSlot(day: DayKey, idx: number) {
+  async function removeSlot(day: string, idx: number) {
     const slot = slots[day]?.[idx];
     if (!slot) return;
     
@@ -499,30 +599,7 @@ export default function TutorAvailability() {
   return (
     <main className="bg-slate-50/60 py-6">
       {/* Toast Notification */}
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-5 duration-300">
-          <div
-            className={`flex items-center gap-3 rounded-lg px-4 py-3 shadow-lg min-w-[300px] max-w-md ${
-              toast.type === 'error'
-                ? 'bg-red-50 text-red-900 border border-red-200'
-                : toast.type === 'success'
-                ? 'bg-green-50 text-green-900 border border-green-200'
-                : 'bg-amber-50 text-amber-900 border border-amber-200'
-            }`}
-          >
-            {toast.type === 'error' && <AlertCircle className="h-5 w-5 text-red-600" />}
-            {toast.type === 'success' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
-            {toast.type === 'warning' && <AlertCircle className="h-5 w-5 text-amber-600" />}
-            <p className="flex-1 text-sm font-medium">{toast.message}</p>
-            <button
-              onClick={() => setToast(null)}
-              className="rounded-lg p-1 hover:bg-black/5 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {toast && toastNotification(toast, setToast)}
 
       <div className="container mx-auto px-4">
         <div className="mx-auto w-full max-w-6xl rounded-2xl border bg-white p-4 sm:p-6 shadow-sm">
@@ -568,7 +645,7 @@ export default function TutorAvailability() {
             ) : (
               <div className="grid grid-cols-7 gap-3">
                 {cells.map((dateOrNull, i) => {
-                  if (!dateOrNull) return <div key={`pad-${i}`} />;
+                  if (!dateOrNull) return <div key={`pad-w${Math.floor(i / 7)}-d${i % 7}`} />;
 
                   const d = dateOrNull;
                   const key = ymd(d);
@@ -622,32 +699,34 @@ export default function TutorAvailability() {
                             return (
                             <button
                               key={`${s.start}-${idx}`}
-                              className={`w-full text-left flex items-center justify-between text-xs rounded-lg px-2 py-1 group ${
-                                isCompleted ? 'bg-green-50 cursor-default' : s.booked ? 'bg-amber-50 cursor-default' : 'bg-slate-50 hover:bg-slate-100'
-                              }`}
+                              className={`w-full text-left flex items-center justify-between text-xs rounded-lg px-2 py-1 group ${slotRowClassName(isCompleted, s.booked)}`}
                               onClick={() => !s.booked && openEditEditor(key, idx)}
-                              title={isCompleted ? 'Session completed' : s.booked ? 'This slot has an active booking' : 'Edit slot'}
+                              title={slotTitle(isCompleted, s.booked)}
                             >
                               <span className="truncate">
                                 <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
                                 {s.title ? <span className="ml-1 text-slate-600">• {s.title}</span> : null}
                               </span>
-                              {isCompleted ? (
+                              {isCompleted && (
                                 <span className="inline-flex items-center gap-1 text-green-700 text-[10px] font-semibold">
                                   <CheckCircle2 size={12} /> Done
                                 </span>
-                              ) : s.booked ? (
+                              )}
+                              {!isCompleted && s.booked && (
                                 <span className="inline-flex items-center gap-1 text-amber-700">
                                   <Lock size={12} />
                                 </span>
-                              ) : (
-                                <span
+                              )}
+                              {!isCompleted && !s.booked && (
+                                <button
+                                  type="button"
                                   className="opacity-0 group-hover:opacity-100 transition text-red-600 hover:text-red-700"
                                   onClick={(e) => { e.stopPropagation(); removeSlot(key, idx); }}
                                   title="Delete slot"
+                                  aria-label="Delete slot"
                                 >
                                   <Trash2 size={14} />
-                                </span>
+                                </button>
                               )}
                             </button>
                             );
@@ -675,7 +754,7 @@ export default function TutorAvailability() {
                 </div>
                 <div className="grid grid-cols-7 gap-0.5">
                   {cells.map((dateOrNull, i) => {
-                    if (!dateOrNull) return <div key={`pad-${i}`} />;
+                    if (!dateOrNull) return <div key={`mpad-w${Math.floor(i / 7)}-d${i % 7}`} />;
 
                     const d = dateOrNull;
                     const key = ymd(d);
@@ -695,10 +774,10 @@ export default function TutorAvailability() {
                         onClick={() => setSelectedDay(isSelected ? null : key)}
                         className={`relative flex flex-col items-center justify-center rounded-lg py-2 px-0.5 transition-all text-center
                           ${today ? 'ring-2 ring-blue-400 ring-inset' : ''}
-                          ${isSelected ? 'bg-blue-600 text-white shadow-md' : past ? 'bg-slate-50 text-slate-400' : 'bg-white hover:bg-blue-50 text-slate-800'}
+                          ${cellClassName(isSelected, past)}
                         `}
                       >
-                        <span className={`text-sm font-semibold leading-none ${isSelected ? 'text-white' : today ? 'text-blue-600' : ''}`}>
+                        <span className={`text-sm font-semibold leading-none ${cellTextClassName(isSelected, today)}`}>
                           {d.getDate()}
                         </span>
                         {/* Dot indicators */}
@@ -708,7 +787,7 @@ export default function TutorAvailability() {
                               <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-emerald-300' : 'bg-emerald-500'}`} />
                             )}
                             {daySlots.length > 0 && (
-                              <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-blue-200' : hasCompleted ? 'bg-green-500' : hasBooked ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                              <span className={`w-1.5 h-1.5 rounded-full ${dotClassName(isSelected, hasCompleted, hasBooked)}`} />
                             )}
                             {totalSlots > 2 && (
                               <span className={`text-[8px] font-bold leading-none ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>+{totalSlots - 1}</span>
@@ -750,9 +829,7 @@ export default function TutorAvailability() {
                             <div>
                               <h3 className="font-semibold text-slate-900 text-sm">{dateLabel}</h3>
                               <p className="text-[11px] text-slate-500">
-                                {daySlots.length + tplSlots.length === 0
-                                  ? 'No slots scheduled'
-                                  : `${daySlots.length + tplSlots.length} slot${daySlots.length + tplSlots.length > 1 ? 's' : ''}`}
+                                {slotCountLabel(daySlots.length + tplSlots.length)}
                                 {today && ' • Today'}
                               </p>
                             </div>
@@ -796,14 +873,10 @@ export default function TutorAvailability() {
                               return (
                               <div
                                 key={`slot-${s.start}-${idx}`}
-                                className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
-                                  isCompleted ? 'bg-green-50 border-green-200' : s.booked ? 'bg-amber-50 border-amber-200' : 'bg-white hover:bg-slate-50'
-                                }`}
+                                className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${slotCardClassName(isCompleted, s.booked)}`}
                               >
-                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                                  isCompleted ? 'bg-green-100' : s.booked ? 'bg-amber-100' : 'bg-blue-100'
-                                }`}>
-                                  {isCompleted ? <CheckCircle2 size={16} className="text-green-600" /> : s.booked ? <Lock size={16} className="text-amber-600" /> : <Clock size={16} className="text-blue-600" />}
+                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${slotIconBgClassName(isCompleted, s.booked)}`}>
+                                  {slotIcon(isCompleted, s.booked)}
                                 </div>
                                 <button
                                   className="flex-1 min-w-0 text-left"
@@ -909,9 +982,9 @@ export default function TutorAvailability() {
                 </label>
               </div>
 
-              <label className="text-sm block">
-                <span className="block text-slate-600 mb-1">Subject</span>
-                {tutorSubjects.length > 1 ? (
+              {tutorSubjects.length > 1 && (
+                <label className="text-sm block">
+                  <span className="block text-slate-600 mb-1">Subject</span>
                   <select
                     value={draftSubject}
                     onChange={(e) => setDraftSubject(e.target.value)}
@@ -924,16 +997,34 @@ export default function TutorAvailability() {
                       </option>
                     ))}
                   </select>
-                ) : (
+                </label>
+              )}
+              {tutorSubjects.length === 1 && (
+                <label className="text-sm block">
+                  <span className="block text-slate-600 mb-1">Subject</span>
                   <input
                     value={draftSubject}
                     className="w-full border rounded-lg px-3 py-2"
-                    placeholder="Add subjects in your profile"
                     readOnly
-                    disabled={loading || tutorSubjects.length === 0}
+                    disabled={loading}
                   />
-                )}
-              </label>
+                </label>
+              )}
+
+              {tutorSubjects.length === 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+                  <AlertCircle size={20} className="text-amber-600 mt-0.5 shrink-0" />
+                  <div className="text-sm text-amber-800">
+                    <p className="font-semibold">Complete your profile first</p>
+                    <p className="mt-1">
+                      You need to add at least one subject before creating availability slots.{' '}
+                      <Link to="/tutor/profile" className="text-blue-700 underline font-medium hover:text-blue-900">
+                        Go to your profile
+                      </Link>
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="text-[11px] text-slate-500">
                 Duration is fixed to 1 hour. You can add multiple slots for the same day.
@@ -953,7 +1044,7 @@ export default function TutorAvailability() {
                 onClick={saveDraft}
                 disabled={loading || !draftSubject.trim()}
               >
-                {loading ? 'Saving...' : editingIndex === null ? 'Add slot' : 'Save'}
+                {saveButtonLabel(loading, editingIndex)}
               </button>
             </div>
           </div>

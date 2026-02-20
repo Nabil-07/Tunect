@@ -44,11 +44,7 @@ export default function RecurringTemplates() {
       setLoading(true);
       // Add cache-busting timestamp to force fresh data after updates
       const res = await api.get('/recurring-templates/my', {
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-        },
-        // Prevent axios from caching the response - add timestamp param to bypass browser cache
+        // Use timestamp param to bypass browser cache (avoids CORS preflight issues with Cache-Control header)
         params: forceRefresh ? { _t: Date.now() } : {},
       });
       setTemplates(res.data || []);

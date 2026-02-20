@@ -37,7 +37,7 @@ export default function CheckoutPage() {
     }
 
     if (slots.length > 0) {
-      navigate(`/tutor/${tutorId}?demo=1#slots`, { replace: true, state: { toast: 'Demo booked! Pick any available slot.' } });
+      navigate(`/tutors/${tutorId}?demo=1#slots`, { replace: true, state: { toast: 'Demo booked! Pick any available slot.' } });
     } else {
       setMsg("Booking successfully booked. The tutor has been notified to add slots. You'll be notified in the app when slots are available.");
     }

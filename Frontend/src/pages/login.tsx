@@ -1,9 +1,26 @@
 // src/pages/login.tsx
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { login as doLogin } from '../services/authService';
 import { readToken, setAuthStorage } from '../lib/apiClient';
+
+// Credential Management API types (not in all TS libs)
+declare global {
+  interface PasswordCredentialInit {
+    id: string;
+    password: string;
+    name?: string;
+  }
+  interface PasswordCredential extends Credential {
+    readonly password: string;
+  }
+  // eslint-disable-next-line no-var
+  var PasswordCredential: {
+    new (init: PasswordCredentialInit): PasswordCredential;
+    prototype: PasswordCredential;
+  };
+}
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 
@@ -51,6 +68,42 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  // Detect browser autofill: browsers fill the DOM element but may not trigger
+  // React's onChange. Poll briefly on mount to sync state from autofilled values.
+  useEffect(() => {
+    const syncAutofill = () => {
+      const emailEl = emailRef.current;
+      const pwEl = passwordRef.current;
+      if (emailEl && emailEl.value && !email) setEmail(emailEl.value);
+      if (pwEl && pwEl.value && !password) setPassword(pwEl.value);
+    };
+    // Most browsers fill within 300ms of page load; check a few times
+    const timers = [
+      setTimeout(syncAutofill, 100),
+      setTimeout(syncAutofill, 500),
+      setTimeout(syncAutofill, 1500),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Use Credential Management API to auto-fill saved credentials (Chromium)
+  useEffect(() => {
+    if (!navigator.credentials?.get) return;
+    navigator.credentials
+      .get({ password: true, mediation: 'silent' } as CredentialRequestOptions)
+      .then((cred) => {
+        if (cred?.type === 'password') {
+          const pc = cred as PasswordCredential;
+          if (pc.id) setEmail(pc.id);
+          if (pc.password) setPassword(pc.password);
+        }
+      })
+      .catch(() => { /* credential manager unavailable or denied */ });
+  }, []);
+
   const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
 
   const fallbackRedirect = () => {
@@ -61,7 +114,11 @@ export default function Login() {
   };
 
   async function submit() {
-    if (!email.trim() || !password) {
+    // Re-read from DOM in case browser autofill didn't fire onChange
+    const emailVal = (emailRef.current?.value || email).trim().toLowerCase();
+    const pwVal = passwordRef.current?.value || password;
+
+    if (!emailVal || !pwVal) {
       setErr('Please enter email and password.');
       return;
     }
@@ -69,8 +126,20 @@ export default function Login() {
     setLoading(true);
     try {
       setAuthStorage(remember);
-      const res = await doLogin(email.trim().toLowerCase(), password);
+      const res = await doLogin(emailVal, pwVal);
       try { localStorage.setItem('auth_ok', '1'); } catch {}
+
+      // Store credentials in browser for future autofill (Credential Management API)
+      if (remember && navigator.credentials?.store && typeof PasswordCredential !== 'undefined') {
+        try {
+          const cred = new PasswordCredential({
+            id: emailVal,
+            password: pwVal,
+            name: emailVal,
+          });
+          await navigator.credentials.store(cred);
+        } catch { /* Credential Manager unavailable or user denied */ }
+      }
 
       // Extract user data and tokens from response
       const role = ensureRoleStored(res);
@@ -159,6 +228,7 @@ export default function Login() {
                 id="username"
                 name="username"
                 type="email"
+                ref={emailRef}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
@@ -180,6 +250,7 @@ export default function Login() {
                   id="current-password"
                   name="password"
                   type={showPw ? 'text' : 'password'}
+                  ref={passwordRef}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
@@ -211,7 +282,7 @@ export default function Login() {
                   onChange={(e) => setRemember(e.target.checked)}
                   disabled={loading}
                 />
-                Remember for 30 days
+                Remember me
               </label>
               <Link to="/forgot-password" className="text-sm text-ocean-700 hover:underline">
                 Forgot password

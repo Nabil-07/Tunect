@@ -7,7 +7,7 @@ import { api } from '../../lib/apiClient';
 import { useDisplayCurrency } from '../../hooks/useDisplayCurrency';
 import { formatCurrency } from '../../utils/currency';
 import BuyTokensButton from '../../components/BuyTokensButton';
-import { createDemoBooking } from '../../services/bookingsService';
+import { createDemoBooking, assignSlot, getDemoDetailForTutor } from '../../services/bookingsService';
 import { useAuth } from '../../contexts/AuthContext';
 import NotificationModal from '../../components/common/NotificationModal';
 import { generateTutorSlug, parseTutorIdFromSlug } from '../../utils/seo';
@@ -414,16 +414,37 @@ export default function TutorPublicProfile() { // NOSONAR
       setBusy(true);
 
       if (isDemoIntent) {
-        // schedule demo immediately in the chosen slice
-        await createDemoBooking(
-          {
-            tutorId: id,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            notes: 'Demo from public profile',
-          },
-          timezone,
-        );
+        // Check if a PENDING demo already exists (e.g., created from checkout page)
+        const demoDetail = await getDemoDetailForTutor(id);
+        
+        if (demoDetail.used && demoDetail.bookingId && 
+            (demoDetail.bookingStatus === 'PENDING' || demoDetail.bookingStatus === 'PENDING_SLOT')) {
+          // Assign the slot to the existing PENDING demo booking
+          await assignSlot(
+            demoDetail.bookingId,
+            { startTime: slot.startTime, endTime: slot.endTime, notes: 'Demo from public profile' },
+            timezone,
+          );
+        } else if (demoDetail.used) {
+          // Demo already CONFIRMED or COMPLETED
+          setErrorModal('You already have a demo session with this tutor.');
+          return;
+        } else {
+          // No existing demo — create a new one with times (CONFIRMED)
+          await createDemoBooking(
+            {
+              tutorId: id,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              notes: 'Demo from public profile',
+            },
+            timezone,
+          );
+        } else {
+          // Demo already CONFIRMED or COMPLETED
+          setErrorModal('You already have a demo session with this tutor.');
+          return;
+        }
         
         // Refresh demo status after successful booking
         window.dispatchEvent(new CustomEvent('demo-status-changed', { 

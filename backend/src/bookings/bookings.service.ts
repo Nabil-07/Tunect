@@ -155,15 +155,24 @@ export class BookingsService {
 
   // ---------- demo helpers ----------
   async hasUsedDemo(studentUserId: string, tutorId: string): Promise<boolean> {
+    const detail = await this.getDemoDetail(studentUserId, tutorId);
+    return detail.used;
+  }
+
+  /**
+   * Returns detailed demo status including booking ID and status.
+   * Used by the frontend to determine whether to create a new demo or assign a slot.
+   */
+  async getDemoDetail(studentUserId: string, tutorId: string): Promise<{ used: boolean; bookingId?: string; bookingStatus?: string }> {
     const student = await this.prisma.student.findUnique({
       where: { userId: studentUserId },
       select: { id: true },
     });
-    if (!student) return false;
-    return this.hasUsedDemoByStudentId(student.id, tutorId);
+    if (!student) return { used: false };
+    return this.getDemoDetailByStudentId(student.id, tutorId);
   }
 
-  private async hasUsedDemoByStudentId(studentId: string, tutorId: string): Promise<boolean> {
+  private async getDemoDetailByStudentId(studentId: string, tutorId: string): Promise<{ used: boolean; bookingId?: string; bookingStatus?: string }> {
     // Check for ANY existing demo (PENDING, CONFIRMED, COMPLETED) - not just completed ones
     // This prevents students from booking multiple demo sessions with the same tutor
     const demo = await this.prisma.booking.findFirst({
@@ -180,9 +189,10 @@ export class BookingsService {
           ] 
         },
       },
-      select: { id: true },
+      select: { id: true, status: true },
     });
-    return !!demo;
+    if (!demo) return { used: false };
+    return { used: true, bookingId: demo.id, bookingStatus: demo.status };
   }
 
   // ---------- queries ----------

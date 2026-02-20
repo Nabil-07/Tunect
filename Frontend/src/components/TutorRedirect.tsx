@@ -32,13 +32,15 @@ export default function TutorRedirect() {
     'kyc-submission', // Old route
   ]);
 
-  // Check if ID looks like a UUID (36 chars with hyphens) or numeric
+  // Check if ID looks like a UUID (36 chars with hyphens), numeric, or CUID
   const isValidTutorId = (str: string) => {
     // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     // Numeric ID
     const numericPattern = /^\d+$/;
-    return uuidPattern.test(str) || numericPattern.test(str);
+    // CUID format (Prisma default): starts with 'c', 25 chars, lowercase alphanumeric
+    const cuidPattern = /^c[a-z0-9]{24}$/;
+    return uuidPattern.test(str) || numericPattern.test(str) || cuidPattern.test(str);
   };
 
   useEffect(() => {
