@@ -372,7 +372,7 @@ export default function TutorPublicProfile() { // NOSONAR
   }, [location.hash, bookable.length]);
 
   async function bookSlot(slot: BookableSlot) {
-    if (!id) return;
+    if (!id || !tutor?.id) return;
     
     if (user?.role === 'TUTOR') {
       setToast('Tutor accounts cannot book demos or slots with other tutors');
@@ -415,7 +415,7 @@ export default function TutorPublicProfile() { // NOSONAR
 
       if (isDemoIntent) {
         // Check if a PENDING demo already exists (e.g., created from checkout page)
-        const demoDetail = await getDemoDetailForTutor(id);
+        const demoDetail = await getDemoDetailForTutor(tutor.id);
         
         if (demoDetail.used && demoDetail.bookingId && 
             (demoDetail.bookingStatus === 'PENDING' || demoDetail.bookingStatus === 'PENDING_SLOT')) {
@@ -433,7 +433,7 @@ export default function TutorPublicProfile() { // NOSONAR
           // No existing demo — create a new one with times (CONFIRMED)
           await createDemoBooking(
             {
-              tutorId: id,
+              tutorId: tutor.id,
               startTime: slot.startTime,
               endTime: slot.endTime,
               notes: 'Demo from public profile',
@@ -444,13 +444,13 @@ export default function TutorPublicProfile() { // NOSONAR
         
         // Refresh demo status after successful booking
         window.dispatchEvent(new CustomEvent('demo-status-changed', { 
-          detail: { tutorId: id } 
+          detail: { tutorId: tutor.id } 
         }));
       } else {
         // paid booking flow (requires tokens)
         await api.post(
           '/bookings',
-          { tutorId: id, startTime: slot.startTime, endTime: slot.endTime, notes: 'Booked from public profile' },
+          { tutorId: tutor.id, startTime: slot.startTime, endTime: slot.endTime, notes: 'Booked from public profile' },
           { params: { tz: timezone } },
         );
         

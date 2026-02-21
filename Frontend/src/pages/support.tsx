@@ -551,7 +551,7 @@ export default function SupportPage() {
                   <>
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-sm font-semibold text-slate-700">{ticketLabel(selectedTicket)}</div>
-                      {selectedTicket?.status !== 'RESOLVED' && (
+                      {selectedTicket?.status !== 'RESOLVED' && role === 'ADMIN' && (
                         <button
                           onClick={handleCloseTicket}
                           className="rounded-lg border px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"

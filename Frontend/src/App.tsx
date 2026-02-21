@@ -9,6 +9,7 @@ import { setAuthHeader, readToken } from './lib/apiClient';
 import { ToastProvider } from './contexts/ToastContext';
 import { useAuth } from './contexts/AuthContext';
 import InternalOnly from './pages/InternalOnly';
+import MaintenanceModal from './components/MaintenanceModal';
 
 function Spinner() {
   return (
@@ -203,6 +204,7 @@ const AdminBlogs = lazy(() => import('./pages/admin/blogs'));
 const AdminRefundRequests = lazy(() => import('./pages/admin/refund-requests'));
 const AdminAudit = lazy(() => import('./pages/admin/audit'));
 const AdminPolicyConfig = lazy(() => import('./pages/admin/policy-config'));
+const AdminControlsPage = lazy(() => import('./pages/admin/admin-controls'));
 
 /** Role chooser */
 const ChooseRole = lazy(() => import('./pages/choose-role'));
@@ -297,6 +299,7 @@ function App() {
   return (
     <Suspense fallback={<Spinner />}>
       <ScrollToTop />
+      <MaintenanceModal />
       <Routes>
         {/* Public Pages */}
         <Route element={<MainLayout />}>
@@ -447,6 +450,7 @@ function App() {
           <Route path="/admin/refund-requests" element={<AdminRefundRequests />} />
           <Route path="/admin/audit" element={<AdminAudit />} />
           <Route path="/admin/policy-config" element={<AdminPolicyConfig />} />
+          <Route path="/admin/controls" element={<AdminControlsPage />} />
         </Route>
 
         {/* 404 Fallback */}

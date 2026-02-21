@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ControlBar,
@@ -12,14 +12,14 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, type Participant, DisconnectReason } from "livekit-client";
-import { Clock, FileText, PanelRightOpen, Users, PenTool, X } from "lucide-react";
+import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle } from "lucide-react";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
 import { useToast } from "../../contexts/ToastContext";
 import { getTokenPayload } from "../../lib/apiClient";
 import { fetchLivekitToken } from "../../services/livekit";
 import { getBookingPerspective } from "../../utils/bookingPerspective";
 import { useAuth } from "../../contexts/AuthContext";
-import Whiteboard from "../../components/Whiteboard/Whiteboard";
+import Whiteboard, { type WhiteboardHandle } from "../../components/Whiteboard/Whiteboard";
 import { whiteboardService } from "../../services/whiteboardService";
 import "@livekit/components-styles";
 
@@ -79,13 +79,17 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
 }) {
   const participants = useParticipants() as Participant[];
   const room = useRoomContext();
+  const navigate = useNavigate();
   const [callStartedAt, setCallStartedAt] = useState<Date | null>(null);
   const [sideTab, setSideTab] = useState<"participants" | "whiteboard">("participants");
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
   const [isOvertime, setIsOvertime] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
+  const [noShowCountdown, setNoShowCountdown] = useState<string | null>(null);
+  const [showNoShowModal, setShowNoShowModal] = useState(false);
   const { showError: showToastError, showSuccess: showToastSuccess } = useToast();
+  const whiteboardRef = useRef<WhiteboardHandle>(null);
 
   const hasBothJoined = participants.length >= 2;
 
@@ -94,6 +98,35 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
       setCallStartedAt(new Date());
     }
   }, [callStartedAt, hasBothJoined]);
+
+  // 10-minute no-show timer: ONLY for students waiting for tutor
+  // Tutors stay in class until class ends regardless of student joining
+  useEffect(() => {
+    if (isTutor) return; // tutors don't get a countdown — they stay until class ends
+    if (hasBothJoined || showNoShowModal) return; // both joined or already showing modal
+    if (!classDate) return;
+
+    const startTime = new Date(classDate).getTime();
+    const noShowDeadline = startTime + 10 * 60 * 1000; // 10 min after start
+
+    const tick = () => {
+      const now = Date.now();
+      const diff = noShowDeadline - now;
+      if (diff <= 0) {
+        setNoShowCountdown(null);
+        // Time's up — show the no-show modal
+        setShowNoShowModal(true);
+        room.disconnect().catch(() => { /* already disconnecting */ });
+        return;
+      }
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      setNoShowCountdown(`${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`);
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [classDate, hasBothJoined, showNoShowModal, room, isTutor]);
 
   // Class end timer
   useEffect(() => {
@@ -137,12 +170,15 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   const handleSaveWhiteboardNotes = useCallback(async () => {
     try {
       setSavingNotes(true);
-      // Fetch current whiteboard data
-      const wbData = await whiteboardService.getWhiteboardData(bookingId);
+      // Get live scene data directly from Excalidraw (avoids stale backend data)
+      const liveData = whiteboardRef.current?.getSceneData();
+      const wbData = liveData ?? await whiteboardService.getWhiteboardData(bookingId);
       if (!wbData || (!wbData.elements?.length)) {
-        showToastError("Whiteboard is empty — nothing to save.");
+        showToastError("Whiteboard is empty \u2014 nothing to save.");
         return;
       }
+      // Flush the latest data to the backend first
+      await whiteboardRef.current?.flushSave();
       // Format the date for the filename
       const dateStr = classDate
         ? new Date(classDate).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-")
@@ -164,6 +200,34 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   const isWhiteboardActive = sideTab === "whiteboard";
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
 
+  // No-show modal — shown for STUDENT when tutor didn't join within 10 min
+  if (showNoShowModal && !isTutor) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 sm:p-8 text-center space-y-5">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-orange-100">
+            <AlertTriangle className="h-8 w-8 text-orange-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Tutor didn\u2019t join the class
+          </h2>
+          <p className="text-sm text-slate-600">
+            The tutor did not join within 10 minutes of the scheduled start time. Your 1 token has been refunded automatically.
+          </p>
+          <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3">
+            <p className="text-sm font-semibold text-green-700">+1 Token refunded to your balance</p>
+          </div>
+          <button
+            onClick={() => navigate('/student/sessions')}
+            className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+          >
+            Go to My Sessions
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[calc(100dvh-44px)] sm:h-[calc(100dvh-52px)] flex-col p-2 sm:p-4 gap-2 sm:gap-4 overflow-hidden">
       {/* ── Timer bar ── */}
@@ -180,6 +244,14 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
         </div>
       )}
 
+      {/* ── No-show countdown bar (student waiting for tutor only) ── */}
+      {!isTutor && !hasBothJoined && noShowCountdown !== null && (
+        <div className="shrink-0 flex items-center justify-center gap-2 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold shadow-sm bg-orange-50 text-orange-700 border border-orange-200">
+          <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          Waiting for tutor to join: {noShowCountdown}
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 relative grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-2 sm:gap-4">
         {/* ── Main area ── */}
         <div className="relative min-h-0 h-full overflow-hidden">
@@ -191,7 +263,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
 
           {isWhiteboardActive ? (
             <div className="absolute inset-0 rounded-2xl border bg-white overflow-hidden">
-              <Whiteboard bookingId={bookingId} className="w-full h-full" />
+              <Whiteboard ref={whiteboardRef} bookingId={bookingId} className="w-full h-full" />
             </div>
           ) : (
             <LivekitStage />

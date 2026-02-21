@@ -55,6 +55,7 @@ export default function AdminDashboard() {
     { icon: FileText, label: 'Refunds', description: 'Refund requests management', to: '/admin/refund-requests', color: 'orange' },
     { icon: BarChart4, label: 'Audit Log', description: 'System activity & changes', to: '/admin/audit', color: 'slate' },
     { icon: Settings, label: 'Policy Config', description: 'Edit terms and rule settings', to: '/admin/policy-config', color: 'indigo' },
+    { icon: Settings, label: 'Admin Controls', description: 'Role access, maintenance, admin users', to: '/admin/controls', color: 'purple' },
     { icon: BookMarked, label: 'Blogs', description: 'Content management', to: '/admin/blogs', color: 'rose' },
     { icon: AlertCircle, label: 'KYC Verification', description: 'Review tutor documents', to: '/admin/kyc-verification', color: 'red', badge: stats.pendingKyc > 0 ? stats.pendingKyc : undefined },
     { icon: Headphones, label: 'Support', description: 'Customer support portal', to: '/support', color: 'cyan' },

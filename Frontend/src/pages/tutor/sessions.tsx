@@ -15,7 +15,7 @@ type Session = {
   subject?: string;
   startTime: string;
   endTime: string;
-  status?: 'UPCOMING' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED';
+  status?: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED' | 'EXPIRED' | 'NO_SHOW' | 'CANCELED';
   isGroupSession?: boolean;
   isDemo?: boolean;
   maxStudents?: number;
@@ -42,6 +42,13 @@ export default function MySessions() {
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [selectedCancelSession, setSelectedCancelSession] = useState<Session | null>(null);
   const [cancelling, setCancelling] = useState(false);
+
+  // Ticker: re-render every 60s so sessions move Upcoming → Active when class starts
+  const [_tick, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     loadSessions();
@@ -164,135 +171,215 @@ export default function MySessions() {
           <Calendar className="mx-auto h-16 w-16 text-slate-400 mb-4" />
           <p className="text-slate-600">No sessions found.</p>
         </div>
-      ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sessions.map((session) => {
-            const isGroup = session.isGroupSession;
-            const canConvert = canConvertToGroup(session);
-            const meetingUrl = meetingLinks.get(session.id);
-            const joinUrl = meetingUrl?.startsWith('livekit:') || meetingUrl?.startsWith('webrtc:')
-              ? `/class/${session.id}`
-              : meetingUrl;
+      ) : (() => {
+        const now = new Date();
+        // Split sessions into sections
+        const activeSessions = sessions.filter((s) => s.status === 'ACTIVE');
+        const upcomingSessions = sessions.filter((s) =>
+          s.status === 'UPCOMING' || s.status === 'CONFIRMED' ||
+          (s.status === 'PENDING_SLOT' && s.startTime && new Date(s.startTime) > now)
+        );
+        const pastSessions = sessions.filter((s) =>
+          s.status === 'COMPLETED' || s.status === 'EXPIRED' ||
+          s.status === 'NO_SHOW' || s.status === 'CANCELED' ||
+          s.status === 'PENDING_SLOT'
+        ).filter((s) => !upcomingSessions.includes(s) && !activeSessions.includes(s));
 
-            return (
-              <div
-                key={session.id}
-                className={`p-6 border rounded-lg shadow-sm bg-white hover:shadow-lg transition-all duration-200 ${
-                  isGroup ? 'border-green-200 bg-green-50' : 'border-slate-200'
-                }`}
-              >
-                {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      {isGroup ? (
-                        <Users className="h-5 w-5 text-green-600" />
-                      ) : (
-                        <Clock className="h-5 w-5 text-blue-600" />
-                      )}
-                      <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                        isGroup
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {isGroup ? 'Group Session' : '1:1 Session'}
-                      </span>
-                      {session.isDemo && (
-                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                          Demo
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-lg font-semibold text-slate-800">
-                      {session.subject ?? 'Session'}
-                    </p>
-                  </div>
-                  {session.status && (
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                      session.status === 'UPCOMING'
-                        ? 'bg-blue-100 text-blue-600'
-                        : session.status === 'PENDING_SLOT'
-                        ? 'bg-amber-100 text-amber-600'
-                        : 'bg-green-100 text-green-600'
+        const statusBadge = (s: Session) => {
+          const map: Record<string, string> = {
+            ACTIVE:       'bg-green-100 text-green-600',
+            UPCOMING:     'bg-blue-100 text-blue-600',
+            CONFIRMED:    'bg-blue-100 text-blue-600',
+            PENDING_SLOT: 'bg-amber-100 text-amber-600',
+            EXPIRED:      'bg-orange-100 text-orange-600',
+            NO_SHOW:      'bg-red-100 text-red-600',
+            COMPLETED:    'bg-green-100 text-green-600',
+            CANCELED:     'bg-red-100 text-red-600',
+          };
+          const labelMap: Record<string, string> = {
+            PENDING_SLOT: 'UNBOOKED',
+            NO_SHOW:      'NO SHOW',
+            ACTIVE:       'ACTIVE',
+          };
+          const st = s.status ?? '';
+          return (
+            <span className={`text-xs font-bold px-2 py-1 rounded-full ${map[st] ?? 'bg-slate-100 text-slate-600'}`}>
+              {labelMap[st] ?? st}
+            </span>
+          );
+        };
+
+        const sessionCard = (session: Session) => {
+          const isGroup = session.isGroupSession;
+          const canConvert = canConvertToGroup(session);
+          const meetingUrl = meetingLinks.get(session.id);
+          const joinUrl = meetingUrl?.startsWith('livekit:') || meetingUrl?.startsWith('webrtc:')
+            ? `/class/${session.id}`
+            : (meetingUrl || `/class/${session.id}`);
+          const isActive = session.status === 'ACTIVE';
+          const canJoin = session.status === 'UPCOMING' || session.status === 'ACTIVE' || session.status === 'CONFIRMED';
+          const canCancel = (session.status === 'UPCOMING' || session.status === 'CONFIRMED') &&
+            session.startTime && new Date(session.startTime) > now;
+
+          return (
+            <div
+              key={session.id}
+              className={`p-6 border rounded-lg shadow-sm bg-white hover:shadow-lg transition-all duration-200 ${
+                isActive ? 'border-green-400' : isGroup ? 'border-green-200 bg-green-50' : 'border-slate-200'
+              }`}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    {isGroup ? (
+                      <Users className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <Clock className={`h-5 w-5 ${isActive ? 'text-green-600' : 'text-blue-600'}`} />
+                    )}
+                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                      isGroup ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
                     }`}>
-                      {session.status === 'PENDING_SLOT' ? 'UNBOOKED' : session.status}
+                      {isGroup ? 'Group Session' : '1:1 Session'}
                     </span>
-                  )}
-                </div>
-
-                {/* Details */}
-                <div className="space-y-2 mb-4">
-                  {!isGroup && session.studentName && (
-                    <p className="text-sm text-slate-700 flex items-center gap-2">
-                      <Users className="h-4 w-4" /> Student: {session.studentName}
-                    </p>
-                  )}
-                  {!isGroup && session.studentGrade && (
-                    <p className="text-sm text-slate-700 flex items-center gap-2">
-                      <Users className="h-4 w-4" /> Class: {session.studentGrade}
-                    </p>
-                  )}
-                  {isGroup && (
-                    <p className="text-sm text-slate-700 flex items-center gap-2">
-                      <Users className="h-4 w-4" /> 
-                      {session.currentEnrollment ?? 0}/{session.maxStudents ?? 0} students
-                    </p>
-                  )}
-                  <p className="text-sm text-slate-600 flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    {formatDateTime(session.startTime)}
+                    {session.isDemo && (
+                      <span className="text-xs font-semibold px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                        Demo
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-lg font-semibold text-slate-800">
+                    {session.subject ?? 'Session'}
                   </p>
-                  <p className="text-sm text-slate-600 flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    {new Date(session.endTime).toLocaleTimeString('en-IN', {
-                      timeStyle: 'short',
-                    })}
-                  </p>
-                  {isGroup && session.pricePerStudent !== undefined && (
-                    <p className="text-sm font-semibold text-green-600 flex items-center gap-2">
-                      <IndianRupee className="h-4 w-4" />
-                      {session.pricePerStudent} tokens/student
-                    </p>
-                  )}
                 </div>
+                {session.status && statusBadge(session)}
+              </div>
 
-                {/* Actions */}
-                <div className="flex flex-col gap-2">
-                  {joinUrl && session.status === 'UPCOMING' && (
-                    <a
-                      href={joinUrl}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                    >
-                      Join Class
-                    </a>
-                  )}
-                  {canConvert && (
-                    <button
-                      onClick={() => openConvertModal(session)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-                    >
-                      <UserPlus className="h-4 w-4" />
-                      Convert to Group
-                    </button>
-                  )}
-                  {(session.status === 'UPCOMING' || session.status === 'CONFIRMED') && (
-                    <button
-                      onClick={() => {
-                        setSelectedCancelSession(session);
-                        setCancelModalOpen(true);
-                      }}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-red-300 bg-white text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium"
-                    >
-                      <XCircle className="h-4 w-4" />
-                      Cancel Session
-                    </button>
-                  )}
+              {/* Details */}
+              <div className="space-y-2 mb-4">
+                {!isGroup && session.studentName && (
+                  <p className="text-sm text-slate-700 flex items-center gap-2">
+                    <Users className="h-4 w-4" /> Student: {session.studentName}
+                  </p>
+                )}
+                {!isGroup && session.studentGrade && (
+                  <p className="text-sm text-slate-700 flex items-center gap-2">
+                    <Users className="h-4 w-4" /> Class: {session.studentGrade}
+                  </p>
+                )}
+                {isGroup && (
+                  <p className="text-sm text-slate-700 flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    {session.currentEnrollment ?? 0}/{session.maxStudents ?? 0} students
+                  </p>
+                )}
+                <p className="text-sm text-slate-600 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  {formatDateTime(session.startTime)}
+                </p>
+                <p className="text-sm text-slate-600 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  {new Date(session.endTime).toLocaleTimeString('en-IN', { timeStyle: 'short' })}
+                </p>
+                {isGroup && session.pricePerStudent !== undefined && (
+                  <p className="text-sm font-semibold text-green-600 flex items-center gap-2">
+                    <IndianRupee className="h-4 w-4" />
+                    {session.pricePerStudent} tokens/student
+                  </p>
+                )}
+              </div>
+
+              {/* Cancelled notice */}
+              {session.status === 'CANCELED' && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 mb-3">
+                  <p className="text-xs font-semibold text-red-700">Session was cancelled.</p>
+                </div>
+              )}
+
+              {/* No-show demerit message */}
+              {session.status === 'NO_SHOW' && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 mb-3">
+                  <p className="text-xs font-semibold text-red-700">
+                    ⚠ You didn&apos;t join. You received 1 demerit point.
+                  </p>
+                  <p className="text-[10px] text-red-600 mt-0.5">
+                    3 demerit points will result in an hourly rate deduction from your payout.
+                  </p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex flex-col gap-2">
+                {canJoin && (
+                  <a
+                    href={joinUrl}
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-colors font-medium ${
+                      isActive ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
+                    }`}
+                  >
+                    {isActive ? 'Join Class Now' : 'Join Class'}
+                  </a>
+                )}
+                {canConvert && (
+                  <button
+                    onClick={() => openConvertModal(session)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Convert to Group
+                  </button>
+                )}
+                {canCancel && (
+                  <button
+                    onClick={() => {
+                      setSelectedCancelSession(session);
+                      setCancelModalOpen(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-red-300 bg-white text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Cancel Session
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div className="space-y-10">
+            {/* Active Sessions */}
+            {activeSessions.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold text-slate-800 mb-4">Active Sessions</h3>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {activeSessions.map(sessionCard)}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
+
+            {/* Upcoming Sessions */}
+            {upcomingSessions.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold text-slate-800 mb-4">Upcoming Sessions</h3>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {upcomingSessions.map(sessionCard)}
+                </div>
+              </div>
+            )}
+
+            {/* Past Sessions (Completed / Expired / No-Show / Cancelled) */}
+            {pastSessions.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold text-slate-800 mb-4">Past Sessions</h3>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {pastSessions.map(sessionCard)}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Convert Modal */}
       {convertModalOpen && selectedSession && (

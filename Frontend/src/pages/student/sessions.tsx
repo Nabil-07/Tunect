@@ -32,6 +32,12 @@ export default function MySessions() {
   const [sessions, setSessions] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [meetingLinks, setMeetingLinks] = useState<Map<string, string>>(new Map());
+  // Ticker: re-render every 60s so sessions move Upcoming → Active when class starts
+  const [_tick, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const getSessionAmount = (session: Booking) => {
     const rate = Number(session.tutor?.hourlyRate || 0);
@@ -49,7 +55,12 @@ export default function MySessions() {
   }, []);
 
   useEffect(() => {
-    const withLinks = sessions.filter((s) => s.status === 'CONFIRMED' || s.status === 'COMPLETED');
+    const withLinks = sessions.filter((s) =>
+      s.status === 'CONFIRMED' ||
+      s.status === 'COMPLETED' ||
+      s.status === 'WAITING_ROOM' ||
+      s.status === 'LIVE'
+    );
     if (withLinks.length === 0) {
       setMeetingLinks(new Map());
       return;
@@ -174,6 +185,23 @@ export default function MySessions() {
     if (status === 'COMPLETED') {
       return { label: 'Completed', color: 'bg-green-100 text-green-700' };
     }
+
+    // Auto-cancelled statuses
+    if (status === 'AUTO_CANCELLED_TUTOR_NO_SHOW') {
+      return { label: 'Expired', color: 'bg-orange-100 text-orange-700', noShowReason: 'tutor' };
+    }
+    if (status === 'AUTO_CANCELLED_STUDENT_NO_SHOW') {
+      return { label: 'Expired', color: 'bg-orange-100 text-orange-700' };
+    }
+
+    // WAITING_ROOM or LIVE that has ended = Expired (tutor/student didn't both stay)
+    if (status === 'WAITING_ROOM' || status === 'LIVE') {
+      if (session.endTime && new Date(session.endTime) < now) {
+        return { label: 'Expired', color: 'bg-orange-100 text-orange-700' };
+      }
+      // Still ongoing
+      return { label: 'Active', color: 'bg-green-100 text-green-700' };
+    }
     
     // Special handling for CONFIRMED sessions - check if time has passed and attendance
     if (status === 'CONFIRMED') {
@@ -220,19 +248,27 @@ export default function MySessions() {
     );
   };
 
-  // Active: CONFIRMED status with current time between startTime and endTime
+  // Active: CONFIRMED/WAITING_ROOM/LIVE status with current time between startTime and endTime
   const isActive = (session: Booking) => {
-    if (session.status !== 'CONFIRMED' || !session.startTime || !session.endTime) {
-      return false;
-    }
+    // CANCELED sessions are never active
+    if (session.status === 'CANCELED') return false;
+    if (!['CONFIRMED', 'WAITING_ROOM', 'LIVE'].includes(session.status)) return false;
+    if (!session.startTime || !session.endTime) return false;
     const start = new Date(session.startTime);
     const end = new Date(session.endTime);
     return now >= start && now <= end;
   };
 
-  // Completed: COMPLETED status OR endTime in the past (includes both attended and expired)
-  // We'll use getStatusLabel to distinguish between "Completed" (attended) and "Expired" (not attended)
+  // Completed: COMPLETED status, AUTO_CANCELLED statuses, or endTime in the past (includes both attended and expired)
+  // We'll use getStatusLabel to distinguish between "Completed" (attended), "Expired" (not attended), etc.
   const isCompleted = (session: Booking) => {
+    // Auto-cancelled and manually cancelled sessions always go to completed/history section
+    if (session.status === 'AUTO_CANCELLED_TUTOR_NO_SHOW' || session.status === 'AUTO_CANCELLED_STUDENT_NO_SHOW') {
+      return true;
+    }
+    if (session.status === 'CANCELED') {
+      return true;
+    }
     return (
       session.status === 'COMPLETED' ||
       (session.endTime && new Date(session.endTime) < now)
@@ -278,9 +314,11 @@ export default function MySessions() {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {activeSessions.map((session) => {
                   const meetingUrl = meetingLinks.get(session.id);
+                  // Always build a join URL for active sessions — use /class/{id} as fallback
+                  // so the button never disappears due to a missing or unloaded meeting URL
                   const joinUrl = meetingUrl?.startsWith('livekit:') || meetingUrl?.startsWith('webrtc:')
                     ? `/class/${session.id}`
-                    : meetingUrl;
+                    : (meetingUrl || `/class/${session.id}`);
                   const statusMeta = { label: 'Active', color: 'bg-green-100 text-green-700' };
                   const isGroup = session.isGroupSession;
 
@@ -299,11 +337,7 @@ export default function MySessions() {
                             ) : (
                               <Clock className="h-5 w-5 text-green-600" />
                             )}
-                            <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                              isGroup
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-green-100 text-green-700'
-                            }`}>
+                            <span className="text-xs font-semibold px-2 py-1 rounded-full bg-green-100 text-green-700">
                               {isGroup ? 'Group Session' : '1:1 Session'}
                             </span>
                           </div>
@@ -367,17 +401,19 @@ export default function MySessions() {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {upcomingSessions.map((session) => {
                   const meetingUrl = meetingLinks.get(session.id);
+                  // Always build join URL for upcoming — use /class/{id} as guaranteed fallback
                   const joinUrl = meetingUrl?.startsWith('livekit:') || meetingUrl?.startsWith('webrtc:')
                     ? `/class/${session.id}`
-                    : meetingUrl;
+                    : (meetingUrl || `/class/${session.id}`);
                   const statusMeta = getStatusLabel(session);
                   const isGroup = session.isGroupSession;
+                  const sessionIsNowActive = isActive(session);
 
                   return (
                     <div
                       key={session.id}
                       className={`p-6 border rounded-lg shadow-sm bg-white hover:shadow-lg transition-all duration-200 ${
-                        isGroup ? 'border-green-200 bg-green-50' : 'border-slate-200'
+                        sessionIsNowActive ? 'border-green-300' : isGroup ? 'border-green-200 bg-green-50' : 'border-slate-200'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-4">
@@ -386,7 +422,7 @@ export default function MySessions() {
                             {isGroup ? (
                               <Users className="h-5 w-5 text-green-600" />
                             ) : (
-                              <Clock className="h-5 w-5 text-blue-600" />
+                              <Clock className={`h-5 w-5 ${sessionIsNowActive ? 'text-green-600' : 'text-blue-600'}`} />
                             )}
                             <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
                               isGroup
@@ -400,8 +436,10 @@ export default function MySessions() {
                             {session.tutor?.name || 'Tutor'}
                           </p>
                         </div>
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${statusMeta.color}`}>
-                          {statusMeta.label}
+                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                          sessionIsNowActive ? 'bg-green-100 text-green-700' : statusMeta.color
+                        }`}>
+                          {sessionIsNowActive ? 'Active' : statusMeta.label}
                         </span>
                       </div>
 
@@ -432,16 +470,18 @@ export default function MySessions() {
                         )}
                       </div>
 
-                      {joinUrl && (isUpcoming(session) || isActive(session)) && (
-                        <a
-                          href={joinUrl}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                        >
-                          <Video className="h-4 w-4" />
-                          Join Class
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      )}
+                      <a
+                        href={joinUrl}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium ${
+                          sessionIsNowActive
+                            ? 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        <Video className="h-4 w-4" />
+                        {sessionIsNowActive ? 'Join Class Now' : 'Join Class'}
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
                     </div>
                   );
                 })}
@@ -474,9 +514,7 @@ export default function MySessions() {
                               <Clock className="h-5 w-5 text-green-600" />
                             )}
                             <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                              isGroup
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-green-100 text-green-700'
+                              isGroup ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-700'
                             }`}>
                               {isGroup ? 'Group Session' : '1:1 Session'}
                             </span>
@@ -516,6 +554,42 @@ export default function MySessions() {
                           </p>
                         )}
                       </div>
+
+                      {/* Manually cancelled session */}
+                      {session.status === 'CANCELED' && (
+                        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 mb-2">
+                          <p className="text-xs font-semibold text-red-700">
+                            This session was cancelled.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Tutor no-show refund message */}
+                      {session.status === 'AUTO_CANCELLED_TUTOR_NO_SHOW' && (
+                        <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 mb-2">
+                          <p className="text-xs font-semibold text-green-700">
+                            Tutor didn&apos;t join the class. Your 1 token has been refunded.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Student no-show / didn't attend message */}
+                      {session.status === 'AUTO_CANCELLED_STUDENT_NO_SHOW' && (
+                        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 mb-2">
+                          <p className="text-xs font-semibold text-red-700">
+                            You didn&apos;t join the session. No refund.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Expired session where student didn't attend (both missing or just didn't show) */}
+                      {statusMeta.label === 'Expired' && session.status !== 'AUTO_CANCELLED_TUTOR_NO_SHOW' && session.status !== 'AUTO_CANCELLED_STUDENT_NO_SHOW' && !session.hasAttended && (
+                        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 mb-2">
+                          <p className="text-xs font-semibold text-red-700">
+                            You didn&apos;t join the session. No refund.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

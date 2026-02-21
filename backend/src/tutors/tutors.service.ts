@@ -1206,7 +1206,7 @@ export class TutorsService {
         // Only show bookings that have been confirmed with time slots
         startTime: { not: null },
         endTime: { not: null },
-        status: { notIn: ['CANCELED'] }
+        status: { notIn: ['FAILED_TECHNICAL'] }
       },
       select: {
         id: true,
@@ -1253,8 +1253,15 @@ export class TutorsService {
           ? booking.tutor.subjects[0]
           : 'Session';
 
-      let status: 'UPCOMING' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED' = 'CONFIRMED';
-      if (booking.status === BookingStatus.PENDING_SLOT) {
+      let status: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED' | 'EXPIRED' | 'NO_SHOW' | 'CANCELED' = 'CONFIRMED';
+      if (booking.status === BookingStatus.CANCELED) {
+        status = 'CANCELED';
+      } else if (booking.status === BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW) {
+        status = 'NO_SHOW';
+      } else if (booking.status === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW) {
+        // Student didn't join but tutor did — tutor gets paid, show as COMPLETED
+        status = 'COMPLETED';
+      } else if (booking.status === BookingStatus.PENDING_SLOT) {
         status = 'PENDING_SLOT';
       } else if (booking.status === BookingStatus.COMPLETED) {
         status = hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data)
@@ -1265,13 +1272,20 @@ export class TutorsService {
         booking.status === BookingStatus.WAITING_ROOM ||
         booking.status === BookingStatus.LIVE
       ) {
+        const sessionStarted = new Date(booking.startTime!) <= now;
         const sessionEnded = new Date(booking.endTime!) <= now;
         if (sessionEnded) {
-          // If the session has ended and both participants attended, show as COMPLETED
-          // even before the nightly cron updates the DB status
-          status = hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data)
-            ? 'COMPLETED'
-            : 'CONFIRMED';
+          const hasAttendance = hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data);
+          if (hasAttendance) {
+            // Both participants attended — show as COMPLETED
+            status = 'COMPLETED';
+          } else {
+            // Session time passed but no verified attendance — show as EXPIRED
+            status = 'EXPIRED';
+          }
+        } else if (sessionStarted) {
+          // Class has started but not ended — tutor is in or about to join
+          status = 'ACTIVE';
         } else {
           status = 'UPCOMING';
         }
