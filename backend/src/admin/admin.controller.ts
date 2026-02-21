@@ -70,6 +70,15 @@ export class AdminController {
     return this.svc.setTutorStatus(id, dto, req.user!.id, req);
   }
 
+  @Patch('tutors/:id/trending')
+  setTutorTrending(
+    @Param('id') id: string,
+    @Body() dto: { isTrending: boolean },
+    @Req() req: any,
+  ) {
+    return this.svc.setTutorTrending(id, dto.isTrending, req.user!.id, req);
+  }
+
   @Get('students')
   students(@Query() q: PaginationDto) {
     return this.svc.listStudents(q);
