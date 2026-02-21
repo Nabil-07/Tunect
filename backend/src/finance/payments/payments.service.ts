@@ -17,73 +17,76 @@ export class PaymentsService {
   async getStudentPayments(page: number = 1, pageSize: number = 100) {
     const skip = (page - 1) * pageSize;
 
-    // Get all completed/confirmed bookings (student payments)
-    const bookings = await this.prisma.booking.findMany({
-      where: {
-        status: { in: ['COMPLETED', 'CONFIRMED'] },
-        isDemo: false,
-        tokensCharged: { gt: 0 },
-      },
-      include: {
-        student: {
-          include: { user: true },
+    // Query actual Payment model records (Razorpay transactions) — not bookings
+    const [payments, total] = await this.prisma.$transaction([
+      this.prisma.payment.findMany({
+        where: {
+          status: 'SUCCEEDED',
         },
-        tutor: {
-          include: { user: true },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              isBanned: true,
+              student: {
+                select: { id: true },
+              },
+            },
+          },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: pageSize,
-    });
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.payment.count({
+        where: {
+          status: 'SUCCEEDED',
+        },
+      }),
+    ]);
 
-    const total = await this.prisma.booking.count({
-      where: {
-        status: { in: ['COMPLETED', 'CONFIRMED'] },
-        isDemo: false,
-        tokensCharged: { gt: 0 },
-      },
-    });
-
-    // Map to frontend format
-    const payments = bookings.map((booking) => {
-      const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
-      const hourlyRate = Number(booking.tutor.hourlyRate || 0);
-      const bookingAmount = hours * hourlyRate;
-
-      return {
-        id: booking.id,
-        bookingId: booking.id,
-        orderId: booking.id,
-        studentId: booking.studentId,
-        studentName: booking.student?.user?.name || '',
-        studentEmail: booking.student?.user?.email || '',
-        tutorId: booking.tutorId,
-        tutorName: booking.tutor.user?.name || '',
-        amount: Math.round(bookingAmount * 100), // Convert to paise
-        amountAtBooking: Math.round(bookingAmount * 100),
-        paidAt: booking.createdAt.toISOString(),
-        receiptUrl: undefined,
-        isBanned: booking.student?.user?.isBanned || false,
-      };
-    });
+    const mapped = payments.map((payment) => ({
+      id: payment.id,
+      bookingId: payment.id,
+      orderId: payment.providerOrderId || payment.id,
+      studentId: payment.user?.student?.id || '',
+      studentName: payment.user?.name || '',
+      studentEmail: payment.user?.email || '',
+      tutorId: '',
+      tutorName: '',
+      amount: payment.amountInMinor,
+      amountAtBooking: payment.amountInMinor,
+      paidAt: payment.createdAt.toISOString(),
+      receiptUrl: undefined,
+      isBanned: payment.user?.isBanned || false,
+      tokensPurchased: payment.tokensPurchased,
+      provider: payment.provider,
+    }));
 
     return {
-      payments,
+      payments: mapped,
       total,
     };
   }
 
   async getTutorPaymentsDue(page: number = 1, pageSize: number = 100) {
-    // Get all tutors with their confirmed/completed bookings (non-demo)
+    const now = new Date();
+
+    // Get all tutors with their completed/ended bookings (non-demo)
+    // CONFIRMED bookings only included if endTime is in the past (class ended, cron hasn't flipped status yet)
     const tutors = await this.prisma.tutor.findMany({
       include: {
         user: true,
         bookings: {
           where: {
-            status: { in: ['COMPLETED', 'CONFIRMED'] },
             isDemo: false,
             tokensCharged: { gt: 0 },
+            OR: [
+              { status: { in: ['COMPLETED', 'AUTO_CANCELLED_STUDENT_NO_SHOW'] } },
+              { status: 'CONFIRMED', endTime: { lt: now } },
+            ],
           },
           include: {
             student: { include: { user: true } },
@@ -92,6 +95,17 @@ export class PaymentsService {
         payouts: {
           where: {
             status: 'PAID', // Only count paid payouts as "paid"
+          },
+        },
+        kycApplications: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: {
+            bankAccountHolder: true,
+            bankName: true,
+            accountNumber: true,
+            ifsc: true,
+            upiId: true,
           },
         },
       },
@@ -124,11 +138,16 @@ export class PaymentsService {
           dueDate: dueDate.toISOString(),
           bookingsCount: 1,
           amountDue: tutorPayment,
-          amountPaid: isBanned ? 0 : tutorPayment,
-          status: isBanned ? 'blocked' : 'pending',
+          amountPaid: 0, // will be updated after totalPaid is computed
+          status: isBanned ? 'blocked' : 'pending', // will be updated after totalPaid is computed
           blockedReason: isBanned
             ? `Tutor banned on ${tutor.user?.bannedAt?.toLocaleDateString()}`
             : undefined,
+          bookingId: booking.id,
+          bookingStatus: booking.status,
+          studentName: booking.student?.user?.name || booking.student?.user?.email || '',
+          sessionDate: (booking.startTime || booking.createdAt).toISOString(),
+          sessionEndDate: booking.endTime?.toISOString() || null,
         });
 
         totalDue += tutorPayment;
@@ -139,16 +158,40 @@ export class PaymentsService {
         return sum + Math.round(Number(payout.amount) * 100); // Convert to paise
       }, 0);
 
+      // Update schedule item statuses based on actual payouts
+      // Sort by dueDate ascending so earliest bookings get marked paid first
+      paymentSchedule.sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      let remainingPaid = totalPaid;
+      for (const item of paymentSchedule) {
+        if (item.status === 'blocked') continue;
+        if (remainingPaid >= item.amountDue) {
+          item.status = 'paid';
+          item.amountPaid = item.amountDue;
+          remainingPaid -= item.amountDue;
+        } else if (remainingPaid > 0) {
+          item.status = 'pending';
+          item.amountPaid = remainingPaid;
+          remainingPaid = 0;
+        } else {
+          item.status = 'pending';
+          item.amountPaid = 0;
+        }
+      }
+
+      const remaining = Math.max(0, totalDue - totalPaid);
+
       tutorDues.push({
         tutorId: tutor.id,
         tutorName: tutor.user?.name || '',
         tutorEmail: tutor.user?.email || '',
         totalDue,
         totalPaid,
+        remaining,
         paymentSchedule,
         commissionRate: this.getCommissionRate(Number(tutor.hourlyRate || 0)),
         isBanned: tutor.user?.isBanned || false,
         bannedDate: tutor.user?.bannedAt?.toISOString(),
+        bankInfo: tutor.kycApplications?.[0] || null,
       });
     }
 

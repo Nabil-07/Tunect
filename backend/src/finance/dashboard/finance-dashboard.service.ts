@@ -241,7 +241,7 @@ export class FinanceDashboardService {
       throw new BadRequestException('Balance sheet cannot be exported until balanced.');
     }
     const rows: string[] = [];
-    rows.push(`Company,"Tunect Technologies Private Limited"`);
+    rows.push(`Company,"Tunect Private Limited"`);
     rows.push(`Period End,"For the period ended 31 March ${new Date(sheet.fiscalYearEnd).getFullYear()} (${sheet.fiscalYearLabel})"`);
     rows.push(`As-Of,"${sheet.asOf}"`);
     rows.push('Currency,INR');

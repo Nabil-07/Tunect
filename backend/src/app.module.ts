@@ -55,6 +55,7 @@ import { PaymentsModule } from './finance/payments/payments.module';
 import { TaxModule } from './finance/tax/tax.module';
 import { ReconModule } from './finance/recon/recon.module';
 import { LivekitModule } from './livekit/livekit.module';
+import { TasksModule } from './tasks/tasks.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { PreprodInternalGuard } from './auth/preprod-internal.guard';
 import { EncryptResponseInterceptor } from './common/interceptors/encrypt-response.interceptor';
@@ -120,6 +121,7 @@ import { AdminControlsModule } from './admin-controls/admin-controls.module';
     TaxModule,
     ReconModule,
     LivekitModule,
+    TasksModule,
   ],
   controllers: [AppController, ReadyController],
   providers: [

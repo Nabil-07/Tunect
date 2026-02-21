@@ -15,6 +15,7 @@ import {
   AlertCircle,
   ArrowRight,
   Settings,
+  Receipt,
 } from 'lucide-react';
 import { fetchDashboard, type AdminDashboard } from '../../services/adminService';
 
@@ -59,6 +60,7 @@ export default function AdminDashboard() {
     { icon: BookMarked, label: 'Blogs', description: 'Content management', to: '/admin/blogs', color: 'rose' },
     { icon: AlertCircle, label: 'KYC Verification', description: 'Review tutor documents', to: '/admin/kyc-verification', color: 'red', badge: stats.pendingKyc > 0 ? stats.pendingKyc : undefined },
     { icon: Headphones, label: 'Support', description: 'Customer support portal', to: '/support', color: 'cyan' },
+    { icon: Receipt, label: 'Expense Tracker', description: 'Log & track company expenses', to: '/admin/finance/expenses', color: 'emerald' },
   ];
 
   const getColorClasses = (color: string) => {
@@ -73,6 +75,7 @@ export default function AdminDashboard() {
       rose: { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', icon: 'text-rose-600' },
       red: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: 'text-red-600' },
       cyan: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', icon: 'text-cyan-600' },
+      emerald: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: 'text-emerald-600' },
     };
     return colors[color] || colors.indigo;
   };

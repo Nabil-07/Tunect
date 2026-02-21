@@ -508,15 +508,35 @@ model Payment {
 
 model Payout {
   id                      String                    @id @default(cuid())
-  tutorId   String
-  amount    Decimal      @db.Decimal(18, 2)
-  status    PayoutStatus @default(PENDING)
-  reference String?
-  createdAt DateTime     @default(now())
-  paidAt    DateTime?
-  tutor     Tutor        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  tutorId       String
+  amount        Decimal      @db.Decimal(18, 2)
+  status        PayoutStatus @default(PENDING)
+  reference     String?
+  transactionId String?
+  details       String?
+  paymentMethod String?
+  slipUrl       String?
+  createdAt     DateTime     @default(now())
+  paidAt        DateTime?
+  tutor         Tutor        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
 
   @@index([tutorId, createdAt])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  amount      Decimal  @db.Decimal(18, 2)
+  category    String   @default("general")
+  receiptUrl  String?
+  expenseDate DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+  createdBy   String?
+
+  @@index([expenseDate])
+  @@index([category])
 }
 
 model PerformanceReport {

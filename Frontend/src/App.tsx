@@ -200,6 +200,7 @@ const AdminAnalytics = lazy(() => import('./pages/admin/analytics'));
 const AdminFinance = lazy(() => import('./pages/admin/finance'));
 const AdminFinancePayments = lazy(() => import('./pages/admin/finance/payments'));
 const AdminPayoutDashboard = lazy(() => import('./pages/admin/finance/PayoutDashboard'));
+const AdminExpenseTracker = lazy(() => import('./pages/admin/finance/expenses'));
 const AdminBlogs = lazy(() => import('./pages/admin/blogs'));
 const AdminRefundRequests = lazy(() => import('./pages/admin/refund-requests'));
 const AdminAudit = lazy(() => import('./pages/admin/audit'));
@@ -449,6 +450,7 @@ function App() {
           <Route path="/admin/finance/payments" element={<AdminFinancePayments />} />
           <Route path="/admin/finance/payouts" element={<AdminPayoutDashboard />} />
           <Route path="/admin/finance/recon" element={<AdminFinanceRecon />} />
+          <Route path="/admin/finance/expenses" element={<AdminExpenseTracker />} />
           <Route path="/admin/refund-requests" element={<AdminRefundRequests />} />
           <Route path="/admin/audit" element={<AdminAudit />} />
           <Route path="/admin/policy-config" element={<AdminPolicyConfig />} />

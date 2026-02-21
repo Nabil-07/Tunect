@@ -179,7 +179,7 @@ export class AdminService {
       this.prisma.tutor.findMany({
         where, skip, take: pageSize, orderBy: { updatedAt: 'desc' },
         select: {
-          id: true, bio: true, hourlyRate: true, status: true, subjects: true, createdAt: true,
+          id: true, bio: true, hourlyRate: true, status: true, subjects: true, createdAt: true, demeritPoints: true,
           user: { select: { id: true, email: true, name: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
@@ -688,12 +688,23 @@ export class AdminService {
     };
   }
 
-  async listBookings(q: PaginationDto & { status?: BookingStatus }) {
+  async listBookings(q: PaginationDto & { status?: BookingStatus; type?: string; dateFrom?: string; dateTo?: string; sortBy?: string; sortDir?: string }) {
     const { page, pageSize, skip } = this.paginate(q);
 
     const where: Prisma.BookingWhereInput | undefined = (() => {
       const w: Prisma.BookingWhereInput = {};
       if (q.status) w.status = q.status;
+      if (q.type === 'demo') w.isDemo = true;
+      if (q.type === 'paid') w.isDemo = false;
+      if (q.dateFrom || q.dateTo) {
+        w.startTime = {};
+        if (q.dateFrom) w.startTime.gte = new Date(q.dateFrom);
+        if (q.dateTo) {
+          const endDate = new Date(q.dateTo);
+          endDate.setHours(23, 59, 59, 999);
+          w.startTime.lte = endDate;
+        }
+      }
       if (q.q) {
         w.OR = [
           { tutor: { is: { user: { is: { email: { contains: q.q, mode: Prisma.QueryMode.insensitive } } } } } },
@@ -705,9 +716,19 @@ export class AdminService {
       return Object.keys(w).length ? w : undefined;
     })();
 
+    // Build dynamic orderBy with null-aware sorting
+    // asc: nulls first, then data ascending | desc: data descending, then nulls last
+    const sortDir = q.sortDir === 'asc' ? 'asc' : 'desc';
+    const nulls = sortDir === 'asc' ? 'first' : 'last';
+    let orderBy: any = { startTime: { sort: 'desc' as const, nulls: 'last' as const } };
+    if (q.sortBy === 'startTime') orderBy = { startTime: { sort: sortDir, nulls } };
+    else if (q.sortBy === 'createdAt') orderBy = { createdAt: { sort: sortDir, nulls } };
+    else if (q.sortBy === 'status') orderBy = { status: sortDir };
+    else if (q.sortBy === 'id') orderBy = { id: sortDir };
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.booking.findMany({
-        where, skip, take: pageSize, orderBy: { startTime: 'desc' },
+        where, skip, take: pageSize, orderBy,
         select: {
           id: true, startTime: true, endTime: true, status: true, isDemo: true, createdAt: true,
           tokensCharged: true, refundProcessed: true,

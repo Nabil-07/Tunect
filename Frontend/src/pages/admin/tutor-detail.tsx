@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock, AlertTriangle } from 'lucide-react';
 import { fetchTutorDetail } from '../../services/adminService';
 
 interface TutorDetail {
@@ -11,6 +11,7 @@ interface TutorDetail {
   subjects: string[];
   createdAt: string;
   lastActiveDate: string | null;
+  demeritPoints?: number;
   user: {
     id: string;
     email: string;
@@ -188,7 +189,7 @@ export default function TutorDetailPage() {
         </h1>
         <p className="text-slate-600 mb-4">{tutor.user.email}</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="bg-blue-50 rounded-lg p-4">
             <div className="flex items-center mb-2">
               <DollarSign className="w-5 h-5 text-blue-600 mr-2" />
@@ -213,6 +214,17 @@ export default function TutorDetailPage() {
               <span className="text-sm font-medium text-slate-700">Reviews</span>
             </div>
             <p className="text-2xl font-bold text-purple-600">{tutor.reviews.length}</p>
+          </div>
+
+          <div className={`rounded-lg p-4 ${(tutor.demeritPoints ?? 0) > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
+            <div className="flex items-center mb-2">
+              <AlertTriangle className={`w-5 h-5 mr-2 ${(tutor.demeritPoints ?? 0) > 0 ? 'text-red-600' : 'text-slate-500'}`} />
+              <span className="text-sm font-medium text-slate-700">Demerit Points</span>
+            </div>
+            <p className={`text-2xl font-bold ${(tutor.demeritPoints ?? 0) > 0 ? 'text-red-600' : 'text-slate-600'}`}>
+              {tutor.demeritPoints ?? 0}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">Threshold: 3</p>
           </div>
 
           <div className="bg-orange-50 rounded-lg p-4">
