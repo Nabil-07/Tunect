@@ -86,7 +86,7 @@ export class AdminController {
   }
 
   @Get('bookings')
-  bookings(@Query() q: PaginationDto & { status?: BookingStatus }) {
+  bookings(@Query() q: PaginationDto & { status?: BookingStatus; type?: string; dateFrom?: string; dateTo?: string; sortBy?: string; sortDir?: string }) {
     return this.svc.listBookings(q as any);
   }
 

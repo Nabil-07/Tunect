@@ -1,5 +1,6 @@
 // src/tutors/tutor-wallet.controller.ts
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res, UseGuards, NotFoundException } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -8,13 +9,17 @@ import { Role } from '../auth/role.enum';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PayoutStatus } from '@prisma/client';
 import { TutorWalletService } from './tutor-wallet.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('Tutor Wallet')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('tutors/me')
 export class TutorWalletController {
-  constructor(private readonly wallet: TutorWalletService) {}
+  constructor(
+    private readonly wallet: TutorWalletService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @ApiOperation({ summary: 'Get my tutor wallet balance' })
   @Roles(Role.TUTOR, Role.ADMIN)
@@ -71,5 +76,50 @@ export class TutorWalletController {
   ) {
     const n = Math.min(50, Math.max(Number(limit ?? 20), 1));
     return this.wallet.listMyPayouts(userId, status, cursor, n);
+  }
+
+  @ApiOperation({ summary: 'Get payout receipt (JSON data for front-end rendering)' })
+  @Roles(Role.TUTOR, Role.ADMIN)
+  @Get('payouts/:payoutId/receipt')
+  async getPayoutReceipt(
+    @CurrentUser('id') userId: string,
+    @Param('payoutId') payoutId: string,
+  ) {
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { userId },
+      select: { id: true, user: { select: { name: true, email: true } } },
+    });
+    if (!tutor) throw new NotFoundException('Tutor not found');
+
+    const payout = await this.prisma.payout.findFirst({
+      where: { id: payoutId, tutorId: tutor.id },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        reference: true,
+        transactionId: true,
+        paymentMethod: true,
+        details: true,
+        createdAt: true,
+        paidAt: true,
+      },
+    });
+    if (!payout) throw new NotFoundException('Payout not found');
+
+    return {
+      receiptId: `TUN-PAY-${payout.id.slice(-8).toUpperCase()}`,
+      tutorName: tutor.user.name || tutor.user.email,
+      tutorEmail: tutor.user.email,
+      amount: Number(payout.amount),
+      status: payout.status,
+      transactionId: payout.transactionId,
+      paymentMethod: payout.paymentMethod,
+      reference: payout.reference,
+      createdAt: payout.createdAt.toISOString(),
+      paidAt: payout.paidAt?.toISOString() || null,
+      companyName: 'Tunect Private Limited',
+      generatedAt: new Date().toISOString(),
+    };
   }
 }

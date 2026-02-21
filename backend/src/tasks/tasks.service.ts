@@ -20,6 +20,55 @@ export class TasksService {
     private availabilityTracking: AvailabilityTrackingService,
   ) {}
 
+  /**
+   * Increment demerit points for tutor no-show.
+   * At 3 demerits: deduct hourly rate from wallet and reset to 0.
+   */
+  private async applyTutorDemerit(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    tutorId: string,
+    bookingId: string,
+  ) {
+    const tutor = await tx.tutor.findUnique({
+      where: { id: tutorId },
+      select: { id: true, demeritPoints: true, hourlyRate: true },
+    });
+    if (!tutor) return;
+
+    let newDemeritPoints = (tutor.demeritPoints ?? 0) + 1;
+
+    if (newDemeritPoints >= 3) {
+      const hourlyRate = Number(tutor.hourlyRate ?? 0);
+      if (hourlyRate > 0) {
+        await tx.tutorWalletLedger.create({
+          data: {
+            tutorId: tutor.id,
+            bookingId,
+            delta: new Prisma.Decimal(-hourlyRate),
+            reason: 'DEMERIT_PENALTY',
+            note: `Demerit penalty: ${hourlyRate} deducted from payout due to 3 demerit points`,
+          },
+        });
+        await tx.tutorWallet.upsert({
+          where: { tutorId: tutor.id },
+          update: { balance: { decrement: hourlyRate } },
+          create: { tutorId: tutor.id, balance: new Prisma.Decimal(-hourlyRate) },
+        });
+      }
+      await tx.tutor.update({
+        where: { id: tutor.id },
+        data: { demeritPoints: 0, lastDemeritReset: new Date() },
+      });
+      this.logger.log(`Demerit penalty applied for tutor ${tutorId}: 3 demerits reached, ${Number(tutor.hourlyRate ?? 0)} deducted`);
+    } else {
+      await tx.tutor.update({
+        where: { id: tutor.id },
+        data: { demeritPoints: newDemeritPoints },
+      });
+      this.logger.log(`Demerit point incremented for tutor ${tutorId}: now ${newDemeritPoints}`);
+    }
+  }
+
   private platformFeePercent(hourlyRate?: number | null): number {
     const rate = Number(hourlyRate ?? 0);
     if (!Number.isFinite(rate) || rate <= 0) return 20; // Default fallback
@@ -234,7 +283,7 @@ export class TasksService {
               }
             }
           } else if (!tutorJoined && studentJoined) {
-            // Tutor no-show safety net → AUTO_CANCELLED_TUTOR_NO_SHOW + refund
+            // Tutor no-show safety net → AUTO_CANCELLED_TUTOR_NO_SHOW + refund + demerit
             await tx.booking.update({
               where: { id: booking.id },
               data: {
@@ -243,6 +292,9 @@ export class TasksService {
                 noShowCheckAt: booking.noShowCheckAt ?? now,
               },
             });
+
+            // Increment demerit points for tutor no-show
+            await this.applyTutorDemerit(tx, booking.tutorId, booking.id);
 
             if (!booking.isDemo) {
               const existingRefund = await tx.tokenLedger.findFirst({
@@ -348,7 +400,7 @@ export class TasksService {
 
         await this.prisma.$transaction(async (tx) => {
           if (isTutorNoShow) {
-            // Tutor no-show (student joined, tutor didn't): refund student
+            // Tutor no-show (student joined, tutor didn't): refund student + demerit
             await tx.booking.update({
               where: { id: booking.id },
               data: {
@@ -357,6 +409,9 @@ export class TasksService {
                 noShowCheckAt: now,
               },
             });
+
+            // Increment demerit points for tutor no-show
+            await this.applyTutorDemerit(tx, booking.tutorId, booking.id);
 
             // For paid bookings: refund 1 token to the student
             if (!booking.isDemo) {
@@ -580,6 +635,9 @@ export class TasksService {
                 noShowCheckAt: booking.noShowCheckAt ?? now,
               },
             });
+
+            // Increment demerit points for tutor no-show
+            await this.applyTutorDemerit(tx, booking.tutorId, booking.id);
 
             // Refund student
             if (!booking.isDemo) {

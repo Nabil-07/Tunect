@@ -208,6 +208,8 @@ export class TutorWalletService {
         amount: true,
         status: true,
         reference: true,
+        transactionId: true,
+        paymentMethod: true,
         createdAt: true,
         paidAt: true,
       },

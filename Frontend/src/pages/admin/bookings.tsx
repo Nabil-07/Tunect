@@ -1,6 +1,6 @@
 // src/pages/admin/bookings.tsx
 import { useEffect, useState } from 'react';
-import { Search, Calendar, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Search, Calendar, ChevronLeft, ChevronRight, Filter, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
 import api from '../../services/apiClient';
 
 interface BookingItem {
@@ -140,17 +140,25 @@ export default function AdminBookings() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortBy, setSortBy] = useState('startTime');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     loadBookings();
-  }, [page, statusFilter]);
+  }, [page, statusFilter, typeFilter, sortBy, sortDir]);
 
   async function loadBookings() {
     try {
       setLoading(true);
-      const params: any = { page, pageSize: 20 };
+      const params: any = { page, pageSize: 20, sortBy, sortDir };
       if (statusFilter) params.status = statusFilter;
+      if (typeFilter) params.type = typeFilter;
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
       if (search.trim()) params.q = search.trim();
 
       const { data } = await api.get('/admin/bookings', { params });
@@ -166,6 +174,23 @@ export default function AdminBookings() {
   function handleSearch() {
     setPage(1);
     loadBookings();
+  }
+
+  function handleSort(field: string) {
+    if (sortBy === field) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortDir('desc');
+    }
+    setPage(1);
+  }
+
+  function SortIcon({ field }: { field: string }) {
+    if (sortBy !== field) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ChevronUp className="w-3 h-3 ml-1 text-indigo-600" />
+      : <ChevronDown className="w-3 h-3 ml-1 text-indigo-600" />;
   }
 
   const formatDate = (d: string | null) => {
@@ -190,34 +215,73 @@ export default function AdminBookings() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
-            placeholder="Search by student or tutor email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          />
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
+              placeholder="Search by student or tutor email..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All Types</option>
+              <option value="demo">Demo</option>
+              <option value="paid">Paid</option>
+            </select>
+            <button
+              onClick={handleSearch}
+              className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition"
+            >
+              Search
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-sm text-slate-500">Date Range:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+          />
+          <span className="text-sm text-slate-400">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+          />
+          <button
+            onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); loadBookings(); }}
+            className="text-sm text-slate-500 hover:text-slate-700 underline"
           >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+            Clear dates
+          </button>
           <button
             onClick={handleSearch}
-            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition"
+            className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition"
           >
-            Search
+            Apply
           </button>
         </div>
       </div>
@@ -241,10 +305,26 @@ export default function AdminBookings() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
+                  <th
+                    className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
+                    onClick={() => handleSort('id')}
+                  >
+                    <span className="inline-flex items-center">Booking ID <SortIcon field="id" /></span>
+                  </th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Student</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Tutor</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Date & Time</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
+                  <th
+                    className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
+                    onClick={() => handleSort('startTime')}
+                  >
+                    <span className="inline-flex items-center">Date & Time <SortIcon field="startTime" /></span>
+                  </th>
+                  <th
+                    className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
+                    onClick={() => handleSort('status')}
+                  >
+                    <span className="inline-flex items-center">Status <SortIcon field="status" /></span>
+                  </th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Attendance</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Refund / Outcome</th>
@@ -256,6 +336,14 @@ export default function AdminBookings() {
                   const refund = getRefundNote(booking);
                   return (
                     <tr key={booking.id} className="hover:bg-slate-50 transition">
+                      <td className="px-4 py-3">
+                        <span
+                          className="font-mono text-xs text-indigo-700 bg-indigo-50 px-2 py-1 rounded cursor-default"
+                          title={booking.id}
+                        >
+                          {booking.id.slice(-8).toUpperCase()}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900">
                           {booking.student?.user?.name || 'Unknown'}

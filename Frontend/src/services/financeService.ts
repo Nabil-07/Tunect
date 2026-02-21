@@ -154,6 +154,8 @@ export type StudentPayment = {
   paidAt: string;
   receiptUrl?: string;
   isBanned: boolean;
+  tokensPurchased?: number;
+  provider?: string;
 };
 
 export async function getStudentPayments(params?: {
@@ -178,6 +180,11 @@ export type TutorPaymentSchedule = {
   amountPaid: number;
   status: 'pending' | 'paid' | 'blocked';
   blockedReason?: string;
+  bookingId?: string;
+  bookingStatus?: string;
+  studentName?: string;
+  sessionDate?: string;
+  sessionEndDate?: string | null;
 };
 
 export type TutorPaymentDue = {
@@ -186,10 +193,12 @@ export type TutorPaymentDue = {
   tutorEmail: string;
   totalDue: number;
   totalPaid: number;
+  remaining?: number;
   paymentSchedule: TutorPaymentSchedule[];
   commissionRate: number;
   isBanned: boolean;
   bannedDate?: string;
+  bankInfo?: TutorBankInfo | null;
 };
 
 export async function getTutorPaymentsDue(params?: {
@@ -202,5 +211,103 @@ export async function getTutorPaymentsDue(params?: {
     '/admin/finance/payments/tutor-due',
     { params }
   );
+  return data;
+}
+
+/* ========== Manual Payouts ========== */
+export type TutorBankInfo = {
+  bankAccountHolder: string;
+  bankName: string;
+  accountNumber?: string | null;
+  ifsc?: string | null;
+  upiId?: string | null;
+};
+export type PayoutRecord = {
+  id: string;
+  tutorId: string;
+  amount: number;
+  status: 'PENDING' | 'PAID' | 'CANCELED';
+  reference?: string;
+  transactionId?: string;
+  details?: string;
+  paymentMethod?: string;
+  slipUrl?: string;
+  createdAt: string;
+  paidAt?: string;
+  tutor?: {
+    id: string;
+    userId: string;
+    user?: { name: string; email: string };
+    kycApplications?: TutorBankInfo[];
+  };
+};
+
+export async function listPayouts() {
+  const { data } = await api.get<PayoutRecord[]>('/admin/payouts');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createPayout(dto: {
+  tutorId: string;
+  amount: number;
+  reference?: string;
+  transactionId?: string;
+  details?: string;
+  paymentMethod?: string;
+}) {
+  const { data } = await api.post<PayoutRecord>('/admin/payouts', dto);
+  return data;
+}
+
+export async function markPayoutPaid(payoutId: string, dto: {
+  transactionId?: string;
+  paidDate?: string;
+  details?: string;
+  paymentMethod?: string;
+}) {
+  const { data } = await api.patch<PayoutRecord>(`/admin/payouts/${payoutId}`, {
+    status: 'PAID',
+    ...dto,
+  });
+  return data;
+}
+
+export async function cancelPayout(payoutId: string) {
+  const { data } = await api.patch<PayoutRecord>(`/admin/payouts/${payoutId}`, {
+    status: 'CANCELED',
+  });
+  return data;
+}
+
+export async function uploadPayoutSlip(payoutId: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post(`/admin/payouts/${payoutId}/slip`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export type PayoutReceipt = {
+  receiptId: string;
+  payoutId: string;
+  tutorName: string;
+  tutorEmail: string;
+  amount: number;
+  status: string;
+  transactionId?: string | null;
+  paymentMethod?: string | null;
+  reference?: string | null;
+  details?: string | null;
+  slipUrl?: string | null;
+  bankInfo?: TutorBankInfo | null;
+  createdAt: string;
+  paidAt?: string | null;
+  companyName: string;
+  generatedAt: string;
+};
+
+export async function getPayoutReceipt(payoutId: string) {
+  const { data } = await api.get<PayoutReceipt>(`/admin/payouts/${payoutId}/receipt`);
   return data;
 }

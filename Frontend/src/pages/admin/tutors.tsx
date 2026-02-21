@@ -368,6 +368,7 @@ export default function AdminTutors() {
                     <SortIcon field="createdAt" />
                   </div>
                 </th>
+                <th className="px-4 py-3 text-left">Demerits</th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
               {/* Filter Row */}
@@ -463,6 +464,7 @@ export default function AdminTutors() {
                 <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -530,6 +532,15 @@ export default function AdminTutors() {
                   </td>
                   <td className="px-4 py-3 text-slate-700">{t.hourlyRate ? `₹${t.hourlyRate}` : '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{new Date(t.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-3">
+                    {(t.demeritPoints ?? 0) > 0 ? (
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                        {t.demeritPoints}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">0</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <Link

@@ -91,6 +91,8 @@ export default function TutorPublicProfile() { // NOSONAR
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<string | null>(null);
+  const [expandedDaySlots, setExpandedDaySlots] = useState<{ date: Date; slots: BookableSlot[] } | null>(null);
+  const [selectedMobileDay, setSelectedMobileDay] = useState<Date | null>(null);
   const [tokenBalance, setTokenBalance] = useState<number | null>(null);
   const [tokenBalanceLoading, setTokenBalanceLoading] = useState(false);
   const [daysUntilExpiry, setDaysUntilExpiry] = useState<number | null>(null);
@@ -373,9 +375,20 @@ export default function TutorPublicProfile() { // NOSONAR
 
   async function bookSlot(slot: BookableSlot) {
     if (!id || !tutor?.id) return;
+
+    if (!user) {
+      navigate('/login', { state: { from: location.pathname } });
+      return;
+    }
     
     if (user?.role === 'TUTOR') {
       setToast('Tutor accounts cannot book demos or slots with other tutors');
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
+    if (user?.role === 'ADMIN') {
+      setToast('Admin accounts cannot book slots. Please use a student account.');
       setTimeout(() => setToast(null), 4000);
       return;
     }
@@ -874,7 +887,7 @@ export default function TutorPublicProfile() { // NOSONAR
               <div className="flex items-center gap-2">
                 <button
                   className="px-3 py-1 border rounded hover:bg-slate-50"
-                  onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+                  onClick={() => { setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1)); setSelectedMobileDay(null); }}
                   aria-label="Previous month"
                 >
                   ‹
@@ -884,7 +897,7 @@ export default function TutorPublicProfile() { // NOSONAR
                 </div>
                 <button
                   className="px-3 py-1 border rounded hover:bg-slate-50"
-                  onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+                  onClick={() => { setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1)); setSelectedMobileDay(null); }}
                   aria-label="Next month"
                 >
                   ›
@@ -892,43 +905,159 @@ export default function TutorPublicProfile() { // NOSONAR
               </div>
             </div>
 
-            {/* Day headers - hidden on small screens */}
-            <div className="hidden sm:grid grid-cols-7 gap-1 sm:gap-2 text-xs text-slate-500 mb-2 font-medium">
+            {/* =================== MOBILE COMPACT CALENDAR (< sm) =================== */}
+            <div className="sm:hidden">
+              {/* Day-of-week headers */}
+              <div className="grid grid-cols-7 gap-0.5 mb-1">
+                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+                  <div key={`hdr-${d}-${i}`} className="text-[10px] font-semibold text-slate-400 text-center py-1">{d}</div>
+                ))}
+              </div>
+
+              {/* Date cells */}
+              <div className="grid grid-cols-7 gap-0.5">
+                {days.map((d, i) => {
+                  const slotsForDay = bookable
+                    .filter(s => sameDay(new Date(s.startTime), d))
+                    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+                  const inMonth = d.getMonth() === month.getMonth();
+                  const isToday = sameDay(d, new Date());
+                  const isSelected = selectedMobileDay ? sameDay(d, selectedMobileDay) : false;
+                  const hasSlots = slotsForDay.length > 0;
+
+                  if (!inMonth) return <div key={i} />;
+
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setSelectedMobileDay(isSelected ? null : new Date(d))}
+                      className={`relative flex flex-col items-center justify-center rounded-lg py-2 px-0.5 transition-all text-center
+                        ${isToday ? 'ring-2 ring-indigo-400 ring-inset' : ''}
+                        ${isSelected ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-100'}
+                      `}
+                    >
+                      <span className={`text-sm font-semibold leading-none ${isSelected ? 'text-white' : isToday ? 'text-indigo-600' : 'text-slate-700'}`}>
+                        {d.getDate()}
+                      </span>
+                      {/* Dot indicators */}
+                      {hasSlots && (
+                        <div className="flex items-center gap-0.5 mt-1">
+                          <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-indigo-200' : 'bg-indigo-500'}`} />
+                          {slotsForDay.length > 1 && (
+                            <span className={`text-[8px] font-bold leading-none ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>+{slotsForDay.length - 1}</span>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Legend */}
+              <div className="flex items-center gap-3 mt-2 px-1">
+                <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500" /> Available
+                </div>
+              </div>
+
+              {/* Selected day detail panel */}
+              {selectedMobileDay && (() => {
+                const slotsForDay = bookable
+                  .filter(s => sameDay(new Date(s.startTime), selectedMobileDay))
+                  .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+                const dateLabel = selectedMobileDay.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+
+                return (
+                  <div className="mt-3 rounded-xl border bg-white shadow-sm overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b">
+                      <div>
+                        <h3 className="font-semibold text-slate-900 text-sm">{dateLabel}</h3>
+                        <p className="text-[11px] text-slate-500">
+                          {slotsForDay.length === 0 ? 'No available slots' : `${slotsForDay.length} slot${slotsForDay.length > 1 ? 's' : ''} available`}
+                        </p>
+                      </div>
+                      <button
+                        className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors"
+                        onClick={() => setSelectedMobileDay(null)}
+                      >
+                        <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      {slotsForDay.length === 0 ? (
+                        <div className="text-sm text-slate-400 text-center py-4">No slots available for this day</div>
+                      ) : (
+                        slotsForDay.map((s, idx) => (
+                          <div key={`${s.startTime}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                                <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-slate-700">
+                                  {new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                  {' — '}
+                                  {new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              disabled={busy}
+                              onClick={async () => {
+                                await bookSlot(s);
+                              }}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition font-medium"
+                            >
+                              {busy ? '...' : 'Book'}
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* =================== DESKTOP FULL GRID (>= sm) =================== */}
+            {/* Day headers */}
+            <div className="hidden sm:grid grid-cols-7 gap-2 text-xs text-slate-500 mb-2 font-medium">
               {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
                 <div key={d} className="text-center">{d}</div>
               ))}
             </div>
 
-            <div className="grid grid-cols-3 sm:grid-cols-7 gap-1 sm:gap-2">
+            <div className="hidden sm:grid grid-cols-7 gap-2">
               {days.map((d, i) => {
-                const slotsForDay = bookable.filter(s => sameDay(new Date(s.startTime), d));
+                const slotsForDay = bookable
+                  .filter(s => sameDay(new Date(s.startTime), d))
+                  .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
                 const inMonth = d.getMonth() === month.getMonth();
                 const isToday = sameDay(d, new Date());
-                const dayLabel = d.toLocaleDateString(undefined, { weekday: 'short' });
                 return (
                   <div 
                     key={i} 
-                    className={`border rounded-lg p-1.5 sm:p-2 min-h-[70px] sm:min-h-[80px] ${
+                    className={`border rounded-lg p-2 min-h-[80px] ${
                       inMonth ? 'bg-white' : 'bg-slate-50'
                     } ${isToday ? 'ring-2 ring-indigo-500' : ''}`}
                   >
                     <div className={`text-xs mb-1 font-medium ${isToday ? 'text-indigo-600' : 'text-slate-700'}`}>
-                      <span className="sm:hidden text-[9px] text-slate-400 mr-0.5">{dayLabel}</span>
                       {d.getDate()}
                     </div>
                     <div className="space-y-1">
                       {slotsForDay.length === 0 ? (
-                        <div className="text-[9px] sm:text-[10px] text-slate-400">No slots</div>
+                        <div className="text-[10px] text-slate-400">No slots</div>
                       ) : (
                         slotsForDay.slice(0, 2).map((s, idx) => (
                           <div key={`${s.startTime}-${idx}`} className="flex flex-col gap-0.5">
-                            <div className="text-[9px] sm:text-[10px] text-slate-600 truncate">
+                            <div className="text-[10px] text-slate-600 truncate">
                               {new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                             </div>
                             <button
                               disabled={busy}
                               onClick={() => bookSlot(s)}
-                              className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition"
+                              className="text-[10px] px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition"
                             >
                               {busy ? '...' : 'Book'}
                             </button>
@@ -936,9 +1065,12 @@ export default function TutorPublicProfile() { // NOSONAR
                         ))
                       )}
                       {slotsForDay.length > 2 && (
-                        <div className="text-[9px] sm:text-[10px] text-indigo-600 font-medium">
+                        <button
+                          onClick={() => setExpandedDaySlots({ date: d, slots: slotsForDay })}
+                          className="text-[10px] text-indigo-600 font-medium hover:text-indigo-800 cursor-pointer"
+                        >
                           +{slotsForDay.length - 2} more
-                        </div>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -952,6 +1084,43 @@ export default function TutorPublicProfile() { // NOSONAR
               </div>
             )}
           </div>
+
+          {/* Expanded Day Slots Modal */}
+          {expandedDaySlots && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Available Slots — {expandedDaySlots.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                  </h3>
+                  <button onClick={() => setExpandedDaySlots(null)} className="p-1 rounded hover:bg-slate-100">
+                    <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                  {expandedDaySlots.slots.map((s, idx) => (
+                    <div key={`${s.startTime}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+                      <div className="text-sm text-slate-700 font-medium">
+                        {new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        {' — '}
+                        {new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </div>
+                      <button
+                        disabled={busy}
+                        onClick={async () => {
+                          setExpandedDaySlots(null);
+                          await bookSlot(s);
+                        }}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition font-medium"
+                      >
+                        {busy ? '...' : 'Book'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Reviews Section */}
           <div className="card p-6 rounded-xl border bg-white shadow-sm">

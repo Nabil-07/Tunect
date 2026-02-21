@@ -44,6 +44,7 @@ export interface TutorSummary {
 	status: TutorStatus;
 	subjects: string[];
 	createdAt: string;
+	demeritPoints?: number;
 	user: {
 		id: string;
 		email: string;
