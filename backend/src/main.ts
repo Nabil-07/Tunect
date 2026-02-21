@@ -27,16 +27,19 @@ import { buildCspDirectives } from './common/csp.config';
    ALLOWED ORIGINS
 ========================= */
 const allowedOrigins = [
+  'https://tunectnow.com',
+  'https://www.tunectnow.com',
   'https://tn-internal-7f3a.preprod.tunectnow.com',
   'http://tn-internal-7f3a.preprod.tunectnow.com',
-  'https://tunectnow.com',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  // Also include any extra origins from CORS_ORIGIN env var
+  ...(process.env.CORS_ORIGIN?.split(',').map(s => s.trim()).filter(Boolean) ?? []),
 ];
 
 function isAllowedOrigin(origin: string) {
   if (allowedOrigins.includes(origin)) return true;
-  return origin.endsWith('.preprod.tunectnow.com');
+  return origin.endsWith('.preprod.tunectnow.com') || origin.endsWith('.tunectnow.com');
 }
 
 /* =========================

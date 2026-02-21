@@ -293,6 +293,9 @@ export default function Navbar() {
                     <Link to="/admin/blogs" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Blogs</Link>
                     <Link to="/admin/finance" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Finance</Link>
                     <Link to="/admin/analytics" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Analytics</Link>
+                    <Link to="/admin/policy-config" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Policy Config</Link>
+                    <div className="my-1 border-t border-slate-100" />
+                    <Link to="/admin/controls" className="block px-3 py-2 text-sm rounded-lg hover:bg-indigo-50 text-indigo-700 font-medium transition-colors" onClick={() => setExtraOpen(false)}>⚙ Admin Controls</Link>
                   </div>
                 )}
               </div>
@@ -493,6 +496,21 @@ export default function Navbar() {
                 <NavLink to="/student/favorites" className="btn-ghost" onClick={() => setOpen(false)}>Favorites</NavLink>
                 <NavLink to="/student/reviews" className="btn-ghost" onClick={() => setOpen(false)}>Reviews</NavLink>
                 <NavLink to="/student/transactions" className="btn-ghost" onClick={() => setOpen(false)}>Transactions</NavLink>
+              </>
+            )}
+
+            {/* Admin Extra on mobile */}
+            {isAuthed && role === 'admin' && (
+              <>
+                <hr className="my-2" />
+                <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Admin Tools</div>
+                <NavLink to="/admin/kyc-verification" className="btn-ghost" onClick={() => setOpen(false)}>KYC Verification</NavLink>
+                <NavLink to="/admin/reviews" className="btn-ghost" onClick={() => setOpen(false)}>Reviews</NavLink>
+                <NavLink to="/admin/blogs" className="btn-ghost" onClick={() => setOpen(false)}>Blogs</NavLink>
+                <NavLink to="/admin/finance" className="btn-ghost" onClick={() => setOpen(false)}>Finance</NavLink>
+                <NavLink to="/admin/analytics" className="btn-ghost" onClick={() => setOpen(false)}>Analytics</NavLink>
+                <NavLink to="/admin/policy-config" className="btn-ghost" onClick={() => setOpen(false)}>Policy Config</NavLink>
+                <NavLink to="/admin/controls" className="btn-ghost font-semibold text-indigo-700" onClick={() => setOpen(false)}>⚙ Admin Controls</NavLink>
               </>
             )}
 

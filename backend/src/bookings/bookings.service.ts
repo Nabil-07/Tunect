@@ -705,7 +705,7 @@ export class BookingsService {
       const booking = await tx.booking.findUnique({
         where: { id },
         include: {
-          tutor: { select: { userId: true, id: true } },
+          tutor: { select: { userId: true, id: true, hourlyRate: true, demeritPoints: true } },
           student: { select: { userId: true, id: true } },
         },
       });
@@ -780,24 +780,15 @@ export class BookingsService {
             refundReason = TokenReason.REFUND;
             
             // Increment demerit points for tutor
-            const tutor = await tx.tutor.findUnique({
-              where: { id: booking.tutor.id },
-              select: { id: true, hourlyRate: true },
-            });
-            
-            // Get demerit points separately (may not exist in schema yet)
-            const tutorFull = await tx.tutor.findUnique({
-              where: { id: booking.tutor.id },
-            });
-            const currentDemerits = (tutorFull as any)?.demeritPoints ?? 0;
-            if (tutor) {
+            const currentDemerits = booking.tutor.demeritPoints ?? 0;
+            {
               let newDemeritPoints = currentDemerits + 1;
               const now = new Date();
               
               // Check if we need to reset demerits (if last reset was today)
               // If demerits reach 3, reduce hourly rate from payout and reset
               if (newDemeritPoints >= 3) {
-                const hourlyRate = Number(tutor.hourlyRate ?? 0);
+                const hourlyRate = Number(booking.tutor.hourlyRate ?? 0);
                 if (hourlyRate > 0) {
                   // Create a deduction ledger entry for the hourly rate
                   await tx.tutorWalletLedger.create({
@@ -805,7 +796,7 @@ export class BookingsService {
                       tutorId: booking.tutor.id,
                       bookingId: booking.id,
                       delta: new Prisma.Decimal(-hourlyRate),
-                      reason: 'DEMERIT_PENALTY' as any, // Will be available after migration
+                      reason: 'DEMERIT_PENALTY',
                       note: `Demerit penalty: ${hourlyRate} deducted from payout due to 3 demerit points`,
                     },
                   });
@@ -824,13 +815,13 @@ export class BookingsService {
                   data: {
                     demeritPoints: 0,
                     lastDemeritReset: now,
-                  } as any, // Type assertion for new fields
+                  },
                 });
               } else {
                 // Just increment demerit points
                 await tx.tutor.update({
                   where: { id: booking.tutor.id },
-                  data: { demeritPoints: newDemeritPoints } as any, // Type assertion for new fields
+                  data: { demeritPoints: newDemeritPoints },
                 });
               }
             }
@@ -910,7 +901,7 @@ export class BookingsService {
       }
 
       return updated;
-    });
+    }, { maxWait: 10000, timeout: 30000 });
   }
 
   /**

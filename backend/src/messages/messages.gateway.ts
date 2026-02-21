@@ -15,7 +15,12 @@ import { PiiGuardService } from '../common/pii-guard.service';
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: [
+      process.env.FRONTEND_URL || 'http://localhost:5173',
+      'https://tunectnow.com',
+      'https://www.tunectnow.com',
+      ...(process.env.CORS_ORIGIN?.split(',').map(s => s.trim()).filter(Boolean) ?? []),
+    ].filter((v, i, a) => a.indexOf(v) === i), // dedupe
     credentials: true,
   },
   namespace: '/chat',

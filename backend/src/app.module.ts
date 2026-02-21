@@ -62,6 +62,7 @@ import { MetricsInterceptor } from './metrics/metrics.interceptor';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { UploadsModule } from './uploads/uploads.module';
 import { PolicyConfigModule } from './policy-config/policy-config.module';
+import { AdminControlsModule } from './admin-controls/admin-controls.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { PolicyConfigModule } from './policy-config/policy-config.module';
     CommonModule,
     UploadsModule,
     PolicyConfigModule,
+    AdminControlsModule,
     HealthModule,
     MetricsModule,
 

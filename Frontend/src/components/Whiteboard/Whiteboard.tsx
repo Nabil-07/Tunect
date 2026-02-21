@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import {
   Excalidraw,
   MainMenu,
@@ -19,7 +19,14 @@ interface WhiteboardProps {
   className?: string;
 }
 
-export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = false, realtime = false, className }) => {
+export interface WhiteboardHandle {
+  /** Return the current live scene data directly from Excalidraw (not from backend). */
+  getSceneData: () => { elements: readonly ExcalidrawElement[]; appState: Partial<AppState> } | null;
+  /** Immediately persist the current scene to the backend. */
+  flushSave: () => Promise<void>;
+}
+
+export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ bookingId, isReadOnly = false, realtime = false, className }, ref) => {
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingScene, setPendingScene] = useState<{ elements: readonly ExcalidrawElement[]; appState: AppState } | null>(null);
@@ -28,6 +35,26 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
 
   const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
   const whiteboardUrl = `${apiBase}/whiteboard/${bookingId}`;
+
+  // Expose imperative methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    getSceneData: () => {
+      if (!excalidrawAPI) return null;
+      const elements = excalidrawAPI.getSceneElements();
+      const appState = excalidrawAPI.getAppState();
+      return { elements, appState };
+    },
+    flushSave: async () => {
+      if (!excalidrawAPI) return;
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      const elements = excalidrawAPI.getSceneElements();
+      const appState = excalidrawAPI.getAppState();
+      await saveWhiteboardData({ elements, appState });
+    },
+  }), [excalidrawAPI]);
 
   useEffect(() => {
     // Load saved whiteboard data if exists
@@ -197,6 +224,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({ bookingId, isReadOnly = 
       </Excalidraw>
     </div>
   );
-};
+});
 
 export default Whiteboard;
+

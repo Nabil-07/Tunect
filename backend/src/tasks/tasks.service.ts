@@ -236,16 +236,8 @@ export class TasksService {
         const bothMissing = !studentJoined && !tutorJoined;
 
         await this.prisma.$transaction(async (tx) => {
-          if (bothMissing) {
-            await tx.booking.update({
-              where: { id: booking.id },
-              data: {
-                status: BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW,
-                refundProcessed: true,
-                noShowCheckAt: now,
-              },
-            });
-          } else if (isTutorNoShow) {
+          if (isTutorNoShow) {
+            // Tutor no-show (student joined, tutor didn't): refund student
             await tx.booking.update({
               where: { id: booking.id },
               data: {
@@ -255,6 +247,7 @@ export class TasksService {
               },
             });
 
+            // For paid bookings: refund 1 token to the student
             if (!booking.isDemo) {
               const refundAmount = 1;
               const existingBalance = await tx.tutorTokenBalance.findUnique({
@@ -296,14 +289,80 @@ export class TasksService {
                   bookingId: booking.id,
                 },
               });
+
+              this.logger.log(
+                `Tutor no-show (paid): refunded ${refundAmount} token for booking ${booking.id}`,
+              );
+            } else {
+              // For demo bookings: the AUTO_CANCELLED_TUTOR_NO_SHOW status
+              // automatically allows the student to book a new free demo with this tutor
+              // (since hasUsedDemo only checks PENDING/CONFIRMED/COMPLETED statuses)
+              this.logger.log(
+                `Tutor no-show (demo): demo eligibility restored for booking ${booking.id}`,
+              );
             }
           } else if (isStudentNoShow) {
+            // Student no-show (tutor joined, student didn't):
+            // Mark noShowCheckAt so this isn't re-processed. Tutor stays in class.
+            // Payout to tutor happens after class ends (see handlePostClassNoShow).
+            await tx.booking.update({
+              where: { id: booking.id },
+              data: { noShowCheckAt: now },
+            });
+            this.logger.log(
+              `Student no-show: tutor staying in class for booking ${booking.id}, payout deferred to after class ends`,
+            );
+          } else if (bothMissing) {
+            // Both missing: no refund, no payout — company keeps the money
+            await tx.booking.update({
+              where: { id: booking.id },
+              data: { noShowCheckAt: now },
+            });
+            this.logger.log(
+              `Both parties no-show for booking ${booking.id}: no refund, no payout (company profit)`,
+            );
+          }
+        });
+      } catch (error) {
+        this.logger.warn(`Failed no-show handling for booking ${booking.id}: ${error}`);
+      }
+    }
+  }
+
+  // 2.6) Every minute: after class ends, pay tutor for student-no-show sessions
+  @Interval(60 * 1000)
+  async handlePostClassNoShow() {
+    const now = new Date();
+
+    // Find sessions where: tutor joined but student didn't, class has ended,
+    // noShowCheckAt was set (by handleNoShowBookings) but status wasn't changed yet
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        status: { in: [BookingStatus.CONFIRMED, BookingStatus.WAITING_ROOM, BookingStatus.LIVE] },
+        endTime: { not: null, lt: now },
+        noShowCheckAt: { not: null },
+      },
+      include: {
+        tutor: { select: { id: true, hourlyRate: true } },
+        student: { select: { id: true } },
+        whiteboardSessions: { select: { data: true } },
+      },
+    });
+
+    for (const booking of bookings) {
+      try {
+        const attendance = this.parseAttendance(booking.whiteboardSessions?.[0]?.data);
+        const tutorJoined = !!attendance.tutorJoinedAt;
+        const studentJoined = !!attendance.studentJoinedAt;
+
+        if (tutorJoined && !studentJoined) {
+          // Student no-show, class has ended: pay tutor
+          await this.prisma.$transaction(async (tx) => {
             await tx.booking.update({
               where: { id: booking.id },
               data: {
                 status: BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW,
                 refundProcessed: true,
-                noShowCheckAt: now,
               },
             });
 
@@ -330,15 +389,28 @@ export class TasksService {
                     bookingId: booking.id,
                     delta: tutorShare,
                     reason: 'BOOKING_EARNED',
-                    note: `Auto no-show payout for booking ${booking.id}`,
+                    note: `Student no-show payout for booking ${booking.id}`,
                   },
                 });
               }
             }
-          }
-        });
+
+            this.logger.log(
+              `Student no-show (post-class): paid tutor for booking ${booking.id}`,
+            );
+          });
+        } else if (!tutorJoined && !studentJoined) {
+          // Both missing, class ended: mark as processed, no money movement
+          await this.prisma.booking.update({
+            where: { id: booking.id },
+            data: { refundProcessed: true },
+          });
+          this.logger.log(
+            `Both no-show (post-class): marked booking ${booking.id} as processed, company keeps tokens`,
+          );
+        }
       } catch (error) {
-        this.logger.warn(`Failed no-show handling for booking ${booking.id}: ${error}`);
+        this.logger.warn(`Failed post-class no-show handling for booking ${booking.id}: ${error}`);
       }
     }
   }

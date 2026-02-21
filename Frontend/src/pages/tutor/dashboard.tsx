@@ -18,6 +18,7 @@ import { getAvailability, type AvailabilitySlot, getMySessions, type TutorSessio
 import api from '../../lib/apiClient';
 import { useAuth } from '../../contexts/AuthContext';
 import RoleTermsFirstLoginModal from '../../components/RoleTermsFirstLoginModal';
+import MaintenanceBanner from '../../components/MaintenanceBanner';
 
 export default function TutorDashboard() {
   const { user, setUser, logout } = useAuth() as any;
@@ -290,6 +291,8 @@ export default function TutorDashboard() {
             Track your teaching, manage sessions, and grow your impact.
           </p>
         </div>
+
+        <MaintenanceBanner />
 
         {!loadingProfileStatus && profileStatus && profileStatus.completionPercentage < 100 && (
           <div className="rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">

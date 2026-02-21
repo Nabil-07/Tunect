@@ -32,6 +32,7 @@ import {
 } from '../../components/skeletons';
 import api from '../../lib/apiClient';
 import RoleTermsFirstLoginModal from '../../components/RoleTermsFirstLoginModal';
+import MaintenanceBanner from '../../components/MaintenanceBanner';
 
 type SubjectStat = { name: string; progress: number }; // 0..100
 
@@ -409,6 +410,8 @@ export default function StudentDashboard() {
           </h1>
           <p className="mt-2 sm:mt-3 text-base sm:text-lg text-white/90">Let&apos;s continue your learning journey today.</p>
         </div>
+
+        <MaintenanceBanner />
 
         {!loadingProfileStatus && profileStatus && profileStatus.completionPercentage < 100 && (
           <div className="rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
