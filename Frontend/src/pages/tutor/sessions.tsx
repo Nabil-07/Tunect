@@ -174,16 +174,15 @@ export default function MySessions() {
       ) : (() => {
         const now = new Date();
         // Split sessions into sections
-        const activeSessions = sessions.filter((s) => s.status === 'ACTIVE');
+        const activeSessions = sessions.filter((s) => s.status === 'ACTIVE' && new Date(s.endTime) > now);
         const upcomingSessions = sessions.filter((s) =>
-          s.status === 'UPCOMING' || s.status === 'CONFIRMED' ||
-          (s.status === 'PENDING_SLOT' && s.startTime && new Date(s.startTime) > now)
+          (s.status === 'UPCOMING' || s.status === 'CONFIRMED' ||
+          (s.status === 'PENDING_SLOT' && s.startTime && new Date(s.startTime) > now))
+          && new Date(s.endTime) > now  // Only upcoming if end time hasn't passed
         );
         const pastSessions = sessions.filter((s) =>
-          s.status === 'COMPLETED' || s.status === 'EXPIRED' ||
-          s.status === 'NO_SHOW' || s.status === 'CANCELED' ||
-          s.status === 'PENDING_SLOT'
-        ).filter((s) => !upcomingSessions.includes(s) && !activeSessions.includes(s));
+          !activeSessions.includes(s) && !upcomingSessions.includes(s)
+        );
 
         const statusBadge = (s: Session) => {
           const map: Record<string, string> = {
@@ -217,7 +216,8 @@ export default function MySessions() {
             ? `/class/${session.id}`
             : (meetingUrl || `/class/${session.id}`);
           const isActive = session.status === 'ACTIVE';
-          const canJoin = session.status === 'UPCOMING' || session.status === 'ACTIVE' || session.status === 'CONFIRMED';
+          const endTimePassed = new Date(session.endTime) <= now;
+          const canJoin = !endTimePassed && (session.status === 'UPCOMING' || session.status === 'ACTIVE' || session.status === 'CONFIRMED');
           const canCancel = (session.status === 'UPCOMING' || session.status === 'CONFIRMED') &&
             session.startTime && new Date(session.startTime) > now;
 
