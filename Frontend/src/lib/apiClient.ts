@@ -3,6 +3,7 @@ import axios, {
   type AxiosInstance,
   type InternalAxiosRequestConfig,
 } from "axios";
+import { decryptField } from '../utils/decryption';
 
 /* ------------------------------------------------------------------
    Debug logging
@@ -213,11 +214,15 @@ async function doRefreshToken(): Promise<string | null> {
     if (LOG_HTTP) console.log('[REFRESH] Attempting token refresh...');
     const res = await axios.post(`${baseURL}/auth/refresh`, { refreshToken });
 
-    const access: string | undefined =
+    const rawAccess: string | undefined =
       res.data?.access_token || res.data?.accessToken || res.data?.token;
-    const newRefresh: string | undefined =
+    const rawRefresh: string | undefined =
       res.data?.refresh_token || res.data?.refreshToken;
     const userData = res.data?.user;
+
+    // Decrypt tokens if they were encrypted by the backend
+    const access = rawAccess ? ((await decryptField(rawAccess)) || rawAccess) : undefined;
+    const newRefresh = rawRefresh ? ((await decryptField(rawRefresh)) || rawRefresh) : undefined;
 
     if (access) writeToken(access);
     if (newRefresh) writeRefreshToken(newRefresh);

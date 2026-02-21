@@ -1,6 +1,6 @@
 // src/pages/student/session-notes.tsx
 import { useEffect, useState } from 'react';
-import { FileText, BookOpen, Clock, User, Star, Download, ExternalLink } from 'lucide-react';
+import { FileText, BookOpen, Clock, User, Star, Download, ExternalLink, PenTool } from 'lucide-react';
 import apiClient from '../../services/apiClient';
 
 interface SessionNote {
@@ -35,9 +35,20 @@ interface SharedMaterial {
   sharedAt?: string;
 }
 
+interface WhiteboardNote {
+  id: string;
+  bookingId: string;
+  noteName: string;
+  sharedAt: string;
+  s3Url?: string;
+  counterpartName: string;
+  classDate?: string;
+}
+
 export default function SessionNotes() {
   const [notes, setNotes] = useState<SessionNote[]>([]);
   const [sharedMaterials, setSharedMaterials] = useState<SharedMaterial[]>([]);
+  const [whiteboardNotes, setWhiteboardNotes] = useState<WhiteboardNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'recent'>('all');
 
@@ -47,13 +58,15 @@ export default function SessionNotes() {
 
   const loadNotes = async () => {
     try {
-      const [notesRes, materialsRes] = await Promise.all([
+      const [notesRes, materialsRes, wbRes] = await Promise.all([
         apiClient.get('/session-notes/my-notes'),
         apiClient.get('/study-materials/shared-with-me'),
+        apiClient.get('/whiteboard/my-shared-notes').catch(() => ({ data: [] })),
       ]);
 
       setNotes(notesRes.data || []);
       setSharedMaterials(materialsRes.data || []);
+      setWhiteboardNotes(wbRes.data || []);
     } catch (error) {
       console.error('Failed to load session notes:', error);
     } finally {
@@ -251,6 +264,64 @@ export default function SessionNotes() {
                     <Download className="h-3.5 w-3.5" />
                     Download
                   </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Whiteboard Shared Notes */}
+      {whiteboardNotes.length > 0 && (
+        <div className="rounded-2xl border bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <PenTool className="h-5 w-5 text-ocean-600" />
+            Whiteboard Notes
+          </h2>
+          <div className="space-y-3">
+            {whiteboardNotes.map((wb) => (
+              <div
+                key={wb.id}
+                className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex items-start justify-between gap-4"
+              >
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-slate-900">{wb.noteName}</h3>
+                  <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-3">
+                    <span className="flex items-center gap-1">
+                      <User className="h-3.5 w-3.5" />
+                      {wb.counterpartName}
+                    </span>
+                    {wb.classDate && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        {new Date(wb.classDate).toLocaleDateString()}
+                      </span>
+                    )}
+                    <span className="rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 font-medium">
+                      Whiteboard
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {wb.s3Url && (
+                    <a
+                      href={wb.s3Url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-lg bg-ocean-700 px-3 py-2 text-xs font-semibold text-white hover:bg-ocean-800"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download
+                    </a>
+                  )}
+                  <a
+                    href={`/class/${wb.bookingId}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View in Class
+                  </a>
                 </div>
               </div>
             ))}

@@ -11,11 +11,11 @@ import {
   useTracks,
   useRoomContext,
 } from "@livekit/components-react";
-import { Track, type Participant, DisconnectReason } from "livekit-client";
+import { Track, type Participant, DisconnectReason, RoomEvent } from "livekit-client";
 import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle } from "lucide-react";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
 import { useToast } from "../../contexts/ToastContext";
-import { getTokenPayload } from "../../lib/apiClient";
+import api, { getTokenPayload } from "../../lib/apiClient";
 import { fetchLivekitToken } from "../../services/livekit";
 import { getBookingPerspective } from "../../utils/bookingPerspective";
 import { useAuth } from "../../contexts/AuthContext";
@@ -70,13 +70,15 @@ function LivekitStage() {
   );
 }
 
-function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate, tutorAlreadyJoined }: {
+function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate, tutorAlreadyJoined, onNoShow, onClassEnded }: {
   bookingId: string;
   endTime?: string | null;
   isTutor?: boolean;
   counterpartName?: string;
   classDate?: string;
   tutorAlreadyJoined?: boolean;
+  onNoShow?: () => void;
+  onClassEnded?: () => void;
 }) {
   const participants = useParticipants() as Participant[];
   const room = useRoomContext();
@@ -93,6 +95,36 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   const whiteboardRef = useRef<WhiteboardHandle>(null);
 
   const hasBothJoined = participants.length >= 2;
+
+  // Record DB-backed attendance based on actual LiveKit connection state
+  useEffect(() => {
+    if (!bookingId) return;
+
+    const postAttendance = async (event: "JOIN" | "LEAVE", reason?: string) => {
+      try {
+        await api.post(`/bookings/${bookingId}/attendance`, { event, reason });
+      } catch (err: any) {
+        // Best-effort only; never block the call UX on telemetry
+        console.warn(
+          "Failed to record attendance event:",
+          event,
+          err?.response?.data?.message || err?.message,
+        );
+      }
+    };
+
+    const onConnected = () => postAttendance("JOIN");
+    const onDisconnected = (reason?: DisconnectReason) =>
+      postAttendance("LEAVE", reason !== undefined ? String(reason) : undefined);
+
+    room.on(RoomEvent.Connected, onConnected);
+    room.on(RoomEvent.Disconnected, onDisconnected as any);
+
+    return () => {
+      room.off(RoomEvent.Connected, onConnected);
+      room.off(RoomEvent.Disconnected, onDisconnected as any);
+    };
+  }, [room, bookingId]);
 
   useEffect(() => {
     if (!callStartedAt && hasBothJoined) {
@@ -137,8 +169,15 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
           return;
         }
         setNoShowCountdown(null);
-        // Time's up — show the no-show modal
         setShowNoShowModal(true);
+        // Immediately call the backend to process the no-show refund
+        api.post(`/bookings/${bookingId}/tutor-no-show`).catch((err: any) => {
+          console.warn("Failed to process tutor no-show:", err?.response?.data?.message || err?.message);
+        });
+        // Time's up — notify parent to show no-show modal (renders above LiveKitRoom)
+        if (onNoShow) {
+          onNoShow();
+        }
         room.disconnect().catch(() => { /* already disconnecting */ });
         return;
       }
@@ -180,14 +219,16 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
     const gracePeriod = 5 * 60 * 1000; // 5 min grace
     const disconnectAt = end + gracePeriod - Date.now();
     if (disconnectAt <= 0) {
+      if (onClassEnded) onClassEnded();
       room.disconnect();
       return;
     }
     const timer = globalThis.setTimeout(() => {
+      if (onClassEnded) onClassEnded();
       room.disconnect();
     }, disconnectAt);
     return () => globalThis.clearTimeout(timer);
-  }, [endTime, room]);
+  }, [endTime, room, onClassEnded]);
 
   // Save whiteboard as notes
   const handleSaveWhiteboardNotes = useCallback(async () => {
@@ -412,6 +453,7 @@ export default function CallPage() {
   const [rejoining, setRejoining] = useState(false);
   const [isTutor, setIsTutor] = useState(false);
   const [counterpartName, setCounterpartName] = useState("");
+  const [noShowTriggered, setNoShowTriggered] = useState(false);
 
   // Use auth context user which has student/tutor profile IDs
   // Fallback to JWT payload if auth context not available
@@ -634,6 +676,40 @@ export default function CallPage() {
     );
   }
 
+  // Tutor no-show — student gets refund modal at CallPage level
+  // This must render ABOVE LiveKitRoom so it's not unmounted on disconnect
+  if (noShowTriggered && !isTutor) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 sm:p-8 text-center space-y-5">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-orange-100">
+            <AlertTriangle className="h-8 w-8 text-orange-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Tutor didn&rsquo;t join the class
+          </h2>
+          <p className="text-sm text-slate-600">
+            The tutor did not join within 10 minutes of the scheduled start time.
+            {data && !data.isDemo && (
+              <> Your 1 token has been refunded automatically.</>
+            )}
+          </p>
+          {data && !data.isDemo && (
+            <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3">
+              <p className="text-sm font-semibold text-green-700">+1 Token refunded to your balance</p>
+            </div>
+          )}
+          <button
+            onClick={() => navigate('/student/sessions')}
+            className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+          >
+            Go to My Sessions
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Connection lost — show reconnect UI instead of permanent error
   if (connectionLost) {
     return (
@@ -719,6 +795,8 @@ export default function CallPage() {
           connect={true}
           onDisconnected={(reason) => {
             console.log('LiveKit disconnected:', reason);
+            // If no-show was triggered, don't show the Class Ended screen
+            if (noShowTriggered) return;
             // Normal disconnect: user clicked Leave or server ended the session
             if (reason === DisconnectReason.CLIENT_INITIATED || reason === DisconnectReason.SERVER_SHUTDOWN) {
               setDisconnected(true);
@@ -747,6 +825,15 @@ export default function CallPage() {
             counterpartName={counterpartName}
             classDate={data?.startTime || undefined}
             tutorAlreadyJoined={!!data?.attendance?.tutorJoinedAt}
+            onNoShow={() => setNoShowTriggered(true)}
+            onClassEnded={() => {
+              // Trigger booking completion when class ends naturally
+              if (bookingId) {
+                api.post(`/bookings/${bookingId}/complete`).catch((err: any) => {
+                  console.warn('Auto-complete failed (may already be completed):', err?.response?.data?.message || err?.message);
+                });
+              }
+            }}
           />
         </LiveKitRoom>
       )}

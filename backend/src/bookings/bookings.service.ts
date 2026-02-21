@@ -13,6 +13,7 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { CreateGroupBookingDto } from './dto/group-booking.dto';
+import { AttendanceEventDto } from './dto/attendance-event.dto';
 import { addMinutes, isBefore, differenceInMinutes, differenceInHours } from 'date-fns';
 import { Prisma, BookingStatus, TokenReason, Role } from '@prisma/client';
 import { toUtc, fromUtc } from '../common/time.util';
@@ -645,6 +646,7 @@ export class BookingsService {
           },
         },
         student: { include: { user: true } },
+        attendance: true,
         whiteboardSessions: {
           select: { data: true },
         },
@@ -662,12 +664,28 @@ export class BookingsService {
     await this.ensureLivekitMeeting(booking.id);
 
     const attendance = (() => {
-      const data = booking.whiteboardSessions?.[0]?.data as any;
-      if (data && typeof data === 'object' && !Array.isArray(data)) {
-        const att = data.attendance;
-        if (att && typeof att === 'object') return att;
-      }
-      return null;
+      const fromDb = this.parseBookingAttendance(booking.attendance, null);
+      const fromWb = this.parseBookingAttendance(null, booking.whiteboardSessions?.[0]?.data);
+      // Filter out undefined so waiting-room-only DB rows don't erase valid WB values
+      const defined = (obj: Record<string, any>) =>
+        Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+      const merged = {
+        ...fromWb,
+        ...defined(fromDb),
+      };
+
+      // Also expose startedAt for back-compat with older UI logic.
+      const startedAt = booking.attendance?.classStartedAt
+        ? booking.attendance.classStartedAt.toISOString()
+        : undefined;
+
+      if (!merged.studentJoinedAt && !merged.tutorJoinedAt && !startedAt) return null;
+      return {
+        ...merged,
+        startedAt,
+        tutorJoinCount: booking.attendance?.tutorJoinCount ?? undefined,
+        studentJoinCount: booking.attendance?.studentJoinCount ?? undefined,
+      };
     })();
 
     return {
@@ -691,6 +709,274 @@ export class BookingsService {
       isGroupSession: booking.isGroupSession,
       attendance,
     };
+  }
+
+  // ---------- tutor no-show (instant refund for student) ----------
+  async processTutorNoShow(bookingId: string, actorUserId: string) {
+    const now = new Date();
+    const logger = this.logger;
+
+    return this.prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findUnique({
+        where: { id: bookingId },
+        include: {
+          student: { select: { id: true, userId: true } },
+          tutor: { select: { id: true } },
+          attendance: true,
+          whiteboardSessions: { take: 1, select: { data: true } },
+        },
+      });
+
+      if (!booking) throw new NotFoundException('Booking not found');
+
+      // Only the student of this booking can trigger tutor no-show
+      if (booking.student?.userId !== actorUserId) {
+        throw new ForbiddenException('Only the session student can report a tutor no-show');
+      }
+
+      // If already processed (idempotent), return success
+      if (booking.status === BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW) {
+        return { message: 'Already processed', refunded: booking.refundProcessed };
+      }
+
+      // Only allow for CONFIRMED / WAITING_ROOM / LIVE statuses
+      const allowedStatuses: string[] = [
+        BookingStatus.CONFIRMED,
+        BookingStatus.WAITING_ROOM,
+        BookingStatus.LIVE,
+      ];
+      if (!allowedStatuses.includes(booking.status)) {
+        throw new BadRequestException(`Cannot process no-show for status: ${booking.status}`);
+      }
+
+      // Verify at least 10 min have passed since startTime
+      if (!booking.startTime || now.getTime() - booking.startTime.getTime() < 9 * 60 * 1000) {
+        throw new BadRequestException('Cannot report no-show before 10 minutes');
+      }
+
+      // Verify tutor hasn't actually joined — check BOTH DB and whiteboard (fallback)
+      const tutorJoinedDb =
+        (booking.attendance?.tutorJoinCount ?? 0) > 0 ||
+        !!booking.attendance?.tutorFirstJoinedAt;
+      const wbData = booking.whiteboardSessions?.[0]?.data;
+      const tutorJoinedWb = (() => {
+        if (wbData && typeof wbData === 'object' && !Array.isArray(wbData)) {
+          const att = (wbData as any).attendance;
+          if (att && typeof att === 'object') return !!att.tutorJoinedAt;
+        }
+        return false;
+      })();
+      if (tutorJoinedDb || tutorJoinedWb) {
+        throw new BadRequestException('Tutor has joined the session');
+      }
+
+      // Process the no-show: update status + refund
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW,
+          refundProcessed: true,
+          noShowCheckAt: now,
+        },
+      });
+
+      let refunded = false;
+      if (!booking.isDemo) {
+        const existingRefund = await tx.tokenLedger.findFirst({
+          where: { bookingId, reason: TokenReason.REFUND },
+          select: { id: true },
+        });
+
+        if (!existingRefund) {
+          const refundAmount = 1;
+          const existingBalance = await tx.tutorTokenBalance.findUnique({
+            where: {
+              studentId_tutorId: {
+                studentId: booking.studentId,
+                tutorId: booking.tutorId,
+              },
+            },
+          });
+          if (existingBalance) {
+            await tx.tutorTokenBalance.update({
+              where: {
+                studentId_tutorId: {
+                  studentId: booking.studentId,
+                  tutorId: booking.tutorId,
+                },
+              },
+              data: { balance: { increment: refundAmount } },
+            });
+          }
+          await tx.student.update({
+            where: { id: booking.studentId },
+            data: { tokens: { increment: refundAmount } },
+          });
+          await tx.tokenLedger.create({
+            data: {
+              studentId: booking.studentId,
+              tutorId: booking.tutorId,
+              delta: new Prisma.Decimal(refundAmount),
+              reason: TokenReason.REFUND,
+              bookingId,
+            },
+          });
+          refunded = true;
+          logger.log(`Tutor no-show (instant): refunded 1 token for booking ${bookingId}`);
+        }
+      } else {
+        logger.log(`Tutor no-show (instant/demo): demo eligibility restored for booking ${bookingId}`);
+      }
+
+      return { message: 'Tutor no-show processed', refunded };
+    });
+  }
+
+  // ---------- attendance (DB-backed) ----------
+  async recordAttendanceEvent(
+    bookingId: string,
+    dto: AttendanceEventDto,
+    actorUserId: string,
+    actorRole: Role,
+    actorTutorId?: string,
+    actorStudentId?: string,
+  ) {
+    const now = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findUnique({
+        where: { id: bookingId },
+        include: {
+          tutor: { select: { id: true, userId: true } },
+          student: { select: { id: true, userId: true } },
+          attendance: true,
+        },
+      });
+      if (!booking) throw new NotFoundException('Booking not found');
+
+      const isTutor = booking.tutor?.userId === actorUserId || (!!actorTutorId && booking.tutor?.id === actorTutorId);
+      const isStudent = booking.student?.userId === actorUserId || (!!actorStudentId && booking.student?.id === actorStudentId);
+      const isAdmin = actorRole === Role.ADMIN;
+
+      if (!isTutor && !isStudent && !isAdmin) {
+        throw new ForbiddenException('You are not a participant of this booking');
+      }
+
+      const participant: 'TUTOR' | 'STUDENT' | null =
+        isAdmin
+          ? (isTutor ? 'TUTOR' : isStudent ? 'STUDENT' : null)
+          : (isTutor ? 'TUTOR' : 'STUDENT');
+
+      if (!participant) {
+        throw new BadRequestException('Unable to determine which participant to record attendance for.');
+      }
+
+      const existing = booking.attendance ?? null;
+
+      const createData: Prisma.BookingAttendanceCreateInput = {
+        booking: { connect: { id: bookingId } },
+        tutorWaitingRoomAttended: participant === 'TUTOR' && dto.event === 'JOIN',
+        studentWaitingRoomAttended: participant === 'STUDENT' && dto.event === 'JOIN',
+        tutorJoinCount: participant === 'TUTOR' && dto.event === 'JOIN' ? 1 : 0,
+        tutorLeaveCount: participant === 'TUTOR' && dto.event === 'LEAVE' ? 1 : 0,
+        tutorFirstJoinedAt: participant === 'TUTOR' && dto.event === 'JOIN' ? now : null,
+        tutorLastJoinedAt: participant === 'TUTOR' && dto.event === 'JOIN' ? now : null,
+        tutorLastLeftAt: participant === 'TUTOR' && dto.event === 'LEAVE' ? now : null,
+        studentJoinCount: participant === 'STUDENT' && dto.event === 'JOIN' ? 1 : 0,
+        studentLeaveCount: participant === 'STUDENT' && dto.event === 'LEAVE' ? 1 : 0,
+        studentFirstJoinedAt: participant === 'STUDENT' && dto.event === 'JOIN' ? now : null,
+        studentLastJoinedAt: participant === 'STUDENT' && dto.event === 'JOIN' ? now : null,
+        studentLastLeftAt: participant === 'STUDENT' && dto.event === 'LEAVE' ? now : null,
+        classStartedAt: null,
+        classEndedAt: null,
+      };
+
+      const updateData: Prisma.BookingAttendanceUpdateInput = {
+        tutorWaitingRoomAttended: participant === 'TUTOR' ? true : undefined,
+        studentWaitingRoomAttended: participant === 'STUDENT' ? true : undefined,
+      };
+
+      if (participant === 'TUTOR' && dto.event === 'JOIN') {
+        (updateData as any).tutorJoinCount = { increment: 1 };
+        (updateData as any).tutorLastJoinedAt = now;
+        if (!existing?.tutorFirstJoinedAt) (updateData as any).tutorFirstJoinedAt = now;
+      }
+      if (participant === 'TUTOR' && dto.event === 'LEAVE') {
+        (updateData as any).tutorLeaveCount = { increment: 1 };
+        (updateData as any).tutorLastLeftAt = now;
+      }
+      if (participant === 'STUDENT' && dto.event === 'JOIN') {
+        (updateData as any).studentJoinCount = { increment: 1 };
+        (updateData as any).studentLastJoinedAt = now;
+        if (!existing?.studentFirstJoinedAt) (updateData as any).studentFirstJoinedAt = now;
+      }
+      if (participant === 'STUDENT' && dto.event === 'LEAVE') {
+        (updateData as any).studentLeaveCount = { increment: 1 };
+        (updateData as any).studentLastLeftAt = now;
+      }
+
+      let updatedAttendance = await tx.bookingAttendance.upsert({
+        where: { bookingId },
+        create: createData,
+        update: updateData,
+      });
+
+      const tutorJoined = (updatedAttendance.tutorJoinCount ?? 0) > 0;
+      const studentJoined = (updatedAttendance.studentJoinCount ?? 0) > 0;
+      const bothJoined = tutorJoined && studentJoined;
+
+      if (bothJoined && !updatedAttendance.classStartedAt) {
+        updatedAttendance = await tx.bookingAttendance.update({
+          where: { bookingId },
+          data: { classStartedAt: now },
+        });
+      }
+
+      if (dto.event === 'LEAVE' && booking.endTime && now >= booking.endTime && !updatedAttendance.classEndedAt) {
+        updatedAttendance = await tx.bookingAttendance.update({
+          where: { bookingId },
+          data: { classEndedAt: now },
+        });
+      }
+
+      if (
+        dto.event === 'JOIN' &&
+        (booking.status === BookingStatus.CONFIRMED || booking.status === BookingStatus.WAITING_ROOM)
+      ) {
+        const nextStatus = bothJoined ? BookingStatus.LIVE : BookingStatus.WAITING_ROOM;
+        if (nextStatus !== booking.status) {
+          await tx.booking.update({
+            where: { id: bookingId },
+            data: { status: nextStatus },
+          });
+        }
+      }
+
+      this.logger.debug(
+        `[recordAttendanceEvent] booking=${bookingId} participant=${participant} event=${dto.event} reason=${dto.reason ?? ''}`,
+      );
+
+      return {
+        bookingId,
+        participant,
+        event: dto.event,
+        at: now.toISOString(),
+        attendance: {
+          tutorJoinCount: updatedAttendance.tutorJoinCount,
+          tutorLeaveCount: updatedAttendance.tutorLeaveCount,
+          tutorFirstJoinedAt: updatedAttendance.tutorFirstJoinedAt?.toISOString() ?? null,
+          tutorLastJoinedAt: updatedAttendance.tutorLastJoinedAt?.toISOString() ?? null,
+          tutorLastLeftAt: updatedAttendance.tutorLastLeftAt?.toISOString() ?? null,
+          studentJoinCount: updatedAttendance.studentJoinCount,
+          studentLeaveCount: updatedAttendance.studentLeaveCount,
+          studentFirstJoinedAt: updatedAttendance.studentFirstJoinedAt?.toISOString() ?? null,
+          studentLastJoinedAt: updatedAttendance.studentLastJoinedAt?.toISOString() ?? null,
+          studentLastLeftAt: updatedAttendance.studentLastLeftAt?.toISOString() ?? null,
+          classStartedAt: updatedAttendance.classStartedAt?.toISOString() ?? null,
+          classEndedAt: updatedAttendance.classEndedAt?.toISOString() ?? null,
+        },
+      };
+    });
   }
 
   // ---------- cancel ----------
@@ -1078,6 +1364,7 @@ export class BookingsService {
         include: {
           tutor: { select: { userId: true, id: true, hourlyRate: true } },
           student: { select: { userId: true, id: true } },
+          attendance: true,
           whiteboardSessions: {
             select: { data: true },
             take: 1,
@@ -1094,7 +1381,7 @@ export class BookingsService {
       }
       if (b.status === BookingStatus.COMPLETED) return b;
       
-      const attendance = this.parseBookingAttendance(b.whiteboardSessions?.[0]?.data);
+      const attendance = this.parseBookingAttendance(b.attendance, b.whiteboardSessions?.[0]?.data);
       if (!attendance.studentJoinedAt) {
         throw new ForbiddenException('Cannot complete booking without student attendance.');
       }
@@ -1165,18 +1452,44 @@ export class BookingsService {
     return Number.isFinite(fallback) ? fallback : 0;
   }
 
-  private parseBookingAttendance(data: any): { studentJoinedAt?: string; tutorJoinedAt?: string } {
-    if (data && typeof data === 'object' && !Array.isArray(data)) {
-      const attendance = (data as { attendance?: unknown }).attendance;
-      if (attendance && typeof attendance === 'object' && !Array.isArray(attendance)) {
-        const att = attendance as Record<string, unknown>;
-        return {
-          studentJoinedAt: typeof att.studentJoinedAt === 'string' ? att.studentJoinedAt : undefined,
-          tutorJoinedAt: typeof att.tutorJoinedAt === 'string' ? att.tutorJoinedAt : undefined,
-        };
+  private parseBookingAttendance(
+    attendanceRow: any,
+    whiteboardData: any,
+  ): { studentJoinedAt?: string; tutorJoinedAt?: string } {
+    const fromDb = (() => {
+      if (!attendanceRow) return {};
+      const studentJoinedAt = attendanceRow.studentFirstJoinedAt instanceof Date
+        ? attendanceRow.studentFirstJoinedAt.toISOString()
+        : undefined;
+      const tutorJoinedAt = attendanceRow.tutorFirstJoinedAt instanceof Date
+        ? attendanceRow.tutorFirstJoinedAt.toISOString()
+        : undefined;
+      return { studentJoinedAt, tutorJoinedAt };
+    })();
+
+    const fromWb = (() => {
+      const data = whiteboardData;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const attendance = (data as { attendance?: unknown }).attendance;
+        if (attendance && typeof attendance === 'object' && !Array.isArray(attendance)) {
+          const att = attendance as Record<string, unknown>;
+          return {
+            studentJoinedAt: typeof att.studentJoinedAt === 'string' ? att.studentJoinedAt : undefined,
+            tutorJoinedAt: typeof att.tutorJoinedAt === 'string' ? att.tutorJoinedAt : undefined,
+          };
+        }
       }
-    }
-    return {};
+      return {};
+    })();
+
+    // Filter out undefined values so a DB row with null join times
+    // (e.g. waiting-room-only upsert from createToken) doesn't overwrite valid WB values
+    const defined = (obj: Record<string, any>) =>
+      Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+    return {
+      ...fromWb,
+      ...defined(fromDb),
+    };
   }
 
   private requiredTokens(start: Date, end: Date, tokensPerHour: number): number {

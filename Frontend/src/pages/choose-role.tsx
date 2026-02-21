@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BookOpen, GraduationCap, ArrowRight, Loader2, Lock, Sparkles } from 'lucide-react';
 import { http } from '../api/http';
 import { getAccessToken, setTokens } from '../lib/auth';
+import { decryptField } from '../utils/decryption';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 
@@ -103,7 +104,10 @@ export default function ChooseRole() {
     setLoading(role);
     try {
       const response = await postChooseRole(role);
-      if (response.data?.access_token) setTokens({ accessToken: response.data.access_token });
+      if (response.data?.access_token) {
+        const decrypted = (await decryptField(response.data.access_token)) || response.data.access_token;
+        setTokens({ accessToken: decrypted });
+      }
 
       const me = await http.get('/users/me').then(r => r.data);
       const roleUpdated = me?.role?.toUpperCase?.() as RoleApi | undefined;

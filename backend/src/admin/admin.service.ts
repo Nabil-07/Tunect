@@ -698,6 +698,8 @@ export class AdminService {
         w.OR = [
           { tutor: { is: { user: { is: { email: { contains: q.q, mode: Prisma.QueryMode.insensitive } } } } } },
           { student: { is: { user: { is: { email: { contains: q.q, mode: Prisma.QueryMode.insensitive } } } } } },
+          { tutor: { is: { user: { is: { name: { contains: q.q, mode: Prisma.QueryMode.insensitive } } } } } },
+          { student: { is: { user: { is: { name: { contains: q.q, mode: Prisma.QueryMode.insensitive } } } } } },
         ];
       }
       return Object.keys(w).length ? w : undefined;
@@ -708,14 +710,49 @@ export class AdminService {
         where, skip, take: pageSize, orderBy: { startTime: 'desc' },
         select: {
           id: true, startTime: true, endTime: true, status: true, isDemo: true, createdAt: true,
-          tutor: { select: { id: true, user: { select: { email: true } } } },
-          student: { select: { id: true, user: { select: { email: true } } } },
+          tokensCharged: true, refundProcessed: true,
+          tutor: { select: { id: true, user: { select: { email: true, name: true } } } },
+          student: { select: { id: true, user: { select: { email: true, name: true } } } },
+          attendance: { select: { studentFirstJoinedAt: true, tutorFirstJoinedAt: true, classStartedAt: true } },
+          whiteboardSessions: { select: { data: true }, take: 1 },
         },
       }),
       this.prisma.booking.count({ where }),
     ]);
 
-    return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+    const enriched = items.map((item) => {
+      const wbData = item.whiteboardSessions?.[0]?.data as any;
+      const att = wbData?.attendance;
+
+      const studentJoinedAt = item.attendance?.studentFirstJoinedAt
+        ? item.attendance.studentFirstJoinedAt.toISOString()
+        : (att?.studentJoinedAt ?? null);
+      const tutorJoinedAt = item.attendance?.tutorFirstJoinedAt
+        ? item.attendance.tutorFirstJoinedAt.toISOString()
+        : (att?.tutorJoinedAt ?? null);
+      const startedAt = item.attendance?.classStartedAt
+        ? item.attendance.classStartedAt.toISOString()
+        : (att?.startedAt ?? null);
+
+      return {
+        id: item.id,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        status: item.status,
+        isDemo: item.isDemo,
+        createdAt: item.createdAt,
+        tokensCharged: item.tokensCharged,
+        refundProcessed: item.refundProcessed,
+        tutor: item.tutor,
+        student: item.student,
+        attendance:
+          studentJoinedAt || tutorJoinedAt || startedAt
+            ? { studentJoinedAt, tutorJoinedAt, startedAt }
+            : null,
+      };
+    });
+
+    return { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
   }
 
   async listPayments(q: PaginationDto & { status?: PaymentStatus }) {
@@ -852,5 +889,75 @@ export class AdminService {
 
   async updatePolicyConfig(partial: Partial<PolicyConfig>, adminId: string, req?: Request) {
     return this.policyConfig.updateConfig(partial, adminId, req);
+  }
+
+  // ---------- Admin User Management ----------
+
+  async listAdminUsers(q: PaginationDto) {
+    const { page, pageSize, skip } = this.paginate(q);
+
+    const where: Prisma.UserWhereInput = { role: 'ADMIN' };
+    if (q.q) {
+      where.OR = [
+        { email: { contains: q.q, mode: Prisma.QueryMode.insensitive } },
+        { name: { contains: q.q, mode: Prisma.QueryMode.insensitive } },
+      ];
+    }
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where, skip, take: pageSize, orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, email: true, name: true, role: true,
+          isDirector: true, createdAt: true, updatedAt: true,
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
+  }
+
+  async getAdminUser(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true, email: true, name: true, role: true,
+        isDirector: true, createdAt: true, updatedAt: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Admin user not found');
+    if (user.role !== 'ADMIN') throw new BadRequestException('User is not an admin');
+    return user;
+  }
+
+  async toggleDirectorAccess(userId: string, isDirector: boolean, adminId: string, req?: Request) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, isDirector: true },
+    });
+    if (!target) throw new NotFoundException('User not found');
+    if (target.role !== 'ADMIN') throw new BadRequestException('User is not an admin');
+    if (target.id === adminId) throw new BadRequestException('You cannot change your own director status');
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { isDirector },
+      select: { id: true, email: true, name: true, isDirector: true },
+    });
+
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
+    this.audit.log({
+      adminId,
+      action: 'DIRECTOR_ACCESS_TOGGLE',
+      entityType: AuditEntityType.USER,
+      entityId: userId,
+      beforeData: { isDirector: target.isDirector },
+      afterData: { isDirector },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
+    });
+
+    return { ok: true, user: updated };
   }
 }

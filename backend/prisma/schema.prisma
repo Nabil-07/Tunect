@@ -146,6 +146,7 @@ model Booking {
   walletLedger            TutorWalletLedger[]
   waitlist                Waitlist[]
   whiteboardSessions      WhiteboardSession[]
+  attendance              BookingAttendance?
   demeritApplied          Boolean?                  @default(false)
   noShowCheckAt           DateTime?
   refundProcessed         Boolean?                  @default(false)
@@ -155,6 +156,38 @@ model Booking {
   @@index([status, startTime])
   @@index([studentId, startTime, endTime])
   @@index([tutorId, startTime, endTime])
+}
+
+model BookingAttendance {
+  id                        String   @id @default(cuid())
+  bookingId                 String   @unique
+  booking                   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // Waiting room attendance flags (derived at the moment of first join)
+  tutorWaitingRoomAttended  Boolean  @default(false)
+  studentWaitingRoomAttended Boolean @default(false)
+
+  // Join/leave tracking (supports re-joins)
+  tutorJoinCount            Int      @default(0)
+  tutorLeaveCount           Int      @default(0)
+  tutorFirstJoinedAt        DateTime?
+  tutorLastJoinedAt         DateTime?
+  tutorLastLeftAt           DateTime?
+
+  studentJoinCount          Int      @default(0)
+  studentLeaveCount         Int      @default(0)
+  studentFirstJoinedAt      DateTime?
+  studentLastJoinedAt       DateTime?
+  studentLastLeftAt         DateTime?
+
+  // Derived milestones
+  classStartedAt            DateTime?
+  classEndedAt              DateTime?
+
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @default(now()) @updatedAt
+
+  @@index([bookingId])
 }
 
 model Certificate {

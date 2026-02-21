@@ -21,6 +21,7 @@ type Session = {
   maxStudents?: number;
   currentEnrollment?: number;
   pricePerStudent?: number;
+  attendanceInfo?: 'both_joined' | 'tutor_only' | 'student_only' | 'neither' | null;
 };
 
 function toArray(maybe: any): Session[] {
@@ -174,15 +175,16 @@ export default function MySessions() {
       ) : (() => {
         const now = new Date();
         // Split sessions into sections
-        const activeSessions = sessions.filter((s) => s.status === 'ACTIVE' && new Date(s.endTime) > now);
+        const activeSessions = sessions.filter((s) => s.status === 'ACTIVE');
         const upcomingSessions = sessions.filter((s) =>
-          (s.status === 'UPCOMING' || s.status === 'CONFIRMED' ||
-          (s.status === 'PENDING_SLOT' && s.startTime && new Date(s.startTime) > now))
-          && new Date(s.endTime) > now  // Only upcoming if end time hasn't passed
+          s.status === 'UPCOMING' || s.status === 'CONFIRMED' ||
+          (s.status === 'PENDING_SLOT' && s.startTime && new Date(s.startTime) > now)
         );
         const pastSessions = sessions.filter((s) =>
-          !activeSessions.includes(s) && !upcomingSessions.includes(s)
-        );
+          s.status === 'COMPLETED' || s.status === 'EXPIRED' ||
+          s.status === 'NO_SHOW' || s.status === 'CANCELED' ||
+          s.status === 'PENDING_SLOT'
+        ).filter((s) => !upcomingSessions.includes(s) && !activeSessions.includes(s));
 
         const statusBadge = (s: Session) => {
           const map: Record<string, string> = {
@@ -216,8 +218,7 @@ export default function MySessions() {
             ? `/class/${session.id}`
             : (meetingUrl || `/class/${session.id}`);
           const isActive = session.status === 'ACTIVE';
-          const endTimePassed = new Date(session.endTime) <= now;
-          const canJoin = !endTimePassed && (session.status === 'UPCOMING' || session.status === 'ACTIVE' || session.status === 'CONFIRMED');
+          const canJoin = session.status === 'UPCOMING' || session.status === 'ACTIVE' || session.status === 'CONFIRMED';
           const canCancel = (session.status === 'UPCOMING' || session.status === 'CONFIRMED') &&
             session.startTime && new Date(session.startTime) > now;
 
@@ -296,7 +297,7 @@ export default function MySessions() {
                 </div>
               )}
 
-              {/* No-show demerit message */}
+              {/* No-show demerit message — tutor didn't join */}
               {session.status === 'NO_SHOW' && (
                 <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 mb-3">
                   <p className="text-xs font-semibold text-red-700">
@@ -304,6 +305,24 @@ export default function MySessions() {
                   </p>
                   <p className="text-[10px] text-red-600 mt-0.5">
                     3 demerit points will result in an hourly rate deduction from your payout.
+                  </p>
+                </div>
+              )}
+
+              {/* Student no-show — tutor gets paid */}
+              {session.status === 'COMPLETED' && session.attendanceInfo === 'tutor_only' && (
+                <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 mb-3">
+                  <p className="text-xs font-semibold text-green-700">
+                    ✓ Student didn&apos;t join. You attended and got paid.
+                  </p>
+                </div>
+              )}
+
+              {/* Neither joined — expired */}
+              {session.status === 'EXPIRED' && session.attendanceInfo === 'neither' && (
+                <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2 mb-3">
+                  <p className="text-xs font-semibold text-orange-700">
+                    Neither you nor the student joined. No payout.
                   </p>
                 </div>
               )}

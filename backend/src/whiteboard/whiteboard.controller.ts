@@ -11,6 +11,14 @@ import { WhiteboardService } from './whiteboard.service';
 export class WhiteboardController {
   constructor(private readonly whiteboardService: WhiteboardService) {}
 
+  @Get('my-shared-notes')
+  @ApiOperation({ summary: 'Get all shared whiteboard notes for the current user' })
+  getMySharedNotes(
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.whiteboardService.getMySharedNotes(userId);
+  }
+
   @Get(':bookingId')
   @ApiOperation({ summary: 'Get whiteboard data for a booking' })
   getWhiteboardData(
