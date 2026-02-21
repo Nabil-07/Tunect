@@ -31,6 +31,13 @@ function hasStudentAttendance(data: unknown): boolean {
   return !!attendance.studentJoinedAt;
 }
 
+function hasStudentAttendanceDb(attendanceRow: any): boolean {
+  return (
+    !!attendanceRow?.studentFirstJoinedAt ||
+    (Number(attendanceRow?.studentJoinCount ?? 0) > 0)
+  );
+}
+
 @Injectable()
 export class StudentsService {
   constructor(
@@ -150,6 +157,12 @@ export class StudentsService {
         startTime: true,
         endTime: true,
         status: true,
+        attendance: {
+          select: {
+            studentJoinCount: true,
+            studentFirstJoinedAt: true,
+          },
+        },
         whiteboardSessions: {
           take: 1,
           select: { data: true },
@@ -158,7 +171,7 @@ export class StudentsService {
     });
 
     const completedWithAttendance = completedBookings.filter((b) => {
-      const attended = hasStudentAttendance(b.whiteboardSessions?.[0]?.data);
+      const attended = hasStudentAttendanceDb(b.attendance) || hasStudentAttendance(b.whiteboardSessions?.[0]?.data);
       if (!attended) return false;
       if (b.status === BookingStatus.COMPLETED) return true;
       return !!b.endTime && b.endTime < now;
@@ -325,6 +338,21 @@ export class StudentsService {
         .filter((ws) => hasStudentAttendance(ws.data))
         .map((ws) => ws.bookingId),
     );
+
+    // ✅ Also check BookingAttendance DB table (primary attendance source)
+    const dbAttendanceRecords = await this.prisma.bookingAttendance.findMany({
+      where: {
+        bookingId: { in: bookingIds },
+        OR: [
+          { studentJoinCount: { gt: 0 } },
+          { studentFirstJoinedAt: { not: null } },
+        ],
+      },
+      select: { bookingId: true },
+    });
+    for (const record of dbAttendanceRecords) {
+      attendedBookingIds.add(record.bookingId);
+    }
 
     // ✅ Map data (no additional queries needed)
     const enriched = rawBookings.map((b) => {

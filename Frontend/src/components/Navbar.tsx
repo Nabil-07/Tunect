@@ -70,6 +70,7 @@ const ADMIN_SIMPLE: NavItem[] = [
   { label: 'Dashboard', to: '/admin/dashboard' },
   { label: 'Tutors', to: '/admin/tutors' },
   { label: 'Students', to: '/admin/students' },
+  { label: 'Admins', to: '/admin/admins' },
   { label: 'Reports', to: '/admin/reports' },
 ];
 

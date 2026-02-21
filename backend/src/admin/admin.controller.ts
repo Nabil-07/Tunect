@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
+import { DirectorGuard } from '../auth/director.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PaginationDto } from './dto/pagination.dto';
 import { AuditListDto } from './dto/audit-list.dto';
@@ -128,5 +129,27 @@ export class AdminController {
   @Patch('policy-config')
   updatePolicyConfig(@Body() dto: Partial<PolicyConfig>, @Req() req: any) {
     return this.svc.updatePolicyConfig(dto, req.user!.id, req);
+  }
+
+  // ─── Admin User Management ───
+
+  @Get('admin-users')
+  listAdminUsers(@Query() q: PaginationDto) {
+    return this.svc.listAdminUsers(q);
+  }
+
+  @Get('admin-users/:id')
+  getAdminUser(@Param('id') id: string) {
+    return this.svc.getAdminUser(id);
+  }
+
+  @UseGuards(DirectorGuard)
+  @Patch('admin-users/:id/director')
+  toggleDirectorAccess(
+    @Param('id') id: string,
+    @Body() dto: { isDirector: boolean },
+    @Req() req: any,
+  ) {
+    return this.svc.toggleDirectorAccess(id, dto.isDirector, req.user!.id, req);
   }
 }

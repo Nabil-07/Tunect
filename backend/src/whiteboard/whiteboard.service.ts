@@ -135,6 +135,7 @@ export class WhiteboardService {
   /**
    * Share whiteboard content as notes — both tutor and student can view later.
    * Only the tutor can trigger this.
+   * Also creates a SessionNote so it appears in the student's session notes page.
    */
   async shareAsNotes(bookingId: string, userId: string, noteName: string, wbData: any) {
     const booking = await this.prisma.booking.findUnique({
@@ -163,6 +164,58 @@ export class WhiteboardService {
         sharedAt: new Date(),
       },
     });
+
+    // Also export to S3 so we have a downloadable URL
+    let s3Url: string | null = null;
+    try {
+      const dataBuffer = Buffer.from(JSON.stringify(wbData));
+      s3Url = await this.s3Service.uploadFile(
+        dataBuffer,
+        `whiteboard-notes-${bookingId}.json`,
+        'whiteboards',
+      );
+      await this.prisma.whiteboardSession.update({
+        where: { bookingId },
+        data: { s3Url },
+      });
+    } catch (err) {
+      // S3 export is best-effort, don't fail the share
+    }
+
+    // Create a SessionNote record so shared notes appear in student's session notes page
+    try {
+      // Check if a whiteboard-based session note already exists for this booking
+      const existingNote = await this.prisma.sessionNote.findFirst({
+        where: {
+          bookingId,
+          authorId: userId,
+          content: { startsWith: '📝 Whiteboard Notes:' },
+        },
+      });
+
+      if (existingNote) {
+        // Update existing note
+        await this.prisma.sessionNote.update({
+          where: { id: existingNote.id },
+          data: {
+            content: `📝 Whiteboard Notes: ${noteName}\n\nShared whiteboard notes from class session. View the full whiteboard in your class details.`,
+          },
+        });
+      } else {
+        // Create new session note
+        await this.prisma.sessionNote.create({
+          data: {
+            bookingId,
+            authorId: userId,
+            content: `📝 Whiteboard Notes: ${noteName}\n\nShared whiteboard notes from class session. View the full whiteboard in your class details.`,
+            isAiGenerated: false,
+            approvedByTutor: true,
+          },
+        });
+      }
+    } catch (err) {
+      // SessionNote creation is best-effort, don't fail the share
+    }
 
     return {
       id: wb.id,
@@ -217,5 +270,62 @@ export class WhiteboardService {
       sharedAt: wb.sharedAt,
       s3Url: wb.s3Url,
     };
+  }
+
+  /**
+   * Get all shared whiteboard notes for the current user (tutor or student).
+   * Returns notes from all bookings where sharedAt is set.
+   */
+  async getMySharedNotes(userId: string) {
+    // Find all bookings where the user is tutor or student
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        OR: [
+          { tutor: { userId } },
+          { student: { userId } },
+        ],
+        whiteboardSessions: {
+          some: { sharedAt: { not: null } },
+        },
+      },
+      select: {
+        id: true,
+        startTime: true,
+        tutor: { select: { userId: true, user: { select: { name: true } } } },
+        student: { select: { userId: true, user: { select: { name: true } } } },
+        whiteboardSessions: {
+          where: { sharedAt: { not: null } },
+          select: {
+            id: true,
+            bookingId: true,
+            noteName: true,
+            sharedAt: true,
+            s3Url: true,
+          },
+        },
+      },
+      orderBy: { startTime: 'desc' },
+    });
+
+    return bookings.flatMap((booking) =>
+      booking.whiteboardSessions.map((wb) => {
+        const isTutor = booking.tutor.userId === userId;
+        const counterpartName = isTutor
+          ? booking.student?.user?.name || 'Student'
+          : booking.tutor?.user?.name || 'Tutor';
+        const classDate = booking.startTime
+          ? new Date(booking.startTime).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')
+          : '';
+        return {
+          id: wb.id,
+          bookingId: wb.bookingId,
+          noteName: wb.noteName || `ClassWhiteBoardNotes-${counterpartName}_${classDate}`,
+          sharedAt: wb.sharedAt,
+          s3Url: wb.s3Url,
+          counterpartName,
+          classDate: booking.startTime,
+        };
+      }),
+    );
   }
 }

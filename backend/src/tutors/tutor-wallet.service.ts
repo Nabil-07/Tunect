@@ -23,8 +23,12 @@ export class TutorWalletService {
     return {};
   }
 
-  private hasVerifiedAttendance(data: any): boolean {
-    const att = this.parseAttendance(data);
+  private hasVerifiedAttendance(attendanceRow: any, whiteboardData: any): boolean {
+    const dbTutor = !!attendanceRow?.tutorFirstJoinedAt || Number(attendanceRow?.tutorJoinCount ?? 0) > 0;
+    const dbStudent = !!attendanceRow?.studentFirstJoinedAt || Number(attendanceRow?.studentJoinCount ?? 0) > 0;
+    if (dbTutor && dbStudent) return true;
+
+    const att = this.parseAttendance(whiteboardData);
     return !!att.studentJoinedAt && !!att.tutorJoinedAt;
   }
 
@@ -62,6 +66,14 @@ export class TutorWalletService {
         startTime: true,
         endTime: true,
         tutor: { select: { hourlyRate: true } },
+        attendance: {
+          select: {
+            tutorJoinCount: true,
+            studentJoinCount: true,
+            tutorFirstJoinedAt: true,
+            studentFirstJoinedAt: true,
+          },
+        },
         whiteboardSessions: {
           select: { data: true },
           take: 1,
@@ -84,7 +96,7 @@ export class TutorWalletService {
     for (const booking of bookings) {
       if (credited.has(booking.id)) continue;
       if (booking.isDemo) continue;
-      if (!this.hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data)) continue;
+      if (!this.hasVerifiedAttendance(booking.attendance, booking.whiteboardSessions?.[0]?.data)) continue;
       const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
       if (!hours) continue;
 

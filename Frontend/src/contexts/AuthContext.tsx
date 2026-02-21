@@ -27,6 +27,8 @@ import React, {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { me as fetchMe, logout as doLogout } from '../services/authService';
 import { readToken, setAuthHeader, getTimeLeftSec, refreshAccessToken, writeToken, writeRefreshToken } from '../lib/apiClient';
+// Note: decryptField from '../utils/decryption' is used in the commented-out switchAccount
+// multi-account code below. Import it when uncommenting that section.
 import { getKycStatus, getMyProfile } from '../services/tutorService';
 // TODO: Next Release - Multi-account imports
 // import { getAccessToken, setTokens, clearTokens } from '../lib/auth';
@@ -611,8 +613,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (refreshResponse.data?.access_token) {
             console.log('✅ Token refreshed successfully');
-            const newAccessToken = refreshResponse.data.access_token;
-            const newRefreshToken = refreshResponse.data.refresh_token || account.refreshToken;
+            const rawAccess = refreshResponse.data.access_token;
+            const rawRefresh = refreshResponse.data.refresh_token || account.refreshToken;
+            const newAccessToken = (await decryptField(rawAccess)) || rawAccess;
+            const newRefreshToken = (await decryptField(rawRefresh)) || rawRefresh;
             
             // Update tokens
             setTokens({ 
@@ -766,8 +770,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (refreshResponse.data?.access_token) {
             console.log('✅ Token refreshed successfully');
-            const newAccessToken = refreshResponse.data.access_token;
-            const newRefreshToken = refreshResponse.data.refresh_token || account.refreshToken;
+            const rawAccess = refreshResponse.data.access_token;
+            const rawRefresh = refreshResponse.data.refresh_token || account.refreshToken;
+            const newAccessToken = (await decryptField(rawAccess)) || rawAccess;
+            const newRefreshToken = (await decryptField(rawRefresh)) || rawRefresh;
             
             // Update tokens
             setTokens({ 

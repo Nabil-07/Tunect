@@ -205,6 +205,8 @@ const AdminRefundRequests = lazy(() => import('./pages/admin/refund-requests'));
 const AdminAudit = lazy(() => import('./pages/admin/audit'));
 const AdminPolicyConfig = lazy(() => import('./pages/admin/policy-config'));
 const AdminControlsPage = lazy(() => import('./pages/admin/admin-controls'));
+const AdminManagement = lazy(() => import('./pages/admin/admins'));
+const AdminBookings = lazy(() => import('./pages/admin/bookings'));
 
 /** Role chooser */
 const ChooseRole = lazy(() => import('./pages/choose-role'));
@@ -451,6 +453,8 @@ function App() {
           <Route path="/admin/audit" element={<AdminAudit />} />
           <Route path="/admin/policy-config" element={<AdminPolicyConfig />} />
           <Route path="/admin/controls" element={<AdminControlsPage />} />
+          <Route path="/admin/admins" element={<AdminManagement />} />
+          <Route path="/admin/bookings" element={<AdminBookings />} />
         </Route>
 
         {/* 404 Fallback */}

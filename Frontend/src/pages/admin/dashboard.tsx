@@ -46,7 +46,7 @@ export default function AdminDashboard() {
   const mainActions = [
     { icon: GraduationCap, label: 'Tutors', value: stats.totals.tutors, color: 'indigo', to: '/admin/tutors', action: 'Manage' },
     { icon: Users, label: 'Students', value: stats.totals.students, color: 'blue', to: '/admin/students', action: 'Manage' },
-    { icon: BookOpen, label: 'Bookings', value: stats.totals.bookings, color: 'purple', to: '/admin/reports', action: 'View' },
+    { icon: BookOpen, label: 'Bookings', value: stats.totals.bookings, color: 'purple', to: '/admin/bookings', action: 'View' },
     { icon: CreditCard, label: 'Payments', value: stats.totals.payments, color: 'green', to: '/admin/finance', action: 'Manage' },
   ];
 

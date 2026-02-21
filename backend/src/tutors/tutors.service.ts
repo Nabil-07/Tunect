@@ -205,6 +205,36 @@ function hasVerifiedAttendance(data: unknown): boolean {
   return !!attendance.studentJoinedAt && !!attendance.tutorJoinedAt;
 }
 
+function hasTutorAttendanceDb(attendanceRow: any): boolean {
+  return (
+    !!attendanceRow?.tutorFirstJoinedAt ||
+    (Number(attendanceRow?.tutorJoinCount ?? 0) > 0)
+  );
+}
+
+function hasStudentAttendanceDb(attendanceRow: any): boolean {
+  return (
+    !!attendanceRow?.studentFirstJoinedAt ||
+    (Number(attendanceRow?.studentJoinCount ?? 0) > 0)
+  );
+}
+
+function hasVerifiedAttendanceCombined(attendanceRow: any, whiteboardData: unknown): boolean {
+  const dbOk = hasTutorAttendanceDb(attendanceRow) && hasStudentAttendanceDb(attendanceRow);
+  if (dbOk) return true;
+  return hasVerifiedAttendance(whiteboardData);
+}
+
+function hasTutorAttendance(data: unknown): boolean {
+  const attendance = parseAttendance(data);
+  return !!attendance.tutorJoinedAt;
+}
+
+function hasStudentAttendance(data: unknown): boolean {
+  const attendance = parseAttendance(data);
+  return !!attendance.studentJoinedAt;
+}
+
 function normalizeTutor(row: any): TutorPublic { // NOSONAR
   const subjectsArr: string[] = Array.isArray(row?.subjects) ? row.subjects : [];
   const classesTeachArr: string[] = Array.isArray(row?.classesTeach) ? row.classesTeach : [];
@@ -1214,6 +1244,14 @@ export class TutorsService {
         endTime: true,
         status: true,
         isDemo: true,
+        attendance: {
+          select: {
+            tutorJoinCount: true,
+            studentJoinCount: true,
+            tutorFirstJoinedAt: true,
+            studentFirstJoinedAt: true,
+          },
+        },
         whiteboardSessions: {
           take: 1,
           select: { data: true },
@@ -1254,9 +1292,22 @@ export class TutorsService {
           : 'Session';
 
       let status: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED' | 'EXPIRED' | 'NO_SHOW' | 'CANCELED' = 'CONFIRMED';
+      const wbData = booking.whiteboardSessions?.[0]?.data;
+      const tutorDidJoin = hasTutorAttendanceDb(booking.attendance) || hasTutorAttendance(wbData);
+      const studentDidJoin = hasStudentAttendanceDb(booking.attendance) || hasStudentAttendance(wbData);
+      const bothJoined = tutorDidJoin && studentDidJoin;
+
       if (booking.status === BookingStatus.CANCELED) {
-        status = 'CANCELED';
+        // Check if this was a "both missing" cancellation vs user-initiated cancel
+        // If neither party joined and endTime has passed, show as EXPIRED
+        const sessionEnded = booking.endTime && new Date(booking.endTime) <= now;
+        if (sessionEnded && !tutorDidJoin && !studentDidJoin) {
+          status = 'EXPIRED';
+        } else {
+          status = 'CANCELED';
+        }
       } else if (booking.status === BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW) {
+        // Tutor didn't join — NO_SHOW (tutor's fault)
         status = 'NO_SHOW';
       } else if (booking.status === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW) {
         // Student didn't join but tutor did — tutor gets paid, show as COMPLETED
@@ -1264,9 +1315,8 @@ export class TutorsService {
       } else if (booking.status === BookingStatus.PENDING_SLOT) {
         status = 'PENDING_SLOT';
       } else if (booking.status === BookingStatus.COMPLETED) {
-        status = hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data)
-          ? 'COMPLETED'
-          : 'CONFIRMED';
+        // DB says completed — trust it (both attended or admin-completed)
+        status = 'COMPLETED';
       } else if (
         booking.status === BookingStatus.CONFIRMED ||
         booking.status === BookingStatus.WAITING_ROOM ||
@@ -1275,12 +1325,19 @@ export class TutorsService {
         const sessionStarted = new Date(booking.startTime!) <= now;
         const sessionEnded = new Date(booking.endTime!) <= now;
         if (sessionEnded) {
-          const hasAttendance = hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data);
-          if (hasAttendance || booking.status === BookingStatus.LIVE) {
-            // Both participants attended, or session reached LIVE (both joined) — show as COMPLETED
+          if (bothJoined) {
+            // Both attended — COMPLETED (cron will finalize DB status)
             status = 'COMPLETED';
+          } else if (tutorDidJoin && !studentDidJoin) {
+            // Tutor joined, student didn't — tutor still gets paid
+            // Show COMPLETED for tutor (handlePostClassNoShow cron will mark AUTO_CANCELLED_STUDENT_NO_SHOW)
+            status = 'COMPLETED';
+          } else if (!tutorDidJoin && studentDidJoin) {
+            // Student joined, tutor didn't — tutor no-show (tutor's fault)
+            // handleNoShowBookings should have already caught this; show NO_SHOW
+            status = 'NO_SHOW';
           } else {
-            // Session time passed but no verified attendance — show as EXPIRED
+            // Neither joined — EXPIRED (company keeps tokens)
             status = 'EXPIRED';
           }
         } else if (sessionStarted) {
@@ -1289,6 +1346,24 @@ export class TutorsService {
         } else {
           status = 'UPCOMING';
         }
+      }
+
+      // Determine attendance info for contextual UI messages
+      let attendanceInfo: 'both_joined' | 'tutor_only' | 'student_only' | 'neither' | null = null;
+      if (
+        booking.status === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW ||
+        (status === 'COMPLETED' && tutorDidJoin && !studentDidJoin)
+      ) {
+        attendanceInfo = 'tutor_only';
+      } else if (
+        booking.status === BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW ||
+        (status === 'NO_SHOW' && !tutorDidJoin && studentDidJoin)
+      ) {
+        attendanceInfo = 'student_only';
+      } else if (status === 'EXPIRED' && !tutorDidJoin && !studentDidJoin) {
+        attendanceInfo = 'neither';
+      } else if (status === 'COMPLETED' && bothJoined) {
+        attendanceInfo = 'both_joined';
       }
 
       return {
@@ -1300,6 +1375,7 @@ export class TutorsService {
         endTime: booking.endTime!.toISOString(),
         status,
         isDemo: booking.isDemo,
+        attendanceInfo,
       };
     });
 
@@ -1326,6 +1402,14 @@ export class TutorsService {
       },
       select: {
         studentId: true,
+        attendance: {
+          select: {
+            tutorJoinCount: true,
+            studentJoinCount: true,
+            tutorFirstJoinedAt: true,
+            studentFirstJoinedAt: true,
+          },
+        },
         whiteboardSessions: {
           take: 1,
           select: { data: true },
@@ -1334,7 +1418,7 @@ export class TutorsService {
     });
     const activeStudentsCount = new Set(
       attendedCompletedForActive
-        .filter((b) => hasVerifiedAttendance(b.whiteboardSessions?.[0]?.data))
+        .filter((b) => hasVerifiedAttendanceCombined(b.attendance, b.whiteboardSessions?.[0]?.data))
         .map((b) => b.studentId),
     ).size;
 
@@ -1351,6 +1435,14 @@ export class TutorsService {
         isDemo: true,
         tokensCharged: true,
         tutor: { select: { hourlyRate: true } },
+        attendance: {
+          select: {
+            tutorJoinCount: true,
+            studentJoinCount: true,
+            tutorFirstJoinedAt: true,
+            studentFirstJoinedAt: true,
+          },
+        },
         whiteboardSessions: {
           take: 1,
           select: { data: true },
@@ -1359,7 +1451,7 @@ export class TutorsService {
     });
 
     const attendedCompletedBookings = completedBookings.filter((b) =>
-      hasVerifiedAttendance(b.whiteboardSessions?.[0]?.data),
+      hasVerifiedAttendanceCombined(b.attendance, b.whiteboardSessions?.[0]?.data),
     );
 
     const sessionsCompleted = attendedCompletedBookings.length;

@@ -2,7 +2,7 @@
 import { http as api } from '../api/http';
 import { getAccessToken, clearTokens } from '../lib/auth';
 import { writeToken, writeRefreshToken } from '../lib/apiClient';
-import { decryptObject } from '../utils/decryption';
+import { decryptObject, decryptField } from '../utils/decryption';
 
 export type RoleApi = "STUDENT" | "TUTOR" | "ADMIN";
 export type SignupRoleUi = "student" | "tutor";
@@ -47,12 +47,17 @@ export function setRole(role: RoleApi | null) {
   } catch {}
 }
 
-function persistAuth(data: LoginResponse) {
-  const access = pickAccess(data);
+async function persistAuth(data: LoginResponse) {
+  // Decrypt tokens if they were encrypted by the backend interceptor
+  const rawAccess = pickAccess(data);
+  const rawRefresh = pickRefresh(data);
+
+  const access = (await decryptField(rawAccess)) || rawAccess;
   if (!access) throw new Error("Login succeeded but no access token returned.");
 
+  const refresh = (await decryptField(rawRefresh)) || rawRefresh;
+
   // Save tokens using the proper auth utility that respects storage preference
-  const refresh = pickRefresh(data);
   writeToken(access);
   if (refresh) writeRefreshToken(refresh);
 
@@ -104,7 +109,7 @@ export async function me(): Promise<any | null> {
   for (const url of candidates) {
     try {
       const { data } = await api.get(url);
-      const decrypted = await decryptObject(data, ['avatarUrl', 'avatar', 'user.avatarUrl']);
+      const decrypted = await decryptObject(data, ['avatarUrl', 'avatar', 'user.avatarUrl', 'user.avatar']);
       if (url.startsWith("/students")) setRole("STUDENT");
       if (url.startsWith("/tutors")) setRole("TUTOR");
 
@@ -124,7 +129,7 @@ export async function login(email: string, password: string) {
     email: email.trim().toLowerCase(),
     password,
   });
-  persistAuth(data);
+  await persistAuth(data);
   try {
     await me();
   } catch {}

@@ -194,13 +194,9 @@ export default function MySessions() {
       return { label: 'Expired', color: 'bg-orange-100 text-orange-700' };
     }
 
-    // WAITING_ROOM or LIVE that has ended — check attendance
+    // WAITING_ROOM or LIVE that has ended = Expired (tutor/student didn't both stay)
     if (status === 'WAITING_ROOM' || status === 'LIVE') {
       if (session.endTime && new Date(session.endTime) < now) {
-        // Session ended — check if student attended
-        if (session.hasAttended === true) {
-          return { label: 'Completed', color: 'bg-green-100 text-green-700' };
-        }
         return { label: 'Expired', color: 'bg-orange-100 text-orange-700' };
       }
       // Still ongoing
@@ -235,8 +231,17 @@ export default function MySessions() {
     const statusMap: Record<string, { label: string; color: string }> = {
       PENDING: { label: 'Pending', color: 'bg-amber-100 text-amber-700' },
       PENDING_SLOT: { label: 'Pending Slot', color: 'bg-amber-100 text-amber-700' },
-      CANCELED: { label: 'Cancelled', color: 'bg-red-100 text-red-700' },
     };
+
+    // CANCELED: distinguish user-initiated cancellation vs both-missing auto-cancel
+    if (status === 'CANCELED') {
+      if (session.endTime && new Date(session.endTime) < now && !session.hasAttended) {
+        // Post-endTime cancel with no attendance → both-missing scenario
+        return { label: 'Expired', color: 'bg-orange-100 text-orange-700' };
+      }
+      return { label: 'Cancelled', color: 'bg-red-100 text-red-700' };
+    }
+
     return statusMap[status] || { label: status, color: 'bg-slate-100 text-slate-700' };
   };
 
@@ -559,8 +564,8 @@ export default function MySessions() {
                         )}
                       </div>
 
-                      {/* Manually cancelled session */}
-                      {session.status === 'CANCELED' && (
+                      {/* Manually cancelled session (not auto-cancel from both-missing scenario) */}
+                      {session.status === 'CANCELED' && statusMeta.label === 'Cancelled' && (
                         <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 mb-2">
                           <p className="text-xs font-semibold text-red-700">
                             This session was cancelled.

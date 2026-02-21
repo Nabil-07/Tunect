@@ -28,6 +28,7 @@ import { AssignDemoSlotDto } from './dto/assign-demo-slot.dto';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { CreateGroupBookingDto, JoinGroupBookingDto } from './dto/group-booking.dto';
 import { ConvertToGroupSessionDto } from './dto/convert-to-group.dto';
+import { AttendanceEventDto } from './dto/attendance-event.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -250,6 +251,36 @@ export class BookingsController {
   @UseGuards(RolesGuard)
   complete(@Param('id') id: string, @CurrentUser('sub') actorUserId: string) {
     return this.service.complete(id, actorUserId);
+  }
+
+  // ---------- Tutor No-Show (instant refund) ----------
+  @ApiOperation({ summary: 'Process tutor no-show — refund student immediately' })
+  @ApiParam({ name: 'id', required: true, description: 'Booking ID' })
+  @Post(':id/tutor-no-show')
+  @Roles(Role.STUDENT)
+  @UseGuards(RolesGuard)
+  processTutorNoShow(
+    @Param('id') id: string,
+    @CurrentUser('sub') actorUserId: string,
+  ) {
+    return this.service.processTutorNoShow(id, actorUserId);
+  }
+
+  // ---------- Attendance (DB-backed) ----------
+  @ApiOperation({ summary: 'Record attendance event (JOIN/LEAVE) for the booking' })
+  @ApiParam({ name: 'id', required: true, description: 'Booking ID' })
+  @Post(':id/attendance')
+  @Roles(Role.STUDENT, Role.TUTOR, Role.ADMIN)
+  @UseGuards(RolesGuard)
+  recordAttendance(
+    @Param('id') id: string,
+    @Body() dto: AttendanceEventDto,
+    @CurrentUser('sub') actorUserId: string,
+    @CurrentUser('role') actorRole: Role,
+    @CurrentUser('tutorId') tutorId?: string,
+    @CurrentUser('studentId') studentId?: string,
+  ) {
+    return this.service.recordAttendanceEvent(id, dto, actorUserId, actorRole, tutorId, studentId);
   }
 
   // ---------- Cancel ----------

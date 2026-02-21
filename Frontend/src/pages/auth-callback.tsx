@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { http as api } from '../api/http';
 import { setTokens } from '../lib/auth';
+import { decryptField } from '../utils/decryption';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 
@@ -45,9 +46,11 @@ export default function AuthCallback() {
           localStorage.removeItem('remember_intent');
         } catch {}
 
-        // ---- tokens - store using new auth utility ----
+        // ---- tokens - store using new auth utility (decrypt if encrypted) ----
         if (access) {
-          setTokens({ accessToken: access, refreshToken: refresh || undefined });
+          const decryptedAccess = (await decryptField(access)) || access;
+          const decryptedRefresh = refresh ? ((await decryptField(refresh)) || refresh) : undefined;
+          setTokens({ accessToken: decryptedAccess, refreshToken: decryptedRefresh });
         }
 
         // ---- hydrate current user ----

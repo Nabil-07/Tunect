@@ -56,7 +56,7 @@ export default function StudentProfile() {
     try {
       setLoading(true);
       const { data } = await api.get<StudentProfile>('/students/me');
-      const decrypted = await decryptObject(data, ['user.phone', 'user.avatarUrl']);
+      const decrypted = await decryptObject(data, ['user.phone', 'user.avatarUrl', 'user.avatar']);
       setProfile(decrypted);
 
       if (decrypted?.user) {
