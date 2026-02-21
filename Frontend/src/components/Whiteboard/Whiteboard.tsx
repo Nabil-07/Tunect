@@ -10,6 +10,13 @@ import {
 import '@excalidraw/excalidraw/index.css';
 import { readToken } from '../../lib/apiClient';
 
+/** Minimal shape for sync comparison — Excalidraw elements always have these. */
+interface SyncElement {
+  id: string;
+  version: number;
+  [key: string]: unknown;
+}
+
 interface WhiteboardProps {
   bookingId: string;
   isReadOnly?: boolean;
@@ -67,10 +74,66 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
     };
   }, []);
 
+  // Poll-based realtime sync: periodically fetch latest whiteboard data
+  // so both participants see each other's changes.
   useEffect(() => {
-    if (!realtime) return;
-    // LiveKit-based realtime sync can be added later via data channels.
-  }, [realtime]);
+    if (!realtime || !excalidrawAPI) return;
+    const POLL_INTERVAL = 3000; // 3 seconds
+
+    const buildFingerprint = (elements: readonly ExcalidrawElement[]) =>
+      (elements as unknown as SyncElement[])
+        .map((e) => `${e.id}:${e.version}`)
+        .sort((a, b) => a.localeCompare(b))
+        .join(',');
+
+    const mergeElements = (
+      localElements: readonly ExcalidrawElement[],
+      remoteElements: ExcalidrawElement[],
+    ): ExcalidrawElement[] => {
+      const locals = localElements as unknown as SyncElement[];
+      const remotes = remoteElements as unknown as SyncElement[];
+      const localMap = new Map(locals.map((e) => [e.id, e]));
+      const merged: SyncElement[] = [];
+      const seen = new Set<string>();
+
+      for (const remote of remotes) {
+        const local = localMap.get(remote.id);
+        merged.push(!local || remote.version >= local.version ? remote : local);
+        seen.add(remote.id);
+      }
+      // Keep any local-only elements (not yet saved to backend)
+      for (const local of locals) {
+        if (!seen.has(local.id)) merged.push(local);
+      }
+      return merged as unknown as ExcalidrawElement[];
+    };
+
+    const pollLatest = async () => {
+      try {
+        const tkn = readToken();
+        const response = await fetch(whiteboardUrl, {
+          headers: tkn ? { Authorization: `Bearer ${tkn}` } : undefined,
+        });
+        if (!response.ok) return;
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) return;
+        const data = await response.json();
+        if (!data?.elements) return;
+
+        const localElements = excalidrawAPI.getSceneElements();
+        const remoteElements = (data.elements || []) as ExcalidrawElement[];
+
+        if (buildFingerprint(localElements) !== buildFingerprint(remoteElements)) {
+          excalidrawAPI.updateScene({ elements: mergeElements(localElements, remoteElements) });
+        }
+      } catch {
+        // Silently ignore poll errors
+      }
+    };
+
+    const iv = setInterval(pollLatest, POLL_INTERVAL);
+    return () => clearInterval(iv);
+  }, [realtime, excalidrawAPI, whiteboardUrl]);
 
   useEffect(() => {
     if (!excalidrawAPI || !pendingScene) return;

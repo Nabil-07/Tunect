@@ -70,12 +70,13 @@ function LivekitStage() {
   );
 }
 
-function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate }: {
+function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate, tutorAlreadyJoined }: {
   bookingId: string;
   endTime?: string | null;
   isTutor?: boolean;
   counterpartName?: string;
   classDate?: string;
+  tutorAlreadyJoined?: boolean;
 }) {
   const participants = useParticipants() as Participant[];
   const room = useRoomContext();
@@ -101,10 +102,26 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
 
   // 10-minute no-show timer: ONLY for students waiting for tutor
   // Tutors stay in class until class ends regardless of student joining
+  // If tutor already joined before (attendance data), skip the no-show timer entirely
+  // Add a 15s grace period after mount to let LiveKit connect before evaluating
+  const [livekitReady, setLivekitReady] = useState(false);
+
+  useEffect(() => {
+    // Give LiveKit time to connect and populate participants before evaluating no-show
+    const grace = setTimeout(() => setLivekitReady(true), 15000);
+    // If both join before the grace period, mark ready immediately
+    if (hasBothJoined) {
+      clearTimeout(grace);
+      setLivekitReady(true);
+    }
+    return () => clearTimeout(grace);
+  }, [hasBothJoined]);
+
   useEffect(() => {
     if (isTutor) return; // tutors don't get a countdown — they stay until class ends
     if (hasBothJoined || showNoShowModal) return; // both joined or already showing modal
     if (!classDate) return;
+    if (tutorAlreadyJoined) return; // tutor previously joined — don't trigger no-show
 
     const startTime = new Date(classDate).getTime();
     const noShowDeadline = startTime + 10 * 60 * 1000; // 10 min after start
@@ -113,6 +130,12 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
       const now = Date.now();
       const diff = noShowDeadline - now;
       if (diff <= 0) {
+        // Deadline passed — but only trigger modal if LiveKit has had time to connect
+        if (!livekitReady) {
+          // Still waiting for LiveKit — keep the countdown at 00:00 but don't fire yet
+          setNoShowCountdown("00:00");
+          return;
+        }
         setNoShowCountdown(null);
         // Time's up — show the no-show modal
         setShowNoShowModal(true);
@@ -126,7 +149,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
     tick();
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
-  }, [classDate, hasBothJoined, showNoShowModal, room, isTutor]);
+  }, [classDate, hasBothJoined, showNoShowModal, room, isTutor, tutorAlreadyJoined, livekitReady]);
 
   // Class end timer
   useEffect(() => {
@@ -209,7 +232,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
             <AlertTriangle className="h-8 w-8 text-orange-600" />
           </div>
           <h2 className="text-xl font-bold text-slate-900">
-            Tutor didn\u2019t join the class
+            Tutor didn&rsquo;t join the class
           </h2>
           <p className="text-sm text-slate-600">
             The tutor did not join within 10 minutes of the scheduled start time. Your 1 token has been refunded automatically.
@@ -263,7 +286,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
 
           {isWhiteboardActive ? (
             <div className="absolute inset-0 rounded-2xl border bg-white overflow-hidden">
-              <Whiteboard ref={whiteboardRef} bookingId={bookingId} className="w-full h-full" />
+              <Whiteboard ref={whiteboardRef} bookingId={bookingId} realtime className="w-full h-full" />
             </div>
           ) : (
             <LivekitStage />
@@ -385,6 +408,8 @@ export default function CallPage() {
   const [token, setToken] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
+  const [connectionLost, setConnectionLost] = useState<string | null>(null);
+  const [rejoining, setRejoining] = useState(false);
   const [isTutor, setIsTutor] = useState(false);
   const [counterpartName, setCounterpartName] = useState("");
 
@@ -527,6 +552,54 @@ export default function CallPage() {
       });
   }, [bookingId, data, me]);
 
+  // Handler to rejoin after connection loss
+  const handleRejoin = useCallback(async () => {
+    if (!bookingId) return;
+    setRejoining(true);
+    try {
+      // Re-fetch booking details to get latest attendance & status
+      const freshData = await getBookingDetails(bookingId);
+      setData(freshData);
+
+      // Check if class was cancelled/ended while we were disconnected
+      if (
+        freshData.status === "CANCELED" ||
+        freshData.status === "AUTO_CANCELLED_TUTOR_NO_SHOW" ||
+        freshData.status === "AUTO_CANCELLED_STUDENT_NO_SHOW" ||
+        freshData.status === "COMPLETED"
+      ) {
+        setConnectionLost(null);
+        setDisconnected(true);
+        return;
+      }
+
+      // Get a fresh LiveKit token
+      const res = await fetchLivekitToken(bookingId);
+      let tokenString: string | undefined;
+      if (typeof res.token === 'string') tokenString = res.token;
+      else if ((res as any).data?.token) tokenString = (res as any).data.token;
+      else if (typeof res === 'string') tokenString = res;
+      else if (res.token && typeof res.token === 'object') {
+        const tokenObj = res.token as any;
+        tokenString = tokenObj.value || tokenObj.jwt || tokenObj.token;
+      }
+
+      if (!tokenString || typeof tokenString !== 'string' || tokenString.length < 10) {
+        showError('Failed to get valid token. Please try again.');
+        return;
+      }
+
+      // Clear error states and reconnect
+      setConnectionLost(null);
+      setDisconnected(false);
+      setToken(tokenString);
+    } catch (err: any) {
+      showError(err?.response?.data?.message || 'Failed to rejoin. Please try again.');
+    } finally {
+      setRejoining(false);
+    }
+  }, [bookingId, showError]);
+
   if (!bookingId) {
     return <div className="p-6">Invalid booking</div>;
   }
@@ -557,6 +630,38 @@ export default function CallPage() {
       <div className="p-6">
         <div className="text-lg font-semibold text-slate-900">Access denied</div>
         <div className="mt-2 text-sm text-slate-700">{accessDenied}</div>
+      </div>
+    );
+  }
+
+  // Connection lost — show reconnect UI instead of permanent error
+  if (connectionLost) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 sm:p-8 text-center space-y-5">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+            <AlertTriangle className="h-8 w-8 text-amber-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Connection Lost</h2>
+          <p className="text-sm text-slate-600">
+            {connectionLost}
+          </p>
+          <div className="flex flex-col gap-3 pt-2">
+            <button
+              onClick={handleRejoin}
+              disabled={rejoining}
+              className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 transition-colors disabled:bg-slate-400"
+            >
+              {rejoining ? 'Rejoining…' : 'Rejoin Class'}
+            </button>
+            <button
+              onClick={() => navigate(`/class/${bookingId}`)}
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Back to Class Details
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -614,21 +719,24 @@ export default function CallPage() {
           connect={true}
           onDisconnected={(reason) => {
             console.log('LiveKit disconnected:', reason);
-            // Only show "Call ended" if it was a normal disconnection, not a connection failure
-            // Check if it's a user-initiated disconnect or if the session actually ended
+            // Normal disconnect: user clicked Leave or server ended the session
             if (reason === DisconnectReason.CLIENT_INITIATED || reason === DisconnectReason.SERVER_SHUTDOWN) {
               setDisconnected(true);
             } else {
-              // Connection error - show error message instead of "Call ended"
+              // Connection lost (network issue, etc.) — show rejoin UI instead of permanent error
               const errorMsg = reason !== undefined
-                ? `Connection lost: ${DisconnectReason[reason] || reason}` 
-                : 'Unable to connect to LiveKit server. Please check your network connection and ensure the LiveKit server is accessible.';
-              setAccessDenied(errorMsg);
+                ? `Your connection was interrupted (${DisconnectReason[reason] || reason}). You can rejoin the class.` 
+                : 'Your connection was interrupted. Please check your network and rejoin.';
+              setConnectionLost(errorMsg);
+              // Clear the token so a fresh one is fetched on rejoin
+              setToken(null);
             }
           }}
           onError={(error) => {
             console.error('LiveKit error:', error);
-            setAccessDenied(`Connection error: ${error.message || 'Failed to connect to LiveKit server. Please check your network connection.'}`);
+            // Show as connection lost (rejoinable) rather than permanent access denied
+            setConnectionLost(`Connection error: ${error.message || 'Failed to connect to LiveKit server. Please check your network connection.'}`);
+            setToken(null);
           }}
           className="h-full"
         >
@@ -638,6 +746,7 @@ export default function CallPage() {
             isTutor={isTutor}
             counterpartName={counterpartName}
             classDate={data?.startTime || undefined}
+            tutorAlreadyJoined={!!data?.attendance?.tutorJoinedAt}
           />
         </LiveKitRoom>
       )}
