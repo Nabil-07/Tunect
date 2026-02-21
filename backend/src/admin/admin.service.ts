@@ -179,7 +179,7 @@ export class AdminService {
       this.prisma.tutor.findMany({
         where, skip, take: pageSize, orderBy: { updatedAt: 'desc' },
         select: {
-          id: true, bio: true, hourlyRate: true, status: true, subjects: true, createdAt: true, demeritPoints: true,
+          id: true, bio: true, hourlyRate: true, status: true, subjects: true, createdAt: true, demeritPoints: true, isTrending: true,
           user: { select: { id: true, email: true, name: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
@@ -236,6 +236,32 @@ export class AdminService {
       endpoint: auditInfo.endpoint,
       ipAddress: auditInfo.ipAddress,
     });
+    return updated;
+  }
+
+  async setTutorTrending(tutorId: string, isTrending: boolean, adminId: string, req?: Request) {
+    const before = await this.prisma.tutor.findUnique({ where: { id: tutorId }, select: { id: true, isTrending: true } });
+    if (!before) throw new NotFoundException('Tutor not found');
+    const updated = await this.prisma.tutor.update({
+      where: { id: tutorId },
+      data: { isTrending },
+      select: { id: true, isTrending: true, updatedAt: true },
+    });
+
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
+    this.audit.log({
+      adminId,
+      action: 'TUTOR_TRENDING_UPDATE',
+      entityType: AuditEntityType.TUTOR,
+      entityId: tutorId,
+      beforeData: { isTrending: before.isTrending },
+      afterData: { isTrending },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
+    });
+
+    // Invalidate trending cache
+    this.cache.delete('GET /admin/tutors {}');
     return updated;
   }
 

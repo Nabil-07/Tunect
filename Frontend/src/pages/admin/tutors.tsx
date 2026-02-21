@@ -5,6 +5,7 @@ import { ChevronUp, ChevronDown, ChevronDown as ChevronDownIcon } from 'lucide-r
 import {
   fetchTutors,
   updateTutorStatus,
+  setTutorTrending,
   unbanUser,
   type TutorSummary,
   type TutorStatus,
@@ -369,6 +370,7 @@ export default function AdminTutors() {
                   </div>
                 </th>
                 <th className="px-4 py-3 text-left">Demerits</th>
+                <th className="px-4 py-3 text-center">Trending</th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
               {/* Filter Row */}
@@ -465,6 +467,7 @@ export default function AdminTutors() {
                 <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -540,6 +543,31 @@ export default function AdminTutors() {
                     ) : (
                       <span className="text-slate-400">0</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const newVal = !t.isTrending;
+                          await setTutorTrending(t.id, newVal);
+                          setTutors((prev) => prev.map((x) => (x.id === t.id ? { ...x, isTrending: newVal } : x)));
+                        } catch (err: any) {
+                          setError(err?.response?.data?.message || 'Failed to update trending');
+                        }
+                      }}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                        t.isTrending ? 'bg-indigo-600' : 'bg-slate-200'
+                      }`}
+                      role="switch"
+                      aria-checked={!!t.isTrending}
+                      title={t.isTrending ? 'Remove from trending' : 'Add to trending'}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          t.isTrending ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">

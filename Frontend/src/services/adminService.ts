@@ -45,6 +45,7 @@ export interface TutorSummary {
 	subjects: string[];
 	createdAt: string;
 	demeritPoints?: number;
+	isTrending?: boolean;
 	user: {
 		id: string;
 		email: string;
@@ -185,6 +186,11 @@ export async function fetchTutors(params: {
 export async function updateTutorStatus(id: string, status: TutorStatus) {
 	const { data } = await api.patch(`/admin/tutors/${id}/status`, { status });
 	return data as { id: string; status: TutorStatus; updatedAt: string };
+}
+
+export async function setTutorTrending(id: string, isTrending: boolean) {
+	const { data } = await api.patch(`/admin/tutors/${id}/trending`, { isTrending });
+	return data as { id: string; isTrending: boolean; updatedAt: string };
 }
 
 export async function fetchStudents(params: { q?: string; page?: number; pageSize?: number } = {}): Promise<Paginated<StudentSummary>> {
