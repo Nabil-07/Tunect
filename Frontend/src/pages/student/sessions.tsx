@@ -194,9 +194,13 @@ export default function MySessions() {
       return { label: 'Expired', color: 'bg-orange-100 text-orange-700' };
     }
 
-    // WAITING_ROOM or LIVE that has ended = Expired (tutor/student didn't both stay)
+    // WAITING_ROOM or LIVE that has ended — check attendance
     if (status === 'WAITING_ROOM' || status === 'LIVE') {
       if (session.endTime && new Date(session.endTime) < now) {
+        // Session ended — check if student attended
+        if (session.hasAttended === true) {
+          return { label: 'Completed', color: 'bg-green-100 text-green-700' };
+        }
         return { label: 'Expired', color: 'bg-orange-100 text-orange-700' };
       }
       // Still ongoing

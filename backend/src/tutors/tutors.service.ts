@@ -1276,8 +1276,8 @@ export class TutorsService {
         const sessionEnded = new Date(booking.endTime!) <= now;
         if (sessionEnded) {
           const hasAttendance = hasVerifiedAttendance(booking.whiteboardSessions?.[0]?.data);
-          if (hasAttendance) {
-            // Both participants attended — show as COMPLETED
+          if (hasAttendance || booking.status === BookingStatus.LIVE) {
+            // Both participants attended, or session reached LIVE (both joined) — show as COMPLETED
             status = 'COMPLETED';
           } else {
             // Session time passed but no verified attendance — show as EXPIRED

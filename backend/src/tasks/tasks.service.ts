@@ -102,7 +102,7 @@ export class TasksService {
     const now = new Date();
     const bookings = await this.prisma.booking.findMany({
       where: {
-        status: BookingStatus.CONFIRMED,
+        status: { in: [BookingStatus.CONFIRMED, BookingStatus.LIVE, BookingStatus.WAITING_ROOM] },
         endTime: { not: null, lt: now },
       },
       select: {
