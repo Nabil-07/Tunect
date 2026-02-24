@@ -163,16 +163,18 @@ export class AdminService {
 
     const { page, pageSize, skip } = this.paginate(q);
 
-    const where: Prisma.TutorWhereInput | undefined = (() => {
-      const w: Prisma.TutorWhereInput = {};
+    const where: Prisma.TutorWhereInput = (() => {
+      const w: Prisma.TutorWhereInput = {
+        user: { is: { deletedAt: null } }, // exclude deactivated/deleted users
+      };
       if (q.status) w.status = q.status;
       if (q.q) {
         w.OR = [
           { bio: { contains: q.q, mode: Prisma.QueryMode.insensitive } },
-          { user: { is: { email: { contains: q.q, mode: Prisma.QueryMode.insensitive } } } },
+          { user: { is: { email: { contains: q.q, mode: Prisma.QueryMode.insensitive }, deletedAt: null } } },
         ];
       }
-      return Object.keys(w).length ? w : undefined;
+      return w;
     })();
 
     const [items, total] = await this.prisma.$transaction([
@@ -272,14 +274,18 @@ export class AdminService {
 
     const { page, pageSize, skip } = this.paginate(q);
 
-    const where: Prisma.StudentWhereInput | undefined = q.q
-      ? {
-          OR: [
-            { user: { is: { email: { contains: q.q, mode: Prisma.QueryMode.insensitive } } } },
-            { grade: { contains: q.q, mode: Prisma.QueryMode.insensitive } },
-          ],
-        }
-      : undefined;
+    const where: Prisma.StudentWhereInput = (() => {
+      const w: Prisma.StudentWhereInput = {
+        user: { is: { deletedAt: null } }, // exclude deactivated/deleted users
+      };
+      if (q.q) {
+        w.OR = [
+          { user: { is: { email: { contains: q.q, mode: Prisma.QueryMode.insensitive }, deletedAt: null } } },
+          { grade: { contains: q.q, mode: Prisma.QueryMode.insensitive } },
+        ];
+      }
+      return w;
+    })();
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.student.findMany({

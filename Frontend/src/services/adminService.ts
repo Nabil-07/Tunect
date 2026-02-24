@@ -245,26 +245,34 @@ export async function requestKycResubmission(tutorId: string, fields: string[], 
 }
 
 export async function sendSubjectBroadcast(subject: string, message: string) {
-	const name = subject.trim() || 'Announcement';
-	const { data: tutorPage } = await api.get('/admin/tutors', { params: { page: 1, pageSize: 200 } });
-	const recipients = (tutorPage?.items as TutorSummary[] | undefined) ?? [];
-	const memberIds = recipients
-		.filter((t) => {
-			if (!subject.trim()) return true;
-			return (t.subjects || []).some((s) => s.toLowerCase().includes(subject.trim().toLowerCase()));
-		})
-		.map((t) => t.user.id);
-
-	if (memberIds.length === 0) {
-		throw new Error('No tutors found to broadcast to for that subject.');
-	}
-
 	const res = await api.post('/chat/broadcast', {
-		name,
-		memberIds,
-		initialMessage: message,
+		message,
+		subject: subject.trim() || undefined,
 	});
 	return res.data;
+}
+
+export async function sendAdminPrivateMessage(recipientId: string, message: string) {
+	const res = await api.post('/chat/private-message', {
+		recipientId,
+		message,
+	});
+	return res.data;
+}
+
+export async function fetchBroadcastHistory(page = 1, pageSize = 20) {
+	const { data } = await api.get('/chat/broadcasts', { params: { page, pageSize } });
+	return data;
+}
+
+export async function fetchPrivateMessageHistory(page = 1, pageSize = 20) {
+	const { data } = await api.get('/chat/private-messages', { params: { page, pageSize } });
+	return data;
+}
+
+export async function fetchDistinctSubjects(): Promise<string[]> {
+	const { data } = await api.get('/chat/subjects');
+	return data;
 }
 
 export async function unbanUser(userId: string) {

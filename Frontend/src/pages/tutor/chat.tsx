@@ -2,6 +2,7 @@
 import { useParams } from 'react-router-dom';
 import ChatList from '../../components/chat/ChatList';
 import { ChatWindow } from '../../components/chat/ChatWindow-Enhanced';
+import AdminMessagesView from '../../components/chat/AdminMessagesView';
 
 export default function TutorChat() {
   const { conversationId } = useParams<{ conversationId?: string }>();
@@ -10,7 +11,11 @@ export default function TutorChat() {
     <div className="h-[calc(100vh-200px)]">
       <h2 className="text-2xl font-bold mb-4">Messages</h2>
       
-      {conversationId ? (
+      {conversationId === 'admin-messages' ? (
+        <div className="h-[calc(100%-60px)]">
+          <AdminMessagesView />
+        </div>
+      ) : conversationId ? (
         // Show chat window for specific conversation
         <div className="h-[calc(100%-60px)]">
           <ChatWindow conversationId={conversationId} />

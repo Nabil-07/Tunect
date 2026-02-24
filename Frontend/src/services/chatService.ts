@@ -123,3 +123,18 @@ export async function exportConversation(conversationId: string): Promise<any> {
   const response = await api.get(`/chat/conversations/${conversationId}/export`);
   return response.data;
 }
+
+export interface AdminMessage {
+  id: string;
+  type: 'PRIVATE' | 'BROADCAST';
+  subject: string | null;
+  message: string;
+  senderName: string;
+  createdAt: string;
+}
+
+// Fetch admin messages received by the current logged-in user
+export async function fetchMyAdminMessages(): Promise<AdminMessage[]> {
+  const response = await api.get('/chat/my-admin-messages');
+  return response.data;
+}

@@ -425,19 +425,26 @@ export class UsersService {
    * Soft-delete account: scrambles PII, marks as deleted.
    * Preserves booking, payment, and wallet records for compliance.
    */
-  async softDeleteAccount(userId: string, password?: string) {
+  async softDeleteAccount(userId: string, password?: string, isAdmin = false) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, password: true, deletedAt: true },
+      select: { id: true, email: true, password: true, deletedAt: true, role: true },
     });
     if (!user) throw new NotFoundException('User not found');
     if (user.deletedAt) throw new BadRequestException('Account is already deleted');
 
-    // If user has a password (non-OAuth), require confirmation
-    if (user.password && user.password.length > 0) {
-      if (!password) throw new BadRequestException('Password confirmation is required to delete your account');
-      const ok = await bcrypt.compare(password, user.password);
-      if (!ok) throw new UnauthorizedException('Incorrect password');
+    // Admin deletion: skip password check but prevent deleting other admins
+    if (isAdmin) {
+      if (user.role === 'ADMIN') {
+        throw new BadRequestException('Cannot delete admin accounts');
+      }
+    } else {
+      // Self-delete: If user has a password (non-OAuth), require confirmation
+      if (user.password && user.password.length > 0) {
+        if (!password) throw new BadRequestException('Password confirmation is required to delete your account');
+        const ok = await bcrypt.compare(password, user.password);
+        if (!ok) throw new UnauthorizedException('Incorrect password');
+      }
     }
 
     const now = new Date();
@@ -452,6 +459,8 @@ export class UsersService {
         avatarUrl: null,
         phone: null,
         password: '', // clear password hash
+        role: null,           // reset role so user can re-register
+        hasChosenRole: false, // allow fresh role selection on re-registration
       },
     });
 

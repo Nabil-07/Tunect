@@ -966,4 +966,239 @@ export class MessagesService {
     if (!convo) return [];
     return [convo.student?.userId, convo.tutor?.userId].filter(Boolean) as string[];
   }
+
+  // ─── Admin Broadcast & Private Messaging ────────────────────────────
+
+  /**
+   * Send an announcement to all tutors or tutors filtered by subject.
+   * Creates an AdminBroadcast record and fans out Notification records.
+   */
+  async sendBroadcast(senderId: string, message: string, subject?: string) {
+    if (!message.trim()) throw new BadRequestException('Message is required');
+
+    // Fetch target tutors
+    const where: any = { status: 'APPROVED' };
+    if (subject && subject.trim()) {
+      where.subjects = { has: subject.trim() };
+    }
+
+    const tutors = await this.prisma.tutor.findMany({
+      where,
+      select: { id: true, userId: true, user: { select: { name: true } } },
+    });
+
+    if (tutors.length === 0) {
+      throw new BadRequestException(
+        subject ? `No approved tutors found for subject "${subject}"` : 'No approved tutors found',
+      );
+    }
+
+    // Create broadcast record
+    const broadcast = await this.prisma.adminBroadcast.create({
+      data: {
+        senderId,
+        subject: subject?.trim() || null,
+        message: message.trim(),
+        recipientCount: tutors.length,
+      },
+    });
+
+    // Create notifications for each tutor
+    const title = subject?.trim()
+      ? `📢 Announcement for ${subject.trim()} tutors`
+      : '📢 Announcement for all tutors';
+
+    await this.prisma.notification.createMany({
+      data: tutors.map((t) => ({
+        userId: t.userId,
+        title,
+        message: message.trim(),
+        type: 'SYSTEM' as any,
+      })),
+    });
+
+    return {
+      ok: true,
+      broadcastId: broadcast.id,
+      recipientCount: tutors.length,
+      message: `Broadcast sent to ${tutors.length} tutor(s)`,
+    };
+  }
+
+  /**
+   * Send a private message from admin to a specific user (tutor).
+   * Creates an AdminPrivateMessage record + a Notification.
+   */
+  async sendPrivateMessage(senderId: string, recipientId: string, message: string) {
+    if (!message.trim()) throw new BadRequestException('Message is required');
+
+    const recipient = await this.prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { id: true, name: true, email: true, deletedAt: true },
+    });
+    if (!recipient) throw new NotFoundException('Recipient not found');
+    if (recipient.deletedAt) throw new BadRequestException('Cannot message a deleted account');
+
+    // Create private message record
+    const pm = await this.prisma.adminPrivateMessage.create({
+      data: {
+        senderId,
+        recipientId,
+        message: message.trim(),
+      },
+    });
+
+    // Create notification for recipient
+    await this.prisma.notification.create({
+      data: {
+        userId: recipientId,
+        title: '✉️ Private message from Admin',
+        message: message.trim(),
+        type: 'SYSTEM' as any,
+      },
+    });
+
+    return {
+      ok: true,
+      messageId: pm.id,
+      recipientName: recipient.name || recipient.email,
+    };
+  }
+
+  /**
+   * List broadcast history for admin view.
+   */
+  async listBroadcasts(page = 1, pageSize = 20) {
+    const skip = (page - 1) * pageSize;
+    const [items, total] = await Promise.all([
+      this.prisma.adminBroadcast.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        include: {
+          sender: { select: { id: true, name: true, email: true } },
+        },
+      }),
+      this.prisma.adminBroadcast.count(),
+    ]);
+
+    return {
+      items: items.map((b) => ({
+        id: b.id,
+        subject: b.subject,
+        message: b.message,
+        recipientCount: b.recipientCount,
+        sender: b.sender,
+        createdAt: b.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  /**
+   * List private message history for admin view.
+   */
+  async listPrivateMessages(page = 1, pageSize = 20) {
+    const skip = (page - 1) * pageSize;
+    const [items, total] = await Promise.all([
+      this.prisma.adminPrivateMessage.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        include: {
+          sender: { select: { id: true, name: true, email: true } },
+          recipient: { select: { id: true, name: true, email: true } },
+        },
+      }),
+      this.prisma.adminPrivateMessage.count(),
+    ]);
+
+    return {
+      items: items.map((m) => ({
+        id: m.id,
+        message: m.message,
+        sender: m.sender,
+        recipient: m.recipient,
+        createdAt: m.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  /**
+   * Get distinct subjects from all approved tutors.
+   */
+  async getDistinctSubjects(): Promise<string[]> {
+    const tutors = await this.prisma.tutor.findMany({
+      where: { status: 'APPROVED' },
+      select: { subjects: true },
+    });
+    const allSubjects = new Set<string>();
+    tutors.forEach((t) => t.subjects.forEach((s) => allSubjects.add(s)));
+    return Array.from(allSubjects).sort();
+  }
+
+  /**
+   * Get admin messages received by the current user.
+   * - Private messages where recipientId = userId
+   * - Broadcasts applicable to this tutor (subject matches or null = all)
+   * Sender is always shown as "Admin".
+   */
+  async getMyAdminMessages(userId: string) {
+    // Fetch private messages sent directly to this user
+    const privateMessages = await this.prisma.adminPrivateMessage.findMany({
+      where: { recipientId: userId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, message: true, createdAt: true },
+    });
+
+    // Check if user is a tutor to determine broadcast eligibility
+    const tutorProfile = await this.prisma.tutor.findUnique({
+      where: { userId },
+      select: { subjects: true },
+    });
+
+    let broadcastMessages: any[] = [];
+    if (tutorProfile) {
+      const subjects = tutorProfile.subjects;
+      broadcastMessages = await this.prisma.adminBroadcast.findMany({
+        where: {
+          OR: [
+            { subject: null },
+            ...(subjects.length > 0
+              ? subjects.map((s) => ({ subject: s }))
+              : []),
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, message: true, subject: true, createdAt: true },
+      });
+    }
+
+    // Combine and sort by date descending
+    const combined = [
+      ...privateMessages.map((m) => ({
+        id: m.id,
+        type: 'PRIVATE' as const,
+        subject: null as string | null,
+        message: m.message,
+        senderName: 'Admin',
+        createdAt: m.createdAt.toISOString(),
+      })),
+      ...broadcastMessages.map((m) => ({
+        id: m.id,
+        type: 'BROADCAST' as const,
+        subject: m.subject as string | null,
+        message: m.message,
+        senderName: 'Admin',
+        createdAt: m.createdAt.toISOString(),
+      })),
+    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return combined;
+  }
 }
