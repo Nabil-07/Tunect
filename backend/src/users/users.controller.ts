@@ -126,11 +126,18 @@ export class UsersController {
 
   @Patch(':id/role')
   @Roles('ADMIN')
-  @UseGuards(JwtAuthGuard, RolesGuard) // <-- add RolesGuard only where needed
+  @UseGuards(JwtAuthGuard, RolesGuard)
   async setRole(
     @Param('id') id: string,
     @Body() body: { role: 'ADMIN' | 'TUTOR' | 'STUDENT' },
   ) {
     return this.users.setRole(id, body.role);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  async adminDeleteUser(@Param('id') id: string) {
+    return this.users.softDeleteAccount(id, undefined, true);
   }
 }

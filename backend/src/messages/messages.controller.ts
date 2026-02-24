@@ -20,6 +20,8 @@ import { Throttle } from '@nestjs/throttler';
 import { MessagesService } from './messages.service';
 import { PostMessageDto } from './dto/post-message.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 // Use whichever path your decorator actually lives at:
 import { CurrentUser } from '../common/decorators/current-user.decorator'; // or '../auth/current-user.decorator'
 
@@ -163,5 +165,71 @@ export class MessagesController {
   @Get('unread-count')
   unreadDash(@CurrentUser('id') userId: string) {
     return this.unread(userId);
+  }
+
+  // ─── Admin Broadcast & Private Messaging ───────────────────────────
+
+  @ApiOperation({ summary: 'Send broadcast announcement to tutors (admin only)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('broadcast')
+  broadcast(
+    @CurrentUser('id') userId: string,
+    @Body() body: { message: string; subject?: string },
+  ) {
+    return this.svc.sendBroadcast(userId, body.message, body.subject);
+  }
+
+  @ApiOperation({ summary: 'Send private message to a user (admin only)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('private-message')
+  privateMessage(
+    @CurrentUser('id') userId: string,
+    @Body() body: { recipientId: string; message: string },
+  ) {
+    return this.svc.sendPrivateMessage(userId, body.recipientId, body.message);
+  }
+
+  @ApiOperation({ summary: 'List broadcast history (admin only)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('broadcasts')
+  listBroadcasts(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.svc.listBroadcasts(
+      Number(page) || 1,
+      Number(pageSize) || 20,
+    );
+  }
+
+  @ApiOperation({ summary: 'List private messages history (admin only)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('private-messages')
+  listPrivateMessages(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.svc.listPrivateMessages(
+      Number(page) || 1,
+      Number(pageSize) || 20,
+    );
+  }
+
+  @ApiOperation({ summary: 'Get distinct subjects from approved tutors' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('subjects')
+  getSubjects() {
+    return this.svc.getDistinctSubjects();
+  }
+
+  @ApiOperation({ summary: 'Get admin messages received by the current user' })
+  @Get('my-admin-messages')
+  myAdminMessages(@CurrentUser('id') userId: string) {
+    return this.svc.getMyAdminMessages(userId);
   }
 }

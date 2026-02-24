@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock, AlertTriangle, ArrowLeftRight, Loader2 } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock, AlertTriangle, Trash2, Loader2 } from 'lucide-react';
 import { fetchTutorDetail } from '../../services/adminService';
 import { http } from '../../api/http';
 
@@ -131,7 +131,10 @@ export default function TutorDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
-  const [switchingRole, setSwitchingRole] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteResult, setDeleteResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const loadTutor = async () => {
@@ -284,39 +287,100 @@ export default function TutorDetailPage() {
           </div>
         )}
 
-        {/* Admin: Switch Role */}
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+        {/* Admin: Delete User Account */}
+        <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-semibold text-amber-800 flex items-center gap-2">
-                <ArrowLeftRight className="w-4 h-4" /> Switch Role
+              <p className="font-semibold text-red-800 flex items-center gap-2">
+                <Trash2 className="w-4 h-4" /> Delete User Account
               </p>
-              <p className="text-xs text-amber-600 mt-1">
-                Convert this tutor account to a student account. All data is preserved.
+              <p className="text-xs text-red-600 mt-1">
+                Permanently deactivate this tutor account. PII will be scrambled but transactional records are preserved.
               </p>
             </div>
             <button
-              onClick={async () => {
-                if (!confirm('Switch this user from Tutor to Student? Their tutor profile will be preserved.')) return;
-                setSwitchingRole(true);
-                try {
-                  await http.post(`/profiles/switch-role/${tutor.user.id}`);
-                  alert('Role switched to Student successfully. Reloading...');
-                  window.location.reload();
-                } catch (err: any) {
-                  alert(err.response?.data?.message || 'Failed to switch role');
-                } finally {
-                  setSwitchingRole(false);
-                }
-              }}
-              disabled={switchingRole}
-              className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors text-sm"
+              onClick={() => { setShowDeleteModal(true); setDeleteResult(null); }}
+              disabled={deletingUser}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors text-sm"
             >
-              {switchingRole ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowLeftRight className="w-4 h-4" />}
-              {switchingRole ? 'Switching...' : 'Switch to Student'}
+              <Trash2 className="w-4 h-4" />
+              Delete Account
             </button>
           </div>
         </div>
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+              {deleteResult ? (
+                <>
+                  <div className={`text-center mb-4 ${deleteResult.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+                    <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-3 ${deleteResult.ok ? 'bg-emerald-100' : 'bg-red-100'}">
+                      {deleteResult.ok ? '✓' : '✕'}
+                    </div>
+                    <h3 className="text-lg font-semibold">{deleteResult.ok ? 'Account Deleted' : 'Delete Failed'}</h3>
+                    <p className="text-sm mt-2 text-slate-600">{deleteResult.message}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      if (deleteResult.ok) navigate('/admin/tutors');
+                    }}
+                    className="w-full py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium"
+                  >
+                    {deleteResult.ok ? 'Go to Tutors' : 'Close'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                      <Trash2 className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Delete User Account</h3>
+                      <p className="text-sm text-slate-500">This action cannot be undone</p>
+                    </div>
+                  </div>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-red-800">
+                      You are about to permanently deactivate <strong>{tutor.user.name || tutor.user.email}</strong>'s account.
+                      Their personal data will be scrambled, but booking and payment records will be preserved for compliance.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowDeleteModal(false)}
+                      disabled={deletingUser}
+                      className="flex-1 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setDeletingUser(true);
+                        try {
+                          await http.delete(`/users/${tutor.user.id}`);
+                          setDeleteResult({ ok: true, message: 'Account has been permanently deactivated. All transactional records have been preserved.' });
+                        } catch (err: any) {
+                          setDeleteResult({ ok: false, message: err.response?.data?.message || 'Failed to delete user account' });
+                        } finally {
+                          setDeletingUser(false);
+                        }
+                      }}
+                      disabled={deletingUser}
+                      className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {deletingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      {deletingUser ? 'Deleting…' : 'Yes, Delete Account'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {tutor.bio && (
           <div className="mt-4 bg-slate-50 rounded-lg p-4">

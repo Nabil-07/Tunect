@@ -460,6 +460,31 @@ model Notification {
   @@index([userId, isRead, createdAt])
 }
 
+model AdminBroadcast {
+  id          String                    @id @default(cuid())
+  senderId    String
+  subject     String?                   // null = all tutors
+  message     String                    @db.VarChar(2000)
+  recipientCount Int
+  createdAt   DateTime                  @default(now())
+  sender      User                      @relation("AdminBroadcasts", fields: [senderId], references: [id])
+
+  @@index([senderId, createdAt])
+}
+
+model AdminPrivateMessage {
+  id          String                    @id @default(cuid())
+  senderId    String
+  recipientId String
+  message     String                    @db.VarChar(2000)
+  createdAt   DateTime                  @default(now())
+  sender      User                      @relation("AdminPrivateMessages", fields: [senderId], references: [id])
+  recipient   User                      @relation("AdminReceivedMessages", fields: [recipientId], references: [id])
+
+  @@index([senderId, createdAt])
+  @@index([recipientId, createdAt])
+}
+
 model OAuthAccount {
   id                      String                    @id @default(cuid())
   userId         String
@@ -1009,6 +1034,9 @@ model User {
   auditLogs                        AuditLog[]        @relation("AuditLogAdmin")
   tokenTransferRequests            TokenTransferRequest[]
   refundRequests                   RefundRequest[]
+  adminBroadcasts                  AdminBroadcast[]        @relation("AdminBroadcasts")
+  adminPrivateMessages             AdminPrivateMessage[]   @relation("AdminPrivateMessages")
+  adminReceivedMessages            AdminPrivateMessage[]   @relation("AdminReceivedMessages")
 
   @@index([email])
   @@index([role, hasChosenRole])

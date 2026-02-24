@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, TutorStatus } from '@prisma/client';
 
@@ -65,26 +65,4 @@ export class ProfilesService {
     });
   }
 
-  /**
-   * Switch role: flips user between STUDENT and TUTOR.
-   * Creates the target profile if it doesn't exist (via upsert).
-   * Preserves existing profiles and transaction history.
-   */
-  async switchRole(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, role: true, hasChosenRole: true },
-    });
-
-    if (!user) throw new NotFoundException('User not found');
-    if (!user.hasChosenRole || !user.role) {
-      throw new BadRequestException('You must choose a role first before switching');
-    }
-    if (user.role === 'ADMIN') {
-      throw new BadRequestException('Admin accounts cannot switch roles');
-    }
-
-    const targetRole: Role = user.role === 'STUDENT' ? Role.TUTOR : Role.STUDENT;
-    return this.chooseRole(userId, targetRole);
-  }
 }

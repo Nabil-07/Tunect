@@ -1,13 +1,14 @@
 // Frontend/src/components/chat/ChatList.tsx
 import { useState, useEffect } from 'react';
-import { MessageSquare, Users, Lock } from 'lucide-react';
-import { listConversations } from '../../services/chatService';
-import type { Conversation } from '../../services/chatService';
+import { MessageSquare, Users, Lock, ShieldCheck } from 'lucide-react';
+import { listConversations, fetchMyAdminMessages } from '../../services/chatService';
+import type { Conversation, AdminMessage } from '../../services/chatService';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSocket } from '../../hooks/useSocket';
 
 export default function ChatList() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [adminMessages, setAdminMessages] = useState<AdminMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -36,10 +37,13 @@ export default function ChatList() {
     try {
       setLoading(true);
       setError(null);
-      const data = await listConversations();
-      setConversations(data);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load conversations');
+      const [data, adminData] = await Promise.allSettled([
+        listConversations(),
+        fetchMyAdminMessages(),
+      ]);
+      if (data.status === 'fulfilled') setConversations(data.value);
+      else setError(data.reason?.response?.data?.message || 'Failed to load conversations');
+      if (adminData.status === 'fulfilled') setAdminMessages(adminData.value);
     } finally {
       setLoading(false);
     }
@@ -115,6 +119,31 @@ export default function ChatList() {
 
   return (
     <div className="space-y-2">
+      {/* Pinned Admin entry */}
+      {adminMessages.length > 0 && (
+        <div
+          onClick={() => navigate(`${getBasePath()}/admin-messages`)}
+          className="p-4 border border-purple-200 bg-purple-50 rounded-lg hover:bg-purple-100 cursor-pointer transition-colors"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 mt-1">
+              <ShieldCheck className="h-5 w-5 text-purple-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="font-semibold text-purple-900">Admin</h4>
+                <span className="text-xs text-purple-500 flex-shrink-0 ml-2">
+                  {adminMessages.length} message{adminMessages.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <p className="text-sm text-purple-700 truncate">
+                {adminMessages[0].message}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {conversations.map((conv) => (
         <div
           key={conv.id}
