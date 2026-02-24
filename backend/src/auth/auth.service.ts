@@ -17,6 +17,7 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { isPreprodAllowedEmail } from './preprod-allowlist';
+import { AdminControlsService } from '../admin-controls/admin-controls.service';
 
 /** Brute-force protection: lock duration in minutes after max failed attempts. */
 const LOGIN_LOCK_MINUTES = 15;
@@ -53,6 +54,7 @@ export class AuthService {
     private readonly cfg: ConfigService,
     private readonly notify: NotificationsService,
     private readonly uploadsService: UploadsService,
+    private readonly adminControls: AdminControlsService,
   ) {}
 
   private ensureInternal(email?: string) {
@@ -66,6 +68,16 @@ export class AuthService {
   // ======== Email/password ========
   async register(email: string, password: string, role: Role) {
     this.ensureInternal(email);
+
+    // Check admin controls for role availability
+    const controls = await this.adminControls.getPublicControls();
+    if (role === Role.STUDENT && !controls.studentRoleEnabled) {
+      throw new ForbiddenException('Student registration is currently disabled');
+    }
+    if (role === Role.TUTOR && !controls.tutorRoleEnabled) {
+      throw new ForbiddenException('Tutor registration is currently disabled');
+    }
+
     const hash = await bcrypt.hash(password, 10);
 
     try {
@@ -125,10 +137,17 @@ export class AuthService {
         password: true,
         failedLoginAttempts: true,
         lockUntil: true,
+        deletedAt: true,
       },
     });
 
     const now = new Date();
+
+    // Block deleted accounts
+    if (user?.deletedAt) {
+      throw new UnauthorizedException('This account has been deleted');
+    }
+
     if (user?.lockUntil && user.lockUntil > now) {
       const retryAt = user.lockUntil.toISOString();
       this.logger.warn(`Login blocked: account locked (email=${emailNorm}, retryAfter=${retryAt})`);
@@ -222,6 +241,10 @@ export class AuthService {
         throw new UnauthorizedException('User not found');
       }
 
+      if (user.deletedAt) {
+        throw new UnauthorizedException('This account has been deleted');
+      }
+
       // Only check internal access if email exists
       if (user.email) {
         try {
@@ -298,12 +321,27 @@ export class AuthService {
       where: { providerUserId: p.providerUserId },
       include: { user: true },
     });
-    if (existingOauth?.user) return { user: existingOauth.user, isNew: false };
+    if (existingOauth?.user) {
+      if (existingOauth.user.deletedAt) {
+        // Unlink the OAuth record from the deleted user so they can re-register
+        await this.prisma.oAuthAccount.delete({
+          where: { id: existingOauth.id },
+        });
+        // Fall through to create a new user below
+      } else {
+        return { user: existingOauth.user, isNew: false };
+      }
+    }
 
     // 2) Check by email → unify into same User row
     let user = await this.prisma.user.findUnique({
       where: { email: p.email.toLowerCase() },
     });
+
+    // Block deleted accounts from re-registering via OAuth
+    if (user?.deletedAt) {
+      throw new UnauthorizedException('This account has been deleted');
+    }
 
     const isNew = !user;
     if (!user) {
@@ -311,25 +349,21 @@ export class AuthService {
       user = await this.prisma.user.create({
         data: {
           email: p.email.toLowerCase(),
-          name: p.name || p.email.split('@')[0], // ✅ Store name from Google OAuth
-          avatarUrl: p.avatarUrl, // ✅ Store avatar from Google OAuth
+          name: p.name || p.email.split('@')[0],
+          avatarUrl: null, // Profile pic comes from KYC selfie, not Google
           password: '',       // OAuth user (no password)
           role: null,         // No default role assigned
           hasChosenRole: false, // New users must choose a role
         },
       });
     } else {
-      // Update existing user with name and avatar if not already set
+      // Update existing user with name if not already set (don't overwrite avatar — it comes from KYC)
       if (!user.name && p.name) {
         await this.prisma.user.update({
           where: { id: user.id },
-          data: {
-            name: p.name,
-            avatarUrl: p.avatarUrl || null,
-          },
+          data: { name: p.name },
         });
         user.name = p.name;
-        user.avatarUrl = p.avatarUrl || null;
       }
     }
 
@@ -383,6 +417,15 @@ export class AuthService {
   }
 
   async chooseRole(userId: string, role: 'STUDENT' | 'TUTOR') {
+    // Check admin controls for role availability
+    const controls = await this.adminControls.getPublicControls();
+    if (role === 'STUDENT' && !controls.studentRoleEnabled) {
+      throw new ForbiddenException('Student registration is currently disabled');
+    }
+    if (role === 'TUTOR' && !controls.tutorRoleEnabled) {
+      throw new ForbiddenException('Tutor registration is currently disabled');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // Ensure the corresponding profile exists using upsert
       if (role === 'STUDENT') {

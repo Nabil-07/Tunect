@@ -64,7 +64,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
-  const [remember, setRemember] = useState(true);
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -125,12 +125,12 @@ export default function Login() {
     setErr(null);
     setLoading(true);
     try {
-      setAuthStorage(remember);
+      setAuthStorage(true);
       const res = await doLogin(emailVal, pwVal);
       try { localStorage.setItem('auth_ok', '1'); } catch {}
 
       // Store credentials in browser for future autofill (Credential Management API)
-      if (remember && navigator.credentials?.store && typeof PasswordCredential !== 'undefined') {
+      if (navigator.credentials?.store && typeof PasswordCredential !== 'undefined') {
         try {
           const cred = new PasswordCredential({
             id: emailVal,
@@ -167,9 +167,9 @@ export default function Login() {
 
   const GoogleButton = () => {
     const go = () => {
-      try { localStorage.setItem('remember_intent', remember ? '1' : '0'); } catch {}
+      try { localStorage.setItem('remember_intent', '1'); } catch {}
       const url = new URL(`${apiBase}/auth/google`);
-      if (remember) url.searchParams.set('remember', '1');
+      url.searchParams.set('remember', '1');
       window.location.href = url.toString();
     };
     return (
@@ -201,11 +201,10 @@ export default function Login() {
           <div className="mb-8">
             <Link to="/" className="inline-flex items-center gap-2">
               <img 
-                src="/tunect_logo_hd.png" 
+                src="/tunect_logo_hd_main.png" 
                 alt="Tunect Logo" 
-                className="h-10 w-10 rounded-lg shadow-md object-contain"
+                className="h-12 w-auto rounded-lg shadow-md object-contain"
               />
-              <span className="text-xl font-semibold text-slate-900">Tunect</span>
             </Link>
           </div>
 
@@ -272,18 +271,8 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Remember + Forgot */}
-            <div className="mt-1 flex items-center justify-between">
-              <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  className="rounded border-slate-300"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  disabled={loading}
-                />
-                Remember me
-              </label>
+            {/* Forgot password */}
+            <div className="mt-1 flex items-center justify-end">
               <Link to="/forgot-password" className="text-sm text-ocean-700 hover:underline">
                 Forgot password
               </Link>

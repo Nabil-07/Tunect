@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsBoolean } from 'class-validator';
 import { BlogStatus } from '@prisma/client';
 
 export class CreateBlogDto {
@@ -27,4 +27,20 @@ export class CreateBlogDto {
   @IsOptional()
   @IsString()
   authorName?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isPillar?: boolean;
+
+  @IsOptional()
+  @IsString()
+  pillarId?: string;
+
+  @IsOptional()
+  @IsString()
+  seoTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  seoDescription?: string;
 }

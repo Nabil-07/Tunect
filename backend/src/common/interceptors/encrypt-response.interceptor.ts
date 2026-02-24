@@ -85,6 +85,12 @@ export class EncryptResponseInterceptor implements NestInterceptor {
       return next.handle();
     }
 
+    // Skip encryption for binary/stream endpoints (e.g. file downloads)
+    const url: string = request.url || '';
+    if (url.startsWith('/uploads/open/') || url.startsWith('/uploads/direct')) {
+      return next.handle();
+    }
+
     // Check if this is a public endpoint that exposes PII about other users
     // Public endpoints (like /tutors) should ALWAYS encrypt PII, even if a user is authenticated
     // This protects PII in public listings where authentication is optional

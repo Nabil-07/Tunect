@@ -131,13 +131,23 @@ export class UsersService {
 
     const { password, ...safeUser } = user;
 
+    // For tutors: use approved KYC selfie as profile picture (overrides any manually set avatar)
+    let effectiveAvatarUrl = safeUser.avatarUrl;
+    if (safeUser.tutor?.id) {
+      const approvedSelfie = await this.prisma.kycDocument.findFirst({
+        where: { tutorId: safeUser.tutor.id, docType: 'selfie', status: 'APPROVED' },
+        orderBy: { createdAt: 'desc' },
+        select: { url: true },
+      });
+      if (approvedSelfie?.url) {
+        effectiveAvatarUrl = approvedSelfie.url;
+      }
+    }
+
     // Generate a fallback name from email if name is null
-    // This provides a better UX than showing null
     const displayName = safeUser.name || (() => {
       if (!safeUser.email) return null;
-      // Extract username part before @ and format it
       const emailPart = safeUser.email.split('@')[0];
-      // Capitalize first letter of each word (handle dots, underscores, etc.)
       return emailPart
         .split(/[._-]/)
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -145,9 +155,9 @@ export class UsersService {
         .trim() || emailPart;
     })();
 
-    const readableAvatarUrl = safeUser.avatarUrl
-      ? await this.uploadsService.toReadableReference(safeUser.avatarUrl, userId, safeUser.role ?? undefined)
-      : safeUser.avatarUrl;
+    const readableAvatarUrl = effectiveAvatarUrl
+      ? await this.uploadsService.toReadableReference(effectiveAvatarUrl, userId, safeUser.role ?? undefined)
+      : effectiveAvatarUrl;
 
     return {
       ...safeUser,
@@ -175,6 +185,21 @@ export class UsersService {
   }
 
   async updateMe(userId: string, data: UpdateMeInput) {
+    // Block manual avatar changes for tutors with an approved KYC selfie
+    if (data.avatarUrl !== undefined) {
+      const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+      if (tutor) {
+        const approvedSelfie = await this.prisma.kycDocument.findFirst({
+          where: { tutorId: tutor.id, docType: 'selfie', status: 'APPROVED' },
+          select: { id: true },
+        });
+        if (approvedSelfie) {
+          // Silently ignore avatar change — profile pic comes from KYC selfie
+          delete data.avatarUrl;
+        }
+      }
+    }
+
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -207,6 +232,18 @@ export class UsersService {
   }
 
   async uploadAvatar(userId: string, file: Express.Multer.File) {
+    // Block manual avatar upload for tutors with approved KYC selfie
+    const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+    if (tutor) {
+      const approvedSelfie = await this.prisma.kycDocument.findFirst({
+        where: { tutorId: tutor.id, docType: 'selfie', status: 'APPROVED' },
+        select: { id: true },
+      });
+      if (approvedSelfie) {
+        throw new BadRequestException('Profile picture is set from your approved KYC selfie and cannot be changed manually');
+      }
+    }
+
     const uploadedReference = await this.s3Service.uploadFile(
       file.buffer,
       file.originalname,
@@ -382,5 +419,42 @@ export class UsersService {
         updatedAt: true,
       },
     });
+  }
+
+  /**
+   * Soft-delete account: scrambles PII, marks as deleted.
+   * Preserves booking, payment, and wallet records for compliance.
+   */
+  async softDeleteAccount(userId: string, password?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, password: true, deletedAt: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.deletedAt) throw new BadRequestException('Account is already deleted');
+
+    // If user has a password (non-OAuth), require confirmation
+    if (user.password && user.password.length > 0) {
+      if (!password) throw new BadRequestException('Password confirmation is required to delete your account');
+      const ok = await bcrypt.compare(password, user.password);
+      if (!ok) throw new UnauthorizedException('Incorrect password');
+    }
+
+    const now = new Date();
+    const scrambledEmail = `deleted_${userId}@deleted.tunect.com`;
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        deletedAt: now,
+        email: scrambledEmail,
+        name: 'Deleted User',
+        avatarUrl: null,
+        phone: null,
+        password: '', // clear password hash
+      },
+    });
+
+    return { ok: true, message: 'Account has been permanently deactivated. All transactional records have been preserved.' };
   }
 }

@@ -157,7 +157,7 @@ export class KycService {
   async review(id: string, dto: ReviewKycDto, adminId: string) {
     const before = await this.prisma.kycDocument.findUnique({
       where: { id },
-      select: { id: true, tutorId: true, status: true, notes: true, createdAt: true },
+      select: { id: true, tutorId: true, status: true, notes: true, createdAt: true, docType: true, url: true },
     });
     if (!before) throw new NotFoundException('KYC document not found');
 
@@ -166,6 +166,21 @@ export class KycService {
       data: { status: dto.status, notes: dto.notes },
       select: { id: true, docType: true, url: true, status: true, notes: true, createdAt: true },
     });
+
+    // If a selfie document is approved, auto-set it as the user's profile picture
+    if (updated.docType === 'selfie' && dto.status === KycStatus.APPROVED && updated.url) {
+      const tutor = await this.prisma.tutor.findUnique({
+        where: { id: before.tutorId },
+        select: { userId: true },
+      });
+      if (tutor) {
+        await this.prisma.user.update({
+          where: { id: tutor.userId },
+          data: { avatarUrl: updated.url },
+        });
+        this.logger.log(`Auto-set avatar from approved KYC selfie for user ${tutor.userId}`);
+      }
+    }
 
     await this.recomputeLatestApplicationStatus(before.tutorId, dto.notes);
 

@@ -67,6 +67,10 @@ export class UploadsService {
         'text/plain',
       ]),
     },
+    blogs: {
+      maxBytes: 10 * 1024 * 1024,
+      allowedMimeTypes: new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']),
+    },
   };
 
   constructor(
@@ -86,6 +90,38 @@ export class UploadsService {
       uploadUrl,
       expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
     };
+  }
+
+  /** Direct upload: backend receives file and uploads to S3, bypassing CORS */
+  async directUpload(userId: string, file: { buffer: Buffer; mimetype: string; size: number }, useCase: UploadUseCase) {
+    const rule = this.rulesByUseCase[useCase];
+    if (!rule) {
+      throw new BadRequestException('Unsupported upload use case');
+    }
+
+    const mimeType = (file.mimetype || '').toLowerCase();
+    if (!rule.allowedMimeTypes.has(mimeType)) {
+      throw new BadRequestException(`MIME type not allowed for ${useCase}`);
+    }
+    if (file.size > rule.maxBytes) {
+      throw new BadRequestException(`File exceeds max size for ${useCase}`);
+    }
+
+    const ext = this.extensionByMimeType[mimeType];
+    if (!ext) {
+      throw new BadRequestException('Unsupported MIME type');
+    }
+
+    // Build key the same way as presigned upload
+    const dto = { useCase, mimeType, size: file.size } as PresignUploadDto;
+    const key = await this.buildObjectKey(userId, dto);
+
+    // Upload to S3 with the exact key
+    await this.s3Service.uploadWithKey(key, file.buffer, mimeType);
+
+    // Return a signed read URL
+    const downloadUrl = this.buildSignedReadUrl(key, 60 * 60 * 24 * 365);
+    return { key, downloadUrl };
   }
 
   async createPresignedGet(userId: string, keyOrUrl: string, userRole?: string, expiresIn = 600) {
@@ -350,6 +386,11 @@ export class UploadsService {
       return;
     }
 
+    // Blog images are publicly readable
+    if (key.startsWith('blogs/')) {
+      return;
+    }
+
     if (key.startsWith(`avatars/${userId}/`)) {
       return;
     }
@@ -454,6 +495,10 @@ export class UploadsService {
       return `avatars/${userId}/${id}.${ext}`;
     }
 
+    if (dto.useCase === 'blogs') {
+      return `blogs/${userId}/${id}.${ext}`;
+    }
+
     const tutor = await this.prisma.tutor.findUnique({
       where: { userId },
       select: { id: true },
@@ -511,7 +556,8 @@ export class UploadsService {
       key.startsWith('avatars/') ||
       key.startsWith('kyc/') ||
       key.startsWith('certificates/') ||
-      key.startsWith('study-materials/')
+      key.startsWith('study-materials/') ||
+      key.startsWith('blogs/')
     );
   }
 }

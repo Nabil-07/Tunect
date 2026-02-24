@@ -11,6 +11,8 @@ type BlogPost = {
   coverImageUrl?: string;
   publishedAt?: string;
   authorName?: string;
+  isPillar?: boolean;
+  pillar?: { id: string; title: string; slug: string } | null;
 };
 
 export default function Blogs() {
@@ -75,8 +77,18 @@ export default function Blogs() {
                 <div className="h-48 w-full bg-slate-100" />
               )}
               <div className="p-5">
-                <div className="text-xs text-slate-500">
-                  {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : "Draft"}
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span>{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : "Draft"}</span>
+                  {post.isPillar && (
+                    <span className="bg-indigo-100 text-indigo-700 font-semibold px-1.5 py-0.5 rounded-full text-[10px]">
+                      GUIDE
+                    </span>
+                  )}
+                  {post.pillar && (
+                    <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full text-[10px]">
+                      ↳ {post.pillar.title}
+                    </span>
+                  )}
                 </div>
                 <h2 className="mt-2 text-lg font-semibold text-slate-900 group-hover:text-ocean-700">
                   {post.title}

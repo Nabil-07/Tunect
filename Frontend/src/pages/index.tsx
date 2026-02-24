@@ -74,8 +74,8 @@ export default function Home() {
     '@type': 'Organization',
     name: 'Tunect',
     url: 'https://tunectnow.com',
-    logo: 'https://tunectnow.com/tunect_logo_hd.png',
-    description: 'Online 1-on-1 tutoring platform connecting students with verified tutors in India. Book free demo sessions and learn from expert tutors.',
+    logo: 'https://tunectnow.com/tunect_logo_hd_main.png',
+    description: 'Global 1-on-1 online tutoring platform connecting students with verified tutors worldwide. Book free demo sessions and learn from expert tutors.',
     sameAs: [
       'https://www.linkedin.com/company/tunect',
       'https://twitter.com/tunect',
@@ -98,7 +98,7 @@ export default function Home() {
         name: 'What is Tunect?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Tunect is an online 1-on-1 tutoring platform that connects students with verified tutors across India. Students can book personalized sessions and get their first session free as a demo.',
+          text: 'Tunect is a global 1-on-1 online tutoring platform that connects students with verified tutors across India. Students can book personalized sessions and get their first session free as a demo.',
         },
       },
       {
@@ -131,8 +131,8 @@ export default function Home() {
   return (
     <main>
       <SEO
-        title="Online 1-on-1 Tutors in India | Free Demo | Tunect"
-        description="Find verified tutors for 1-on-1 online tutoring in India. Book your first session free! Learn Mathematics, Physics, Chemistry, English, and more from expert tutors. Personalized learning at your pace."
+        title="Global 1-on-1 Online Tutoring | Free Demo | Tunect"
+        description="Find verified tutors for 1-on-1 online tutoring worldwide. Book your first session free! Learn Mathematics, Physics, Chemistry, English, and more from expert tutors. Personalized learning at your pace."
         url="/"
         structuredData={[organizationSchema, faqSchema]}
         preloadImages={["/tunect_logo_hd.png"]}

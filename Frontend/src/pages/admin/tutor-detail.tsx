@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock, AlertTriangle, ArrowLeftRight, Loader2 } from 'lucide-react';
 import { fetchTutorDetail } from '../../services/adminService';
+import { http } from '../../api/http';
 
 interface TutorDetail {
   id: string;
@@ -129,6 +130,8 @@ export default function TutorDetailPage() {
   const [tutor, setTutor] = useState<TutorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
+  const [switchingRole, setSwitchingRole] = useState(false);
 
   useEffect(() => {
     const loadTutor = async () => {
@@ -259,12 +262,15 @@ export default function TutorDetailPage() {
             </p>
           </div>
           {tutor.conversations && (
-            <div className="bg-slate-50 rounded-lg p-3">
+            <div
+              className="bg-slate-50 rounded-lg p-3 cursor-pointer hover:bg-blue-50 transition-colors"
+              onClick={() => document.getElementById('conversations-section')?.scrollIntoView({ behavior: 'smooth' })}
+            >
               <div className="flex items-center mb-1">
                 <MessageSquare className="w-4 h-4 text-slate-600 mr-2" />
                 <span className="text-xs font-medium text-slate-700">Conversations</span>
               </div>
-              <p className="text-sm font-semibold text-slate-900">{tutor.conversations.length}</p>
+              <p className="text-sm font-semibold text-blue-600 underline">{tutor.conversations.length}</p>
             </div>
           )}
         </div>
@@ -277,6 +283,40 @@ export default function TutorDetailPage() {
             </p>
           </div>
         )}
+
+        {/* Admin: Switch Role */}
+        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-amber-800 flex items-center gap-2">
+                <ArrowLeftRight className="w-4 h-4" /> Switch Role
+              </p>
+              <p className="text-xs text-amber-600 mt-1">
+                Convert this tutor account to a student account. All data is preserved.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                if (!confirm('Switch this user from Tutor to Student? Their tutor profile will be preserved.')) return;
+                setSwitchingRole(true);
+                try {
+                  await http.post(`/profiles/switch-role/${tutor.user.id}`);
+                  alert('Role switched to Student successfully. Reloading...');
+                  window.location.reload();
+                } catch (err: any) {
+                  alert(err.response?.data?.message || 'Failed to switch role');
+                } finally {
+                  setSwitchingRole(false);
+                }
+              }}
+              disabled={switchingRole}
+              className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors text-sm"
+            >
+              {switchingRole ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowLeftRight className="w-4 h-4" />}
+              {switchingRole ? 'Switching...' : 'Switch to Student'}
+            </button>
+          </div>
+        </div>
 
         {tutor.bio && (
           <div className="mt-4 bg-slate-50 rounded-lg p-4">
@@ -524,41 +564,88 @@ export default function TutorDetailPage() {
 
       {/* Messages/Conversations */}
       {tutor.conversations && tutor.conversations.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+        <div id="conversations-section" className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-4">Messages & Conversations</h2>
-          <div className="space-y-4">
-            {tutor.conversations.map((conv) => (
-              <div key={conv.id} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <p className="font-semibold">
-                      Conversation with {conv.student.user.name || conv.student.user.email}
+          <div className="flex gap-4" style={{ minHeight: 400 }}>
+            {/* Conversation list (left panel) */}
+            <div className="w-1/3 border-r border-slate-200 pr-4 overflow-y-auto" style={{ maxHeight: 500 }}>
+              {tutor.conversations.map((conv) => {
+                const lastMsg = conv.messages[0];
+                const isSelected = selectedConvId === conv.id;
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => setSelectedConvId(conv.id)}
+                    className={`w-full text-left p-3 rounded-lg mb-2 transition-colors ${
+                      isSelected ? 'bg-blue-50 border border-blue-300' : 'bg-slate-50 hover:bg-slate-100 border border-transparent'
+                    }`}
+                  >
+                    <p className="font-semibold text-sm text-slate-900 truncate">
+                      {conv.student.user.name || conv.student.user.email}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      Started: {new Date(conv.createdAt).toLocaleString()}
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {conv.messages.length} message{conv.messages.length !== 1 ? 's' : ''}
                     </p>
-                  </div>
-                  <span className="text-xs text-slate-500">
-                    {conv.messages.length} message{conv.messages.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {conv.messages.slice().reverse().map((msg) => (
-                    <div key={msg.id} className="bg-slate-50 rounded p-2">
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="text-xs font-semibold text-slate-700">
-                          {msg.user.name || msg.user.email}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          {new Date(msg.createdAt).toLocaleString()}
-                        </span>
+                    {lastMsg && (
+                      <p className="text-xs text-slate-400 mt-1 truncate">
+                        {lastMsg.text.slice(0, 60)}{lastMsg.text.length > 60 ? '…' : ''}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Chat view (right panel) */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {(() => {
+                const selectedConv = tutor.conversations?.find(c => c.id === selectedConvId);
+                if (!selectedConv) {
+                  return (
+                    <div className="flex-1 flex items-center justify-center text-slate-400">
+                      <div className="text-center">
+                        <MessageSquare className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                        <p>Select a conversation to view messages</p>
                       </div>
-                      <p className="text-sm text-slate-800">{msg.text}</p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+                  );
+                }
+                return (
+                  <>
+                    <div className="border-b border-slate-200 pb-3 mb-3">
+                      <p className="font-semibold text-slate-900">
+                        {selectedConv.student.user.name || selectedConv.student.user.email}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Started: {new Date(selectedConv.createdAt).toLocaleString()} · {selectedConv.messages.length} messages
+                      </p>
+                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-2 pr-2" style={{ maxHeight: 400 }}>
+                      {selectedConv.messages.slice().reverse().map((msg) => {
+                        const isTutor = msg.user.id === tutor.user.id;
+                        return (
+                          <div key={msg.id} className={`flex ${isTutor ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[75%] rounded-xl px-3 py-2 ${
+                              isTutor ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-800'
+                            }`}>
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-xs font-semibold">
+                                  {isTutor ? '🎓 ' : '📚 '}{msg.user.name || msg.user.email}
+                                </span>
+                              </div>
+                              <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                              <p className="text-[10px] text-slate-400 mt-1 text-right">
+                                {new Date(msg.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}

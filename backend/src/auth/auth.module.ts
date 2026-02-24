@@ -12,6 +12,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 // Notifications
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UploadsModule } from '../uploads/uploads.module';
+import { AdminControlsModule } from '../admin-controls/admin-controls.module';
 
 // ✅ NEW
 import { GoogleStrategy } from './google.strategy';
@@ -23,6 +24,7 @@ import { GoogleStrategy } from './google.strategy';
     PrismaModule,
     NotificationsModule,
     UploadsModule,
+    AdminControlsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (cfg: ConfigService) => ({

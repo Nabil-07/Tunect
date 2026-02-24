@@ -255,7 +255,7 @@ export default function TutorKYC() {
     // For other countries, no bank field is strictly required beyond the common ones
 
     if (canEditField('selfie') && !selfie) e.selfie = 'A clear profile photo is required';
-    if (canEditField('degreeCertificates') && degrees.length === 0) e.degrees = 'Please upload at least one degree certificate';
+    if (canEditField('degreeCertificates') && degrees.length === 0) e.degrees = 'Please upload at least one degree certificate or mark sheet';
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -638,9 +638,10 @@ export default function TutorKYC() {
                 <p className="text-[11px] text-slate-500 mt-1">Good lighting, no sunglasses; JPG/PNG up to ~5 MB.</p>
               </label>
               <label className="text-sm">
-                <span className="block text-slate-600 mb-1">Degree certificate(s) *</span>
+                <span className="block text-slate-600 mb-1">Degree certificate(s) / Mark sheet(s) *</span>
                 <input type="file" accept=".pdf,image/*" multiple onChange={e=>limitFiles(e.target.files, setDegrees)} disabled={!canEditField('degreeCertificates')} />
                 {errors.degrees && <p className="text-rose-600 text-xs mt-1">{errors.degrees}</p>}
+                <p className="text-[11px] text-slate-500 mt-1">Upload degree certificates, college mark sheets, or transcripts. PDF/JPG/PNG up to ~8 MB each (max 5 files).</p>
                 {degrees.length > 0 && (
                   <p className="text-[11px] text-slate-500 mt-1"><CheckCircle2 className="inline" size={14}/> {degrees.length} file(s) selected</p>
                 )}

@@ -1,8 +1,9 @@
 // src/pages/signup.tsx
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { signup, login } from '../services/authService';
 import { setAuthStorage } from '../lib/apiClient';
+import { http } from '../api/http';
 
 type Role = 'student' | 'tutor';
 
@@ -12,21 +13,46 @@ const apiBase = String(rawApiBase).replace(/\/+$/, '');
 
 export default function Signup() {
   const nav = useNavigate();
-  const [role, setRole] = useState<Role>('student');
+  const [role, setRole] = useState<Role>('tutor');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true); // << remember me
   const [loading, setLoading] = useState(false);
+  const [roleControls, setRoleControls] = useState({ tutorRoleEnabled: true, studentRoleEnabled: false });
 
   // error state
   const [err, setErr] = useState<string | null>(null);
   const [emailExists, setEmailExists] = useState(false);
 
+  useEffect(() => {
+    http.get('/admin-controls/public').then(r => {
+      const d = r.data;
+      setRoleControls({
+        tutorRoleEnabled: d?.tutorRoleEnabled ?? true,
+        studentRoleEnabled: d?.studentRoleEnabled ?? false,
+      });
+      // Auto-select an enabled role
+      if (d?.tutorRoleEnabled) setRole('tutor');
+      else if (d?.studentRoleEnabled) setRole('student');
+    }).catch(() => {});
+  }, []);
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
     setEmailExists(false);
+
+    // Check if the selected role is enabled
+    if (role === 'student' && !roleControls.studentRoleEnabled) {
+      setErr('Student registration is currently disabled. Please try again later.');
+      return;
+    }
+    if (role === 'tutor' && !roleControls.tutorRoleEnabled) {
+      setErr('Tutor registration is currently disabled. Please try again later.');
+      return;
+    }
+
     setLoading(true);
     try {
       setAuthStorage(remember);
@@ -75,23 +101,29 @@ export default function Signup() {
           <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1">
             <button
               type="button"
-              onClick={() => setRole('student')}
+              onClick={() => roleControls.studentRoleEnabled && setRole('student')}
+              disabled={!roleControls.studentRoleEnabled}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition
-                ${role === 'student'
+                ${!roleControls.studentRoleEnabled
+                  ? 'text-slate-400 cursor-not-allowed opacity-50'
+                  : role === 'student'
                   ? 'bg-ocean-700 text-white shadow-soft'
                   : 'text-slate-700 hover:bg-slate-50'}`}
             >
-              Student
+              Student {!roleControls.studentRoleEnabled && '(Coming Soon)'}
             </button>
             <button
               type="button"
-              onClick={() => setRole('tutor')}
+              onClick={() => roleControls.tutorRoleEnabled && setRole('tutor')}
+              disabled={!roleControls.tutorRoleEnabled}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition
-                ${role === 'tutor'
+                ${!roleControls.tutorRoleEnabled
+                  ? 'text-slate-400 cursor-not-allowed opacity-50'
+                  : role === 'tutor'
                   ? 'bg-ocean-700 text-white shadow-soft'
                   : 'text-slate-700 hover:bg-slate-50'}`}
             >
-              Tutor
+              Tutor {!roleControls.tutorRoleEnabled && '(Coming Soon)'}
             </button>
           </div>
         </div>

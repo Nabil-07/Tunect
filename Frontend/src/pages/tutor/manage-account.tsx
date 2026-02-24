@@ -2,8 +2,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateMe } from '../../services/authService';
-import { User, Settings, DollarSign, Save, Loader2 } from 'lucide-react';
+import { User, Settings, DollarSign, Save, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
+import { http } from '../../api/http';
 
 const CURRENCIES = [
   { code: 'INR', name: 'Indian Rupee (₹)', symbol: '₹' },
@@ -22,6 +23,9 @@ export default function TutorManageAccount() {
   const [name, setName] = useState('');
   const [preferredCurrency, setPreferredCurrency] = useState('INR');
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -177,6 +181,76 @@ export default function TutorManageAccount() {
               <span className="ml-2 font-mono text-xs text-slate-600 break-all">{user?.id}</span>
             </div>
           </div>
+        </section>
+
+        {/* Danger Zone - Delete Account */}
+        <section className="bg-red-50 rounded-2xl border-2 border-red-200 p-6">
+          <h2 className="text-xl font-semibold text-red-800 mb-2 flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            Danger Zone
+          </h2>
+          <p className="text-sm text-red-700 mb-4">
+            Deleting your account is permanent and cannot be undone. Your personal information will be removed,
+            but transactional records (bookings, payments) will be preserved for security and compliance.
+          </p>
+
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete My Account
+            </button>
+          ) : (
+            <div className="bg-white rounded-lg border border-red-300 p-4 space-y-3">
+              <p className="text-sm font-semibold text-red-800">
+                Are you absolutely sure? This action cannot be reversed.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Enter your password to confirm
+                </label>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  className="w-full rounded-lg border border-red-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="Your current password"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={async () => {
+                    setDeleting(true);
+                    try {
+                      await http.delete('/users/me', { data: { password: deletePassword } });
+                      showSuccess('Account deleted successfully. You will be logged out.');
+                      setTimeout(() => {
+                        localStorage.clear();
+                        window.location.href = '/';
+                      }, 2000);
+                    } catch (err: any) {
+                      showError(err.response?.data?.message || 'Failed to delete account');
+                    } finally {
+                      setDeleting(false);
+                    }
+                  }}
+                  disabled={deleting}
+                  className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  {deleting ? 'Deleting...' : 'Yes, Delete My Account'}
+                </button>
+                <button
+                  onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>

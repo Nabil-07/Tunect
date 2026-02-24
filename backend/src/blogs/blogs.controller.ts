@@ -26,6 +26,13 @@ export class BlogsController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @Get('admin/pillars')
+  listPillars() {
+    return this.blogs.listPillars();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @Post()
   create(@Body() dto: CreateBlogDto) {
     return this.blogs.create(dto);

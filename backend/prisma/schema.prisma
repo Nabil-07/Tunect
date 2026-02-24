@@ -70,10 +70,18 @@ model BlogPost {
   status        BlogStatus @default(DRAFT)
   publishedAt   DateTime?
   authorName    String?
+  isPillar      Boolean    @default(false)
+  seoTitle      String?
+  seoDescription String?
+  pillarId      String?
+  pillar        BlogPost?  @relation("PillarChildren", fields: [pillarId], references: [id])
+  children      BlogPost[] @relation("PillarChildren")
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @default(now()) @updatedAt
 
   @@index([status, publishedAt])
+  @@index([pillarId])
+  @@index([isPillar])
 }
 
 model BankImport {
@@ -975,6 +983,7 @@ model User {
   preferredCurrency                String            @default("INR")
   failedLoginAttempts              Int               @default(0)
   lockUntil                        DateTime?
+  deletedAt                        DateTime?
   bankImports                      BankImport[]
   disputesReported                 Dispute[]         @relation("Dispute_reporterIdToUser")
   disputesResolved                 Dispute[]         @relation("Dispute_resolvedByToUser")
