@@ -32,7 +32,7 @@ const RESUBMISSION_FIELD_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'iban', label: 'IBAN' },
   { key: 'swift', label: 'SWIFT' },
   { key: 'selfie', label: 'Selfie document' },
-  { key: 'degreeCertificates', label: 'Degree certificates' },
+  { key: 'degreeCertificates', label: 'Degree certificates / Mark sheets' },
 ];
 
 function splitLatestAndOlderDocuments(docs: KycItem[]) {

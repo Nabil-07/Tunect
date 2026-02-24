@@ -50,6 +50,16 @@ export default function SlotPicker({
     []
   );
 
+  // Detect user's timezone for display
+  const userTimezone = useMemo(() => {
+    const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    // Get short abbreviation like "IST", "GST", "EST"
+    const abbr = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
+      .formatToParts(new Date())
+      .find((p) => p.type === 'timeZoneName')?.value || tzName;
+    return { name: tzName, abbr };
+  }, []);
+
   const keyForSlot = (s: AvailabilitySlot) =>
     `${s.id ?? ''}::${s.startTime}::${s.endTime}`;
 
@@ -285,6 +295,9 @@ export default function SlotPicker({
           <div className="flex items-center gap-2">
             <CalendarDays className="text-ocean-700" />
             <h3 className="text-lg font-semibold">Select an available slot</h3>
+            <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600" title={`Times shown in ${userTimezone.name}`}>
+              {userTimezone.abbr} — your local time
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <button

@@ -16,7 +16,7 @@ export class S3Service {
   private readonly bucketName: string;
   private readonly region: string;
   private readonly isEnabled: boolean;
-  private readonly allowedTopLevelPrefixes = new Set(['avatars', 'kyc', 'certificates', 'study-materials', 'payouts', 'expenses', 'test']);
+  private readonly allowedTopLevelPrefixes = new Set(['avatars', 'kyc', 'certificates', 'study-materials', 'payouts', 'expenses', 'blogs', 'test']);
   /** Per-request timeout in ms for S3 operations */
   private readonly requestTimeoutMs = 30_000;
 
@@ -100,6 +100,39 @@ export class S3Service {
       }
       this.logger.error('S3 upload error:', error);
       throw new Error('Failed to upload file to S3');
+    }
+  }
+
+  /** Upload a buffer to S3 with an exact key (no key generation) */
+  async uploadWithKey(key: string, body: Buffer, contentType: string): Promise<void> {
+    if (!this.isEnabled) {
+      this.logger.warn(`S3 disabled. Skipping upload for key: ${key}`);
+      return;
+    }
+    if (!this.s3Client) {
+      throw new Error('S3 client not initialized');
+    }
+
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    });
+
+    const abortController = new AbortController();
+    const timer = setTimeout(() => abortController.abort(), this.requestTimeoutMs);
+    try {
+      await this.s3Client.send(command, { abortSignal: abortController.signal });
+      this.logger.log(`File uploaded with key: ${key}`);
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        throw new Error(`S3 upload timed out after ${this.requestTimeoutMs / 1000}s`);
+      }
+      this.logger.error(`S3 upload error for ${key}:`, error);
+      throw new Error('Failed to upload file to S3');
+    } finally {
+      clearTimeout(timer);
     }
   }
 

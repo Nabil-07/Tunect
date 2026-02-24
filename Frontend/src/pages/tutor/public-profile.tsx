@@ -78,6 +78,11 @@ export default function TutorPublicProfile() { // NOSONAR
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     [],
   );
+  const timezoneAbbr = useMemo(() => {
+    return new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
+      .formatToParts(new Date())
+      .find((p) => p.type === 'timeZoneName')?.value || timezone;
+  }, [timezone]);
 
   const { currency, rates } = useDisplayCurrency();
   const r = (code: string) => rates[code] ?? 1; // USD->code
@@ -880,6 +885,9 @@ export default function TutorPublicProfile() { // NOSONAR
                   </svg>
                   Available Slots
                 </h2>
+                <span className="ml-2 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600" title={`Times shown in ${timezone}`}>
+                  {timezoneAbbr} — your local time
+                </span>
                 {isDemoIntent && (
                   <p className="text-sm text-emerald-600 mt-1">Pick a slot to confirm your free demo.</p>
                 )}

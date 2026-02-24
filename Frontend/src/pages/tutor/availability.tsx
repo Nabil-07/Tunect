@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Clock, X, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getAvailability, saveAvailabilityForMonth, createSlot, updateSlot, deleteSlot, getMyProfile } from '../../services/tutorService';
 import type { AvailabilitySlot } from '../../services/tutorService';
@@ -253,7 +252,7 @@ export default function TutorAvailability() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null); // null => add, number => edit
   const [draftStart, setDraftStart] = useState('09:00');
   const [draftEnd,   setDraftEnd]   = useState('10:00');
-  const [draftSubject, setDraftSubject] = useState<string>('');
+  const [draftSubjects, setDraftSubjects] = useState<string[]>([]);
   const [draftBooked, setDraftBooked] = useState<boolean>(false); // if the slot is booked
   const [tutorSubjects, setTutorSubjects] = useState<string[]>([]);
 
@@ -288,12 +287,7 @@ export default function TutorAvailability() {
     void loadTutorSubjects();
   }, []);
 
-  useEffect(() => {
-    if (!editorOpen) return;
-    if (draftSubject.trim()) return;
-    if (!tutorSubjects.length) return;
-    setDraftSubject(tutorSubjects[0]);
-  }, [editorOpen, draftSubject, tutorSubjects]);
+  // No auto-select: subjects are optional and multi-select
 
   const now = new Date();
   const monthLabel = useMemo(() => month.toLocaleString(undefined, { month: 'long', year: 'numeric' }), [month]);
@@ -382,7 +376,7 @@ export default function TutorAvailability() {
     const end = addMinutes(start, 60);
     setDraftStart(start);
     setDraftEnd(end);
-    setDraftSubject(tutorSubjects[0] || '');
+    setDraftSubjects([]);
     setDraftBooked(false);
     setEditorOpen(true);
   }
@@ -395,9 +389,8 @@ export default function TutorAvailability() {
     setEditingIndex(idx);
     setDraftStart(item.start);
     setDraftEnd(item.end);
-    const currentSubject = String(item.title || '').trim();
-    const allowedSubject = tutorSubjects.find((subject) => subject === currentSubject);
-    setDraftSubject(allowedSubject || tutorSubjects[0] || '');
+    const currentSubjects = String(item.title || '').split(',').map(s => s.trim()).filter(s => s && tutorSubjects.includes(s));
+    setDraftSubjects(currentSubjects);
     setDraftBooked(!!item.booked);
     setEditorOpen(true);
   }
@@ -471,23 +464,18 @@ export default function TutorAvailability() {
       
       const startIso = startDate.toISOString();
       const endIso = endDate.toISOString();
-      const selectedSubject = draftSubject.trim();
-
-      if (!selectedSubject) {
-        setToast({ message: 'Please add subjects in your profile before creating slots.', type: 'error' });
-        return;
-      }
+      const selectedTitle = draftSubjects.length ? draftSubjects.join(', ') : '';
 
       if (editingIndex === null) {
         // Create new slot
-        const newSlot = await createSlot(startIso, endIso, selectedSubject);
+        const newSlot = await createSlot(startIso, endIso, selectedTitle);
         setSlots((prev) => {
           const list = [...(prev[activeDay] || [])];
           list.push({
             id: newSlot.id,
             start: newSlot.startTime,
             end: newSlot.endTime,
-            title: newSlot.title || selectedSubject,
+            title: newSlot.title || selectedTitle || undefined,
             booked: false,
           });
           list.sort((a, b) => compareHHMM(a.start, b.start));
@@ -506,7 +494,7 @@ export default function TutorAvailability() {
           return;
         }
         
-        const updatedSlot = await updateSlot(existingSlot.id, startIso, endIso, selectedSubject);
+        const updatedSlot = await updateSlot(existingSlot.id, startIso, endIso, selectedTitle);
         setSlots((prev) => {
           const list = [...(prev[activeDay] || [])];
           list[editingIndex] = {
@@ -514,7 +502,7 @@ export default function TutorAvailability() {
             id: updatedSlot.id,
             start: updatedSlot.startTime,
             end: updatedSlot.endTime,
-            title: updatedSlot.title || selectedSubject,
+            title: updatedSlot.title || selectedTitle || undefined,
           };
           list.sort((a, b) => compareHHMM(a.start, b.start));
           return { ...prev, [activeDay]: list };
@@ -982,46 +970,28 @@ export default function TutorAvailability() {
                 </label>
               </div>
 
-              {tutorSubjects.length > 1 && (
-                <label className="text-sm block">
-                  <span className="block text-slate-600 mb-1">Subject</span>
-                  <select
-                    value={draftSubject}
-                    onChange={(e) => setDraftSubject(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 bg-white"
-                    disabled={loading}
-                  >
+              {tutorSubjects.length > 0 && (
+                <div className="text-sm">
+                  <span className="block text-slate-600 mb-2">Subjects <span className="text-slate-400 font-normal">(optional — select one or more)</span></span>
+                  <div className="space-y-2 max-h-40 overflow-y-auto border rounded-lg px-3 py-2">
                     {tutorSubjects.map((subject) => (
-                      <option key={subject} value={subject}>
-                        {subject}
-                      </option>
+                      <label key={subject} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded px-1 py-0.5">
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          checked={draftSubjects.includes(subject)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setDraftSubjects((prev) => [...prev, subject]);
+                            } else {
+                              setDraftSubjects((prev) => prev.filter((s) => s !== subject));
+                            }
+                          }}
+                          disabled={loading}
+                        />
+                        <span className="text-slate-700">{subject}</span>
+                      </label>
                     ))}
-                  </select>
-                </label>
-              )}
-              {tutorSubjects.length === 1 && (
-                <label className="text-sm block">
-                  <span className="block text-slate-600 mb-1">Subject</span>
-                  <input
-                    value={draftSubject}
-                    className="w-full border rounded-lg px-3 py-2"
-                    readOnly
-                    disabled={loading}
-                  />
-                </label>
-              )}
-
-              {tutorSubjects.length === 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
-                  <AlertCircle size={20} className="text-amber-600 mt-0.5 shrink-0" />
-                  <div className="text-sm text-amber-800">
-                    <p className="font-semibold">Complete your profile first</p>
-                    <p className="mt-1">
-                      You need to add at least one subject before creating availability slots.{' '}
-                      <Link to="/tutor/profile" className="text-blue-700 underline font-medium hover:text-blue-900">
-                        Go to your profile
-                      </Link>
-                    </p>
                   </div>
                 </div>
               )}
@@ -1042,7 +1012,7 @@ export default function TutorAvailability() {
               <button
                 className="rounded-lg bg-blue-600 text-white px-4 py-2 hover:bg-blue-700"
                 onClick={saveDraft}
-                disabled={loading || !draftSubject.trim()}
+                disabled={loading}
               >
                 {saveButtonLabel(loading, editingIndex)}
               </button>

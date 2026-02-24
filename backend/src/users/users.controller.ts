@@ -1,5 +1,5 @@
 // src/users/users.controller.ts
-import { BadRequestException, Body, Controller, Get, Patch, Post, UseGuards, Req, Param, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Patch, Post, Delete, UseGuards, Req, Param, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
@@ -105,6 +105,15 @@ export class UsersController {
     const userId: string = req.user?.sub ?? req.user?.id;
     const userRole: string | undefined = req.user?.role;
     return this.users.acceptTermsForCurrentRole(userId, userRole, req, body?.version);
+  }
+
+  @Delete('me')
+  async deleteAccount(
+    @Req() req: any,
+    @Body() body: { password?: string },
+  ) {
+    const userId: string = req.user?.sub ?? req.user?.id;
+    return this.users.softDeleteAccount(userId, body?.password);
   }
 
   // Admin-only routes

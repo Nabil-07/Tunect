@@ -3,6 +3,16 @@ import { Link, useParams } from "react-router-dom";
 import SEO from "../components/SEO";
 import api from "../lib/apiClient";
 
+type BlogChild = {
+  id: string;
+  title: string;
+  slug: string;
+  summary?: string;
+  coverImageUrl?: string;
+  publishedAt?: string;
+  authorName?: string;
+};
+
 type BlogPost = {
   id: string;
   title: string;
@@ -12,6 +22,12 @@ type BlogPost = {
   coverImageUrl?: string;
   publishedAt?: string;
   authorName?: string;
+  isPillar?: boolean;
+  pillarId?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  pillar?: { id: string; title: string; slug: string } | null;
+  children?: BlogChild[];
 };
 
 export default function BlogPost() {
@@ -66,8 +82,8 @@ export default function BlogPost() {
     ? {
         '@context': 'https://schema.org',
         '@type': 'BlogPosting',
-        headline: post.title,
-        description: post.summary || post.content.substring(0, 200),
+        headline: post.seoTitle || post.title,
+        description: post.seoDescription || post.summary || post.content.substring(0, 200),
         image: post.coverImageUrl || undefined,
         datePublished: post.publishedAt || undefined,
         author: {
@@ -85,12 +101,15 @@ export default function BlogPost() {
       }
     : null;
 
+  const seoTitle = post?.seoTitle || post?.title || 'Tunect Blog';
+  const seoDesc = post?.seoDescription || post?.summary || post?.content.substring(0, 160) || 'Read this article on Tunect Blog';
+
   return (
     <main className="container mx-auto px-4 py-12 max-w-3xl">
       {post && (
         <SEO
-          title={`${post.title} | Tunect Blog`}
-          description={post.summary || post.content.substring(0, 160) || 'Read this article on Tunect Blog'}
+          title={`${seoTitle} | Tunect Blog`}
+          description={seoDesc}
           url={`/blogs/${post.slug}`}
           image={post.coverImageUrl}
           type="article"
@@ -100,6 +119,21 @@ export default function BlogPost() {
       <Link to="/blogs" className="text-sm text-ocean-700 hover:underline">
         ← Back to all posts
       </Link>
+
+      {/* Supporting blog → link back to pillar */}
+      {post.pillar && (
+        <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+          <p className="text-sm text-indigo-800">
+            Part of the guide:{' '}
+            <Link
+              to={`/blogs/${post.pillar.slug}`}
+              className="font-semibold text-indigo-700 hover:underline"
+            >
+              {post.pillar.title}
+            </Link>
+          </p>
+        </div>
+      )}
 
       <div className="mt-6 rounded-2xl border bg-white shadow-sm overflow-hidden">
         {post.coverImageUrl ? (
@@ -121,13 +155,62 @@ export default function BlogPost() {
           {post.summary ? (
             <p className="mt-4 text-slate-700 font-medium">{post.summary}</p>
           ) : null}
-          <div className="prose prose-slate mt-6 max-w-none">
-            {post.content.split("\n").map((line, idx) => (
-              <p key={idx}>{line}</p>
+          <div className="prose prose-slate mt-6 max-w-none"
+            dangerouslySetInnerHTML={{ __html: post.content }}
+          />
+        </div>
+      </div>
+
+      {/* Pillar page → show related guides */}
+      {post.isPillar && post.children && post.children.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-bold text-slate-900 mb-4">Related Guides</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            {post.children.map((child) => (
+              <Link
+                key={child.id}
+                to={`/blogs/${child.slug}`}
+                className="group rounded-xl border bg-white shadow-sm hover:shadow-md transition overflow-hidden"
+              >
+                {child.coverImageUrl ? (
+                  <img
+                    src={child.coverImageUrl}
+                    alt={child.title}
+                    className="h-32 w-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="h-32 w-full bg-slate-100" />
+                )}
+                <div className="p-4">
+                  <h3 className="font-semibold text-slate-900 group-hover:text-ocean-700">
+                    {child.title}
+                  </h3>
+                  {child.summary && (
+                    <p className="mt-1 text-sm text-slate-600 line-clamp-2">{child.summary}</p>
+                  )}
+                  <div className="mt-2 text-xs text-slate-500">
+                    {child.publishedAt ? new Date(child.publishedAt).toLocaleDateString() : ''}
+                    {child.authorName ? ` · ${child.authorName}` : ''}
+                  </div>
+                </div>
+              </Link>
             ))}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Supporting blog → bottom link back to pillar */}
+      {post.pillar && (
+        <div className="mt-8 text-center">
+          <Link
+            to={`/blogs/${post.pillar.slug}`}
+            className="inline-flex items-center gap-2 text-sm font-medium text-indigo-700 hover:text-indigo-900 transition-colors"
+          >
+            ← Read the full guide: {post.pillar.title}
+          </Link>
+        </div>
+      )}
     </main>
   );
 }
