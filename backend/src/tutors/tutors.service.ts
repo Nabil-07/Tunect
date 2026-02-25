@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BookingStatus, TutorStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { TrendingTutorDto } from './dto/trending-tutor.dto';
+import type { TrendingTutorDto, TrendingTutorsResponse } from './dto/trending-tutor.dto';
 import { Cacheable } from '../common/cache.decorator';
 import { UploadsService } from '../uploads/uploads.service';
 
@@ -310,6 +310,23 @@ export class TutorsService {
     return (value || '').trim().toLowerCase();
   }
 
+  /**
+   * Check if a tutor's profile is fully completed.
+   * Checks: name, bio, subjects, languages, qualifications, yearsExperience, hourlyRate.
+   * Status=APPROVED is already guaranteed by the query filter.
+   */
+  private isProfileComplete(tutor: any): boolean {
+    const userName = tutor?.user?.name;
+    if (!userName || !String(userName).trim()) return false;
+    if (!tutor?.bio || !String(tutor.bio).trim()) return false;
+    if (!Array.isArray(tutor?.subjects) || tutor.subjects.length === 0) return false;
+    if (!Array.isArray(tutor?.languages) || tutor.languages.length === 0) return false;
+    if (!tutor?.qualifications || !String(tutor.qualifications).trim()) return false;
+    if (!tutor?.yearsExperience || Number(tutor.yearsExperience) <= 0) return false;
+    if (!tutor?.hourlyRate || Number(tutor.hourlyRate) <= 0) return false;
+    return true;
+  }
+
   private async withReadableAvatar(tutor: TutorPublic): Promise<TutorPublic> {
     if (!tutor?.avatarUrl) {
       return tutor;
@@ -347,9 +364,9 @@ export class TutorsService {
   // ---------- FILTER OPTIONS ----------
   @Cacheable('filter-options', 300) // Cache for 5 minutes
   async getFilterOptions() {
-    // Get all approved tutors with their subjects, languages and reviews
+    // Get all approved tutors with their subjects, languages and reviews (exclude deleted users)
     const tutors = await this.prisma.tutor.findMany({
-      where: { status: TutorStatus.APPROVED },
+      where: { status: TutorStatus.APPROVED, user: { deletedAt: null } },
       select: {
         subjects: true,
         classesTeach: true,
@@ -446,8 +463,8 @@ export class TutorsService {
     const pageSize = Math.min(50, Math.max(1, Number(params?.pageSize ?? 8)));
     const skip = (page - 1) * pageSize;
 
-    // ✅ Only tutors with APPROVED status
-    const where: any = { status: TutorStatus.APPROVED };
+    // ✅ Only tutors with APPROVED status & non-deleted users
+    const where: any = { status: TutorStatus.APPROVED, user: { deletedAt: null } };
 
     const andConditions: any[] = [];
 
@@ -499,6 +516,10 @@ export class TutorsService {
       where.AND = andConditions;
     }
 
+    // Determine if we need application-side sorting (profile completeness)
+    const isDefaultSort = !params?.sortBy;
+    const needsAppSort = isDefaultSort; // Default sort = completeness first, then rating
+
     let orderBy: any = { id: 'desc' as const };
     if (params?.sortBy === 'hourlyRate') {
       orderBy = { hourlyRate: params?.sortOrder === 'asc' ? 'asc' : 'desc' };
@@ -512,8 +533,9 @@ export class TutorsService {
       this.prisma.tutor.findMany({
         where,
         orderBy,
-        skip,
-        take: pageSize,
+        // When doing app-side sort, fetch all matching tutors for sorting
+        skip: needsAppSort ? 0 : skip,
+        take: needsAppSort ? 1000 : pageSize,
         include: {
           user: { select: { name: true, email: true, avatarUrl: true } },
           reviews: { select: { rating: true } },
@@ -537,7 +559,22 @@ export class TutorsService {
       };
     });
 
-    const normalizedItems = rowsWithReviews.map(normalizeTutor);
+    // Default sort: profile completeness first, then by rating
+    let sortedRows = rowsWithReviews;
+    if (needsAppSort) {
+      sortedRows = [...rowsWithReviews].sort((a, b) => {
+        const aComplete = this.isProfileComplete(a) ? 1 : 0;
+        const bComplete = this.isProfileComplete(b) ? 1 : 0;
+        if (bComplete !== aComplete) return bComplete - aComplete; // Complete profiles first
+        const aRating = a.rating ?? -1;
+        const bRating = b.rating ?? -1;
+        if (bRating !== aRating) return bRating - aRating; // Higher rating first
+        return (b.reviewCount ?? 0) - (a.reviewCount ?? 0); // More reviews first
+      });
+    }
+
+    const pagedRows = needsAppSort ? sortedRows.slice(skip, skip + pageSize) : sortedRows;
+    const normalizedItems = pagedRows.map(normalizeTutor);
     const items = await this.withReadableAvatars(normalizedItems);
     return { items, total, page, pageSize };
   }
@@ -656,7 +693,7 @@ export class TutorsService {
     }
 
     const candidates = await this.prisma.tutor.findMany({
-      where: { status: TutorStatus.APPROVED },
+      where: { status: TutorStatus.APPROVED, user: { deletedAt: null } },
       orderBy: { updatedAt: 'desc' },
       take: 200,
       include: {
@@ -781,8 +818,8 @@ export class TutorsService {
       const pageSize = Math.min(50, Math.max(1, Number(params?.pageSize ?? 8)));
       const skip = (page - 1) * pageSize;
 
-      // ✅ Only tutors with APPROVED status
-      const where: any = { status: TutorStatus.APPROVED };
+      // ✅ Only tutors with APPROVED status & non-deleted users
+      const where: any = { status: TutorStatus.APPROVED, user: { deletedAt: null } };
       const AND: any[] = [];
 
       // Text search (q) - handled in post-query filter for reliable partial matching
@@ -870,12 +907,13 @@ export class TutorsService {
       if (params?.sort === 'price_asc') orderBy = { hourlyRate: 'asc' as const };
       if (params?.sort === 'price_desc') orderBy = { hourlyRate: 'desc' as const };
       const shouldSortByRating = params?.sort === 'rating_desc';
+      const isDefaultSort = !params?.sort;
 
       // When text search (q) is used, we need to fetch all tutors and filter in application code
       // because Prisma's 'has' operator only supports exact matches, not partial matching.
       // Always apply text search when q is provided (even if subject filter is set).
       const needsTextSearchFilter = !!qSearchTerm;
-      const needsAppPagination = needsTextSearchFilter || shouldSortByRating;
+      const needsAppPagination = needsTextSearchFilter || shouldSortByRating || isDefaultSort;
       
       this.logger.log(`[search] Params: q="${qSearchTerm}", subject="${params?.subject}", needsTextSearchFilter=${needsTextSearchFilter}`);
       
@@ -1028,7 +1066,7 @@ export class TutorsService {
         // Update total and apply pagination after filtering
         finalTotal = filteredRows.length;
         this.logger.log(`[search] Text search: ${beforeFilter} → ${finalTotal} tutors after filter`);
-        if (!shouldSortByRating) {
+        if (!shouldSortByRating && !isDefaultSort) {
           filteredRows = filteredRows.slice(skip, skip + pageSize);
           this.logger.log(`[search] Returning ${filteredRows.length} tutors for page ${page}`);
         }
@@ -1049,8 +1087,12 @@ export class TutorsService {
         };
       });
 
-      const sortedRows = shouldSortByRating
+      const sortedRows = (shouldSortByRating || isDefaultSort)
         ? [...rowsWithReviews].sort((a, b) => {
+            // Complete profiles first, then by rating, then by review count
+            const aComplete = this.isProfileComplete(a) ? 1 : 0;
+            const bComplete = this.isProfileComplete(b) ? 1 : 0;
+            if (bComplete !== aComplete) return bComplete - aComplete;
             const ar = a.rating ?? -1;
             const br = b.rating ?? -1;
             if (br !== ar) return br - ar;
@@ -1058,7 +1100,7 @@ export class TutorsService {
           })
         : rowsWithReviews;
 
-      const pagedRows = shouldSortByRating ? sortedRows.slice(skip, skip + pageSize) : sortedRows;
+      const pagedRows = (shouldSortByRating || isDefaultSort) ? sortedRows.slice(skip, skip + pageSize) : sortedRows;
 
       const normalizedItems = pagedRows.map(normalizeTutor);
       const items = await this.withReadableAvatars(normalizedItems);
@@ -1169,24 +1211,65 @@ export class TutorsService {
   }
 
   // ---------- TRENDING ----------
+
+  /**
+   * Original trending endpoint (backward compatible).
+   * Returns a flat array of TrendingTutorDto for the homepage carousel.
+   */
   @Cacheable('trending', 120) // Cache for 2 minutes
   async getTrending(limit = 8): Promise<TrendingTutorDto[]> {
-    const tutors = await this.prisma.tutor.findMany({
-      where: { isTrending: true, status: TutorStatus.APPROVED },
-      take: Math.min(Math.max(Number(limit) || 8, 1), 24),
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true,
-        subjects: true,
-        languages: true,
-        hourlyRate: true,
-        country: true,
-        _count: { select: { reviews: true } },
-        user: { select: { name: true, email: true, avatarUrl: true } },
-      },
-    });
+    const result = await this.getTrendingPaginated({ page: 1, pageSize: limit });
+    return result.items;
+  }
 
-    // Fetch average ratings in bulk instead of loading all reviews
+  /**
+   * Enhanced trending endpoint with pagination and filters.
+   * Supports subject and classTeach filtering for the dedicated trending page.
+   */
+  async getTrendingPaginated(params: {
+    page?: number;
+    pageSize?: number;
+    subject?: string;
+    classTeach?: string;
+  } = {}): Promise<TrendingTutorsResponse> {
+    const page = Math.max(1, toNum(params.page, 1));
+    const pageSize = Math.min(Math.max(toNum(params.pageSize, 12), 1), 48);
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {
+      isTrending: true,
+      status: TutorStatus.APPROVED,
+      user: { deletedAt: null },
+    };
+
+    if (params.subject) {
+      where.subjects = { has: params.subject };
+    }
+    if (params.classTeach) {
+      where.classesTeach = { has: params.classTeach };
+    }
+
+    const [tutors, total] = await this.prisma.$transaction([
+      this.prisma.tutor.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true,
+          subjects: true,
+          classesTeach: true,
+          languages: true,
+          hourlyRate: true,
+          country: true,
+          _count: { select: { reviews: true } },
+          user: { select: { name: true, email: true, avatarUrl: true } },
+        },
+      }),
+      this.prisma.tutor.count({ where }),
+    ]);
+
+    // Fetch average ratings in bulk
     const tutorIds = tutors.map(t => t.id);
     const ratings = tutorIds.length > 0 ? await this.prisma.review.groupBy({
       by: ['tutorId'],
@@ -1196,7 +1279,7 @@ export class TutorsService {
 
     const ratingMap = new Map(ratings.map(r => [r.tutorId, r._avg.rating ?? 4.7]));
 
-    const trendingTutors = await Promise.all(tutors.map(async (t) => {
+    const items = await Promise.all(tutors.map(async (t) => {
       const avg = ratingMap.get(t.id) ?? 4.7;
 
       const fallbackName = t.user?.email
@@ -1214,15 +1297,80 @@ export class TutorsService {
         id: t.id,
         name: t.user?.name ?? fallbackName,
         subject: t.subjects?.[0] ?? 'General',
+        subjects: t.subjects ?? [],
+        classesTeach: t.classesTeach ?? [],
         country: t.country ?? undefined,
         rating: Math.round(avg * 100) / 100,
         hourly: t.hourlyRate,
         img,
         badges: [],
-      };
+      } as TrendingTutorDto;
     }));
 
-    return trendingTutors;
+    return { items, total, page, pageSize };
+  }
+
+  /**
+   * Auto-sync trending status for tutors with avg rating >= 4.5.
+   * Called by cron job. Respects admin manual overrides.
+   */
+  async syncAutoTrending(): Promise<{ promoted: number; demoted: number }> {
+    const logger = new Logger('SyncAutoTrending');
+
+    // 1. Find all approved tutors with their avg ratings (exclude deleted users)
+    const allApproved = await this.prisma.tutor.findMany({
+      where: { status: TutorStatus.APPROVED, user: { deletedAt: null } },
+      select: { id: true, isTrending: true, trendingManualOverride: true },
+    });
+
+    const tutorIds = allApproved.map(t => t.id);
+    if (tutorIds.length === 0) return { promoted: 0, demoted: 0 };
+
+    // 2. Get avg ratings in bulk
+    const ratings = await this.prisma.review.groupBy({
+      by: ['tutorId'],
+      _avg: { rating: true },
+      _count: { rating: true },
+      where: { tutorId: { in: tutorIds } },
+    });
+    const ratingMap = new Map(ratings.map(r => [r.tutorId, {
+      avg: r._avg.rating ?? 0,
+      count: r._count.rating ?? 0,
+    }]));
+
+    let promoted = 0;
+    let demoted = 0;
+
+    for (const tutor of allApproved) {
+      const ratingInfo = ratingMap.get(tutor.id);
+      const avgRating = ratingInfo?.avg ?? 0;
+      const reviewCount = ratingInfo?.count ?? 0;
+
+      // Must have at least 1 review and avg >= 4.5 to auto-qualify
+      const qualifiesForTrending = avgRating >= 4.5 && reviewCount >= 1;
+
+      if (qualifiesForTrending && !tutor.isTrending && !tutor.trendingManualOverride) {
+        // Auto-promote: high rating, not yet trending, not manually removed by admin
+        await this.prisma.tutor.update({
+          where: { id: tutor.id },
+          data: { isTrending: true },
+        });
+        promoted++;
+      } else if (!qualifiesForTrending && tutor.isTrending && !tutor.trendingManualOverride) {
+        // Auto-demote: rating dropped below threshold (only if not manually pinned)
+        await this.prisma.tutor.update({
+          where: { id: tutor.id },
+          data: { isTrending: false },
+        });
+        demoted++;
+      }
+    }
+
+    if (promoted > 0 || demoted > 0) {
+      logger.log(`Auto-trending sync: promoted=${promoted}, demoted=${demoted}`);
+    }
+
+    return { promoted, demoted };
   }
 
   // ---------- SESSIONS FOR LOGGED-IN TUTOR ----------

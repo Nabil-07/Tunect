@@ -568,6 +568,9 @@ function BookingCard({
   readonly tokenBalance?: number;
   readonly meetingLink?: string;
 }) {
+  const timezoneAbbr = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
+    .formatToParts(new Date())
+    .find((p) => p.type === 'timeZoneName')?.value || 'UTC';
   const {
     tutor,
     startTime,
@@ -654,6 +657,7 @@ function BookingCard({
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-indigo-600" />
               <span className="font-medium text-gray-800">{timeText}</span>
+              <span className="text-xs text-slate-500">({timezoneAbbr})</span>
             </div>
           </div>
 

@@ -11,7 +11,7 @@ import {
   type TutorStatus,
 } from '../../services/adminService';
 
-type SortField = 'name' | 'status' | 'accountStatus' | 'hourlyRate' | 'createdAt';
+type SortField = 'name' | 'status' | 'accountStatus' | 'profileCompletion' | 'hourlyRate' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
 export default function AdminTutors() {
@@ -30,7 +30,6 @@ export default function AdminTutors() {
   const [showNameDropdown, setShowNameDropdown] = useState(false);
   const nameDropdownRef = useRef<HTMLDivElement>(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
-  const [bioFilter, setBioFilter] = useState('');
   const [subjectsFilter, setSubjectsFilter] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BLOCKED'>('ALL');
 
@@ -120,11 +119,6 @@ export default function AdminTutors() {
         return selectedNames.has(name);
       });
     }
-    if (bioFilter) {
-      result = result.filter((t) => 
-        (t.bio || '').toLowerCase().includes(bioFilter.toLowerCase())
-      );
-    }
     if (subjectsFilter) {
       result = result.filter((t) => 
         t.subjects?.some(s => s.toLowerCase().includes(subjectsFilter.toLowerCase()))
@@ -152,6 +146,10 @@ export default function AdminTutors() {
           aVal = a.user.isBanned ? 1 : 0;
           bVal = b.user.isBanned ? 1 : 0;
           break;
+        case 'profileCompletion':
+          aVal = a.profileCompletion ?? -1;
+          bVal = b.profileCompletion ?? -1;
+          break;
         case 'hourlyRate':
           aVal = a.hourlyRate || 0;
           bVal = b.hourlyRate || 0;
@@ -170,7 +168,7 @@ export default function AdminTutors() {
     });
 
     return result;
-  }, [tutors, statusFilter, nameFilter, selectedNames, bioFilter, subjectsFilter, accountStatusFilter, sortField, sortOrder, getDisplayName]);
+  }, [tutors, statusFilter, nameFilter, selectedNames, subjectsFilter, accountStatusFilter, sortField, sortOrder, getDisplayName]);
 
   // Paginate filtered results for display
   const totalFilteredCount = filtered.length;
@@ -333,45 +331,50 @@ export default function AdminTutors() {
         <div className="text-slate-600">Loading tutors...</div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
+          <table className="w-full text-sm table-fixed" style={{ minWidth: '1100px' }}>
             <thead className="bg-slate-50 text-slate-600">
               <tr>
-                <th className="px-4 py-3 text-left">
+                <th className="w-[140px] px-3 py-3 text-left">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('name')}>
                     <span>Tutor</span>
                     <SortIcon field="name" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">Bio</th>
-                <th className="px-4 py-3 text-left">Subjects</th>
-                <th className="px-4 py-3 text-left">
+                <th className="w-[120px] px-3 py-3 text-left">Subjects</th>
+                <th className="w-[80px] px-3 py-3 text-left">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('profileCompletion')}>
+                    <span>Profile %</span>
+                    <SortIcon field="profileCompletion" />
+                  </div>
+                </th>
+                <th className="w-[90px] px-3 py-3 text-left">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('status')}>
                     <span>Status</span>
                     <SortIcon field="status" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">
+                <th className="w-[100px] px-3 py-3 text-left">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('accountStatus')}>
-                    <span>Account Status</span>
+                    <span>Account</span>
                     <SortIcon field="accountStatus" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">Terms</th>
-                <th className="px-4 py-3 text-left">
+                <th className="w-[80px] px-3 py-3 text-left">Terms</th>
+                <th className="w-[70px] px-3 py-3 text-left">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('hourlyRate')}>
-                    <span>Hourly rate</span>
+                    <span>Rate</span>
                     <SortIcon field="hourlyRate" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">
+                <th className="w-[80px] px-3 py-3 text-left">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('createdAt')}>
                     <span>Created</span>
                     <SortIcon field="createdAt" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">Demerits</th>
-                <th className="px-4 py-3 text-center">Trending</th>
-                <th className="px-4 py-3 text-left">Actions</th>
+                <th className="w-[55px] px-3 py-3 text-center">Demerits</th>
+                <th className="w-[55px] px-3 py-3 text-center">Trending</th>
+                <th className="w-[90px] px-3 py-3 text-left">Actions</th>
               </tr>
               {/* Filter Row */}
               <tr className="bg-white">
@@ -432,16 +435,7 @@ export default function AdminTutors() {
                     )}
                   </div>
                 </th>
-                <th className="px-4 py-2">
-                  <input
-                    type="text"
-                    placeholder="Filter bio..."
-                    className="w-full text-xs border rounded px-2 py-1"
-                    value={bioFilter}
-                    onChange={(e) => setBioFilter(e.target.value)}
-                  />
-                </th>
-                <th className="px-4 py-2">
+                <th className="px-3 py-2">
                   <input
                     type="text"
                     placeholder="Filter subjects..."
@@ -450,8 +444,9 @@ export default function AdminTutors() {
                     onChange={(e) => setSubjectsFilter(e.target.value)}
                   />
                 </th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2">
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2">
                   <select
                     className="w-full text-xs border rounded px-2 py-1"
                     value={accountStatusFilter}
@@ -462,29 +457,35 @@ export default function AdminTutors() {
                     <option value="BLOCKED">Blocked</option>
                   </select>
                 </th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedResults.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <Link 
                       to={`/admin/tutors/${t.id}`}
-                      className="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                      className="font-semibold text-blue-600 hover:text-blue-800 hover:underline text-xs"
                     >
                       {getDisplayName(t.user)}
                     </Link>
-                    <div className="text-xs text-slate-500">{t.user.email}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{t.user.email}</div>
                   </td>
-                  <td className="px-4 py-3 text-slate-700 max-w-xs truncate" title={t.bio || undefined}>{t.bio || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{t.subjects?.length ? t.subjects.join(', ') : '—'}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 text-slate-700 text-xs truncate" title={t.subjects?.join(', ') || undefined}>{t.subjects?.length ? t.subjects.join(', ') : '—'}</td>
+                  <td className="px-3 py-3">
+                    {(() => {
+                      const pct = t.profileCompletion ?? 0;
+                      const color = pct === 100 ? 'text-emerald-700 bg-emerald-100' : pct >= 50 ? 'text-amber-700 bg-amber-100' : 'text-red-700 bg-red-100';
+                      return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>{pct}%</span>;
+                    })()}
+                  </td>
+                  <td className="px-3 py-3">
                     <select
                       className="border rounded px-2 py-1 text-xs"
                       value={t.status}
@@ -498,53 +499,47 @@ export default function AdminTutors() {
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
                       {t.user.isBanned ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                           🚫 Blocked
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                           ✓ Active
                         </span>
                       )}
-                      {t.user.bannedAt && (
-                        <span className="text-xs text-slate-500">
-                          {new Date(t.user.bannedAt).toLocaleDateString()}
-                        </span>
-                      )}
-                      <span className="text-xs text-slate-500">
+                      <span className="text-[11px] text-slate-500">
                         Strikes: {t.user.piiStrikes}/{t.user.piiMaxStrikes}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     {t.user.terms?.accepted ? (
-                      <div className="flex flex-col gap-1 text-xs text-slate-700">
-                        <span className="inline-flex items-center px-2 py-1 rounded-full font-medium bg-emerald-100 text-emerald-800 w-fit">
-                          Accepted
+                      <div className="flex flex-col gap-0.5 text-[11px] text-slate-700">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800 w-fit">
+                          v{t.user.terms.version ?? '—'}
                         </span>
-                        <span>v{t.user.terms.version ?? '—'}</span>
                         <span className="text-slate-500">
                           {t.user.terms.acceptedAt ? new Date(t.user.terms.acceptedAt).toLocaleDateString() : '—'}
                         </span>
                       </div>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                         Pending
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{t.hourlyRate ? `₹${t.hourlyRate}` : '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{new Date(t.createdAt).toLocaleDateString()}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 text-xs text-slate-700">{t.hourlyRate ? `₹${t.hourlyRate}` : '—'}</td>
+                  <td className="px-3 py-3 text-xs text-slate-700">{new Date(t.createdAt).toLocaleDateString()}</td>
+                  <td className="px-3 py-3 text-center">
                     {(t.demeritPoints ?? 0) > 0 ? (
                       <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
                         {t.demeritPoints}
                       </span>
                     ) : (
-                      <span className="text-slate-400">0</span>
+                      <span className="text-xs text-slate-400">0</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-3 py-3 text-center">
                     <button
                       onClick={async () => {
                         try {
@@ -569,17 +564,17 @@ export default function AdminTutors() {
                       />
                     </button>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
+                  <td className="px-3 py-3">
+                    <div className="flex flex-col gap-1">
                       <Link
                         to={`/admin/tutors/${t.id}`}
-                        className="text-indigo-600 text-sm font-semibold hover:underline"
+                        className="text-indigo-600 text-xs font-semibold hover:underline"
                       >
                         View Details
                       </Link>
                       {(t.user.isBanned || t.user.piiStrikes >= t.user.piiMaxStrikes) && (
                         <button
-                          className="text-green-600 text-sm font-semibold disabled:text-green-400"
+                          className="text-green-600 text-xs font-semibold disabled:text-green-400"
                           disabled={unbanningUserId === t.user.id}
                           onClick={() => handleUnban(t.user.id)}
                         >

@@ -124,6 +124,7 @@ const HomePage = lazy(() => import('./pages/index'));
 const Pricing = lazy(() => import('./pages/pricing'));
 const HowItWorks = lazy(() => import('./pages/how-it-works'));
 const FindTutors = lazy(() => import('./pages/find-tutors'));
+const TrendingTutors = lazy(() => import('./pages/trending-tutors'));
 const BecomeTutor = lazy(() => import('./pages/become-tutor'));
 const TutorPublicProfile = lazy(() => import('./pages/tutor/public-profile'));
 const TutorRedirect = lazy(() => import('./components/TutorRedirect'));
@@ -316,6 +317,7 @@ function App() {
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/find-tutors" element={<FindTutors />} />
+          <Route path="/trending-tutors" element={<TrendingTutors />} />
           <Route path="/become-tutor" element={<BecomeTutor />} />
           <Route path="/tutors/kyc-submission" element={<Navigate to="/tutor/kyc" replace />} />
           <Route path="/tutor/kyc-submission" element={<Navigate to="/tutor/kyc" replace />} />

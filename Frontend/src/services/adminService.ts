@@ -46,6 +46,7 @@ export interface TutorSummary {
 	createdAt: string;
 	demeritPoints?: number;
 	isTrending?: boolean;
+	profileCompletion?: number;
 	user: {
 		id: string;
 		email: string;
@@ -68,6 +69,7 @@ export interface StudentSummary {
 	grade: string | null;
 	tokens: number;
 	createdAt: string;
+	profileCompletion?: number;
 	user: {
 		id: string;
 		email: string;

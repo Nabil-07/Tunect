@@ -3,6 +3,7 @@ import { Cron, CronExpression, Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotifierService } from './notifier.service';
 import { AvailabilityTrackingService } from '../availability/availability-tracking.service';
+import { TutorsService } from '../tutors/tutors.service';
 import { fromUtc } from '../common/time.util';
 import { addMinutes } from 'date-fns';
 import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
@@ -18,6 +19,7 @@ export class TasksService {
     private prisma: PrismaService,
     private notifier: NotifierService,
     private availabilityTracking: AvailabilityTrackingService,
+    private tutorsService: TutorsService,
   ) {}
 
   /**
@@ -763,6 +765,20 @@ export class TasksService {
       this.logger.log(`Updated metrics for ${tutors.length} tutors`);
     } catch (error) {
       this.logger.error('Error updating tutor metrics:', error);
+    }
+  }
+
+  // 7) Every hour: Auto-sync trending status for tutors with 4.5+ avg rating
+  @Cron(CronExpression.EVERY_HOUR)
+  async syncAutoTrending() {
+    this.logger.log('Running auto-trending sync...');
+    try {
+      const result = await this.tutorsService.syncAutoTrending();
+      if (result.promoted > 0 || result.demoted > 0) {
+        this.logger.log(`Auto-trending sync complete: promoted=${result.promoted}, demoted=${result.demoted}`);
+      }
+    } catch (error) {
+      this.logger.error('Error syncing auto-trending:', error);
     }
   }
 }

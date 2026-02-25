@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock, AlertTriangle, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, BookOpen, Award, MessageSquare, Clock, AlertTriangle, Trash2, Loader2, ChevronRight, ChevronDown as ChevronDownIcon } from 'lucide-react';
 import { fetchTutorDetail } from '../../services/adminService';
 import { http } from '../../api/http';
+
+/** Resolve a document URL: if it's already absolute, return as-is; otherwise prefix the API base. */
+const resolveDocUrl = (url: string | undefined | null): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  return `${apiBase}${url.startsWith('/') ? '' : '/'}${url}`;
+};
 
 interface TutorDetail {
   id: string;
@@ -30,6 +38,10 @@ interface TutorDetail {
     status: string;
     isDemo: boolean;
     createdAt: string;
+    attendance?: {
+      tutorWaitingRoomAttended: boolean;
+      studentWaitingRoomAttended: boolean;
+    } | null;
     student: {
       id: string;
       user: {
@@ -130,7 +142,8 @@ export default function TutorDetailPage() {
   const [tutor, setTutor] = useState<TutorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [expandedBookingStudents, setExpandedBookingStudents] = useState<Set<string>>(new Set());
   const [deletingUser, setDeletingUser] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteResult, setDeleteResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -154,6 +167,85 @@ export default function TutorDetailPage() {
       loadTutor();
     }
   }, [id]);
+
+  const conversationGroups = useMemo(() => {
+    if (!tutor?.conversations?.length) return [];
+
+    const groups = new Map<
+      string,
+      {
+        student: {
+          id: string;
+          user: {
+            id: string;
+            email: string;
+            name: string | null;
+          };
+        };
+        startedAt: string;
+        conversationCount: number;
+        messages: Array<{
+          id: string;
+          text: string;
+          createdAt: string;
+          user: {
+            id: string;
+            email: string;
+            name: string | null;
+          };
+        }>;
+      }
+    >();
+
+    for (const conversation of tutor.conversations) {
+      const studentId = conversation.student.id;
+      const existing = groups.get(studentId);
+
+      if (!existing) {
+        groups.set(studentId, {
+          student: conversation.student,
+          startedAt: conversation.createdAt,
+          conversationCount: 1,
+          messages: [...conversation.messages],
+        });
+      } else {
+        existing.conversationCount += 1;
+        if (new Date(conversation.createdAt).getTime() < new Date(existing.startedAt).getTime()) {
+          existing.startedAt = conversation.createdAt;
+        }
+        existing.messages.push(...conversation.messages);
+      }
+    }
+
+    const grouped = Array.from(groups.values()).map((group) => {
+      const uniqueMessages = Array.from(new Map(group.messages.map((message) => [message.id, message])).values());
+      uniqueMessages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return {
+        ...group,
+        messages: uniqueMessages,
+      };
+    });
+
+    grouped.sort((a, b) => {
+      const aLatest = a.messages[0]?.createdAt ?? a.startedAt;
+      const bLatest = b.messages[0]?.createdAt ?? b.startedAt;
+      return new Date(bLatest).getTime() - new Date(aLatest).getTime();
+    });
+
+    return grouped;
+  }, [tutor?.conversations]);
+
+  useEffect(() => {
+    if (!conversationGroups.length) {
+      setSelectedStudentId(null);
+      return;
+    }
+
+    const selectedExists = conversationGroups.some((group) => group.student.id === selectedStudentId);
+    if (!selectedStudentId || !selectedExists) {
+      setSelectedStudentId(conversationGroups[0].student.id);
+    }
+  }, [conversationGroups, selectedStudentId]);
 
   if (loading) {
     return (
@@ -410,37 +502,134 @@ export default function TutorDetailPage() {
           <p className="text-slate-500">No bookings</p>
         ) : (
           <div className="space-y-3">
-            {tutor.bookings.map((booking) => (
-              <div key={booking.id} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-semibold">
-                      {booking.student.user.name || booking.student.user.email}
-                    </p>
-                    <p className="text-sm text-slate-600">
-                      {booking.startTime && booking.endTime
-                        ? `${new Date(booking.startTime).toLocaleString()} - ${new Date(booking.endTime).toLocaleString()}`
-                        : 'Time TBD'}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Status: {booking.status} {booking.isDemo && '| Demo'}
-                    </p>
-                    {booking.review && (
-                      <p className="text-sm text-yellow-600 mt-2">
-                        ⭐ {booking.review.rating}/5 - {booking.review.comment}
-                      </p>
+            {(() => {
+              const groups = new Map<string, { student: typeof tutor.bookings[0]['student']; bookings: typeof tutor.bookings }>(); 
+              for (const b of tutor.bookings) {
+                const sid = b.student.id;
+                const existing = groups.get(sid);
+                if (existing) {
+                  existing.bookings.push(b);
+                } else {
+                  groups.set(sid, { student: b.student, bookings: [b] });
+                }
+              }
+              return Array.from(groups.values()).map(({ student, bookings }) => {
+                const isExpanded = expandedBookingStudents.has(student.id);
+                const toggleExpand = () => {
+                  setExpandedBookingStudents(prev => {
+                    const next = new Set(prev);
+                    if (next.has(student.id)) next.delete(student.id);
+                    else next.add(student.id);
+                    return next;
+                  });
+                };
+                const statusBadge = (status: string) => {
+                  if (status === 'COMPLETED') return 'bg-green-100 text-green-800';
+                  if (status === 'CONFIRMED') return 'bg-blue-100 text-blue-800';
+                  if (status === 'AUTO_CANCELLED_TUTOR_NO_SHOW') return 'bg-red-100 text-red-700';
+                  if (status === 'AUTO_CANCELLED_STUDENT_NO_SHOW') return 'bg-orange-100 text-orange-700';
+                  if (status === 'PENDING_SLOT') return 'bg-purple-100 text-purple-700';
+                  if (status === 'CANCELED') return 'bg-slate-100 text-slate-700';
+                  return 'bg-slate-100 text-slate-800';
+                };
+
+                return (
+                  <div key={student.id} className="border rounded-lg overflow-hidden">
+                    <button
+                      onClick={toggleExpand}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        {isExpanded
+                          ? <ChevronDownIcon className="w-4 h-4 text-slate-500 shrink-0" />
+                          : <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />}
+                        <div>
+                          <p className="font-semibold text-sm text-slate-900">
+                            {student.user.name || student.user.email}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {bookings.length} booking{bookings.length !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 flex-wrap justify-end">
+                        {Object.entries(
+                          bookings.reduce<Record<string, number>>((acc, b) => {
+                            const label = b.status.replace(/AUTO_CANCELLED_/g, '').replace(/_/g, ' ');
+                            acc[label] = (acc[label] || 0) + 1;
+                            return acc;
+                          }, {})
+                        ).map(([label, count]) => (
+                          <span key={label} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-600">
+                            {count} {label}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="divide-y divide-slate-100">
+                        {bookings.map((booking) => {
+                          const neitherJoined =
+                            !(booking.attendance?.tutorWaitingRoomAttended ?? false) &&
+                            !(booking.attendance?.studentWaitingRoomAttended ?? false);
+                          const tutorJoinedOnly =
+                            (booking.attendance?.tutorWaitingRoomAttended ?? false) &&
+                            !(booking.attendance?.studentWaitingRoomAttended ?? false);
+                          const studentJoinedOnly =
+                            !(booking.attendance?.tutorWaitingRoomAttended ?? false) &&
+                            (booking.attendance?.studentWaitingRoomAttended ?? false);
+
+                          return (
+                            <div key={booking.id} className="px-4 py-3 pl-11">
+                              <div className="flex justify-between items-start">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm text-slate-600">
+                                    {booking.startTime && booking.endTime
+                                      ? `${new Date(booking.startTime).toLocaleString()} - ${new Date(booking.endTime).toLocaleString()}`
+                                      : 'Time TBD'}
+                                  </p>
+                                  <p className="text-xs text-slate-500 mt-0.5">
+                                    {booking.isDemo && <span className="text-indigo-600 font-medium">Demo · </span>}
+                                    ID: {booking.id.slice(0, 8)}…
+                                  </p>
+
+                                  {/* Contextual attendance messages */}
+                                  {booking.status === 'CANCELED' && neitherJoined && (
+                                    <p className="mt-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                                      Neither the tutor nor the student joined. No payout.
+                                    </p>
+                                  )}
+                                  {booking.status === 'AUTO_CANCELLED_TUTOR_NO_SHOW' && (
+                                    <p className="mt-1.5 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                                      ⚠️ Tutor didn't join.{studentJoinedOnly ? ' Student showed up.' : ''} Demerit point applied.
+                                    </p>
+                                  )}
+                                  {booking.status === 'AUTO_CANCELLED_STUDENT_NO_SHOW' && (
+                                    <p className="mt-1.5 rounded border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
+                                      Student didn't join.{tutorJoinedOnly ? ' Tutor showed up.' : ''} Tutor still gets paid.
+                                    </p>
+                                  )}
+
+                                  {booking.review && (
+                                    <p className="text-sm text-yellow-600 mt-1.5">
+                                      ⭐ {booking.review.rating}/5 — {booking.review.comment}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className={`ml-3 shrink-0 px-2 py-0.5 rounded text-[11px] font-medium ${statusBadge(booking.status)}`}>
+                                  {booking.status.replace(/AUTO_CANCELLED_/g, '').replace(/_/g, ' ')}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    booking.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                    booking.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-800' :
-                    'bg-slate-100 text-slate-800'
-                  }`}>
-                    {booking.status}
-                  </span>
-                </div>
-              </div>
-            ))}
+                );
+              });
+            })()}
           </div>
         )}
       </div>
@@ -611,7 +800,7 @@ export default function TutorDetailPage() {
                       Review in KYC panel
                     </Link>
                     <a
-                      href={doc.url}
+                      href={resolveDocUrl(doc.url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline"
@@ -633,22 +822,23 @@ export default function TutorDetailPage() {
           <div className="flex gap-4" style={{ minHeight: 400 }}>
             {/* Conversation list (left panel) */}
             <div className="w-1/3 border-r border-slate-200 pr-4 overflow-y-auto" style={{ maxHeight: 500 }}>
-              {tutor.conversations.map((conv) => {
-                const lastMsg = conv.messages[0];
-                const isSelected = selectedConvId === conv.id;
+              {conversationGroups.map((group) => {
+                const lastMsg = group.messages[0];
+                const isSelected = selectedStudentId === group.student.id;
                 return (
                   <button
-                    key={conv.id}
-                    onClick={() => setSelectedConvId(conv.id)}
+                    key={group.student.id}
+                    onClick={() => setSelectedStudentId(group.student.id)}
                     className={`w-full text-left p-3 rounded-lg mb-2 transition-colors ${
                       isSelected ? 'bg-blue-50 border border-blue-300' : 'bg-slate-50 hover:bg-slate-100 border border-transparent'
                     }`}
                   >
                     <p className="font-semibold text-sm text-slate-900 truncate">
-                      {conv.student.user.name || conv.student.user.email}
+                      {group.student.user.name || group.student.user.email}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {conv.messages.length} message{conv.messages.length !== 1 ? 's' : ''}
+                      {group.messages.length} messages
+                      {group.conversationCount > 1 ? ` • ${group.conversationCount} conversations` : ''}
                     </p>
                     {lastMsg && (
                       <p className="text-xs text-slate-400 mt-1 truncate">
@@ -663,13 +853,13 @@ export default function TutorDetailPage() {
             {/* Chat view (right panel) */}
             <div className="flex-1 flex flex-col overflow-hidden">
               {(() => {
-                const selectedConv = tutor.conversations?.find(c => c.id === selectedConvId);
-                if (!selectedConv) {
+                const selectedGroup = conversationGroups.find((group) => group.student.id === selectedStudentId);
+                if (!selectedGroup) {
                   return (
                     <div className="flex-1 flex items-center justify-center text-slate-400">
                       <div className="text-center">
                         <MessageSquare className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                        <p>Select a conversation to view messages</p>
+                        <p>Select a student to view messages</p>
                       </div>
                     </div>
                   );
@@ -678,14 +868,15 @@ export default function TutorDetailPage() {
                   <>
                     <div className="border-b border-slate-200 pb-3 mb-3">
                       <p className="font-semibold text-slate-900">
-                        {selectedConv.student.user.name || selectedConv.student.user.email}
+                        {selectedGroup.student.user.name || selectedGroup.student.user.email}
                       </p>
                       <p className="text-xs text-slate-500">
-                        Started: {new Date(selectedConv.createdAt).toLocaleString()} · {selectedConv.messages.length} messages
+                        Started: {new Date(selectedGroup.startedAt).toLocaleString()} · {selectedGroup.messages.length} messages
+                        {selectedGroup.conversationCount > 1 ? ` · ${selectedGroup.conversationCount} conversations` : ''}
                       </p>
                     </div>
                     <div className="flex-1 overflow-y-auto space-y-2 pr-2" style={{ maxHeight: 400 }}>
-                      {selectedConv.messages.slice().reverse().map((msg) => {
+                      {selectedGroup.messages.slice().reverse().map((msg) => {
                         const isTutor = msg.user.id === tutor.user.id;
                         return (
                           <div key={msg.id} className={`flex ${isTutor ? 'justify-end' : 'justify-start'}`}>

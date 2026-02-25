@@ -192,8 +192,21 @@ export class BookingsService {
       },
       select: { id: true, status: true },
     });
-    if (!demo) return { used: false };
-    return { used: true, bookingId: demo.id, bookingStatus: demo.status };
+    if (demo) return { used: true, bookingId: demo.id, bookingStatus: demo.status };
+
+    // Also block demo if student already has a completed paid session with this tutor
+    const completedPaid = await this.prisma.booking.findFirst({
+      where: {
+        studentId,
+        tutorId,
+        isDemo: false,
+        status: BookingStatus.COMPLETED,
+      },
+      select: { id: true, status: true },
+    });
+    if (completedPaid) return { used: true, bookingId: completedPaid.id, bookingStatus: completedPaid.status };
+
+    return { used: false };
   }
 
   // ---------- queries ----------
@@ -382,6 +395,24 @@ export class BookingsService {
           throw new ConflictException(
             'You already have a demo session with this tutor. ' +
             'Please complete or cancel your existing demo before booking another one.'
+          );
+        }
+
+        // Also block demo if student already has a completed paid session with this tutor
+        const completedPaid = await tx.booking.findFirst({
+          where: {
+            studentId,
+            tutorId: resolvedTutorId,
+            isDemo: false,
+            status: BookingStatus.COMPLETED,
+          },
+          select: { id: true },
+        });
+
+        if (completedPaid) {
+          throw new ConflictException(
+            'You have already completed a session with this tutor. ' +
+            'Demo classes are only available for tutors you have not studied with before.'
           );
         }
 
