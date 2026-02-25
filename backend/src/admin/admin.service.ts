@@ -7,9 +7,11 @@ import { AdjustTokensDto } from './dto/adjust-tokens.dto';
 import { TokenLedgerService } from '../tokens/token-ledger.service';
 import { AuditService } from '../audit/audit.service';
 import { extractAuditInfo } from '../common/audit-helper';
+import { checkTutorProfileCompletion, checkStudentProfileCompletion } from '../users/profile-completion';
 import { Request } from 'express';
 import { PolicyConfigService } from '../policy-config/policy-config.service';
 import type { PolicyConfig } from '../policy-config/default-policy-config';
+import { UploadsService } from '../uploads/uploads.service';
 
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
@@ -30,6 +32,7 @@ export class AdminService {
     private readonly ledger: TokenLedgerService,
     private readonly audit: AuditService,
     private readonly policyConfig: PolicyConfigService,
+    private readonly uploads: UploadsService,
   ) {}
 
   private getFromCache<T>(key: string): T | undefined {
@@ -182,6 +185,7 @@ export class AdminService {
         where, skip, take: pageSize, orderBy: { updatedAt: 'desc' },
         select: {
           id: true, bio: true, hourlyRate: true, status: true, subjects: true, createdAt: true, demeritPoints: true, isTrending: true,
+          languages: true, qualifications: true, yearsExperience: true,
           user: { select: { id: true, email: true, name: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
@@ -199,19 +203,23 @@ export class AdminService {
     const strikeMap = new Map(strikeCounts.map((row) => [row.userId, row._count._all]));
     const latestTermsMap = await this.getLatestTermsByUserIds(tutorUserIds);
 
-    const enriched = items.map((item) => ({
-      ...item,
-      user: {
-        ...item.user,
-        piiStrikes: strikeMap.get(item.user.id) ?? 0,
-        piiMaxStrikes: 3,
-        terms: latestTermsMap.get(`${item.user.id}:${this.tutorTermsAction}`) ?? {
-          accepted: false,
-          version: null,
-          acceptedAt: null,
+    const enriched = items.map((item) => {
+      const profileStatus = checkTutorProfileCompletion({ ...item, user: item.user });
+      return {
+        ...item,
+        profileCompletion: profileStatus.completionPercentage,
+        user: {
+          ...item.user,
+          piiStrikes: strikeMap.get(item.user.id) ?? 0,
+          piiMaxStrikes: 3,
+          terms: latestTermsMap.get(`${item.user.id}:${this.tutorTermsAction}`) ?? {
+            accepted: false,
+            version: null,
+            acceptedAt: null,
+          },
         },
-      },
-    }));
+      };
+    });
 
     const result = { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
     this.setCache(cacheKey, result);
@@ -246,7 +254,12 @@ export class AdminService {
     if (!before) throw new NotFoundException('Tutor not found');
     const updated = await this.prisma.tutor.update({
       where: { id: tutorId },
-      data: { isTrending },
+      data: {
+        isTrending,
+        // When admin explicitly removes from trending, set manual override so cron doesn't re-add.
+        // When admin explicitly adds to trending, clear the override.
+        trendingManualOverride: !isTrending,
+      },
       select: { id: true, isTrending: true, updatedAt: true },
     });
 
@@ -292,6 +305,7 @@ export class AdminService {
         where, skip, take: pageSize, orderBy: { createdAt: 'desc' },
         select: {
           id: true, grade: true, tokens: true, createdAt: true,
+          board: true, timezone: true, preferredLanguage: true,
           user: { select: { id: true, email: true, name: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
@@ -319,20 +333,24 @@ export class AdminService {
     const studentStrikeMap = new Map(studentStrikeCounts.map((row) => [row.userId, row._count._all]));
     const latestTermsMap = await this.getLatestTermsByUserIds(studentUserIds);
 
-    const enriched = items.map((item) => ({
-      ...item,
-      tokens: tokenSumMap.get(item.id) ?? 0,
-      user: {
-        ...item.user,
-        piiStrikes: studentStrikeMap.get(item.user.id) ?? 0,
-        piiMaxStrikes: 3,
-        terms: latestTermsMap.get(`${item.user.id}:${this.studentTermsAction}`) ?? {
-          accepted: false,
-          version: null,
-          acceptedAt: null,
+    const enriched = items.map((item) => {
+      const profileStatus = checkStudentProfileCompletion({ ...item, user: item.user });
+      return {
+        ...item,
+        tokens: tokenSumMap.get(item.id) ?? 0,
+        profileCompletion: profileStatus.completionPercentage,
+        user: {
+          ...item.user,
+          piiStrikes: studentStrikeMap.get(item.user.id) ?? 0,
+          piiMaxStrikes: 3,
+          terms: latestTermsMap.get(`${item.user.id}:${this.studentTermsAction}`) ?? {
+            accepted: false,
+            version: null,
+            acceptedAt: null,
+          },
         },
-      },
-    }));
+      };
+    });
 
     const result = { items: enriched, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
     this.setCache(cacheKey, result);
@@ -575,6 +593,12 @@ export class AdminService {
           orderBy: { createdAt: 'desc' },
           take: 100,
           include: {
+            attendance: {
+              select: {
+                tutorWaitingRoomAttended: true,
+                studentWaitingRoomAttended: true,
+              },
+            },
             student: {
               include: {
                 user: {
@@ -679,6 +703,16 @@ export class AdminService {
 
     if (!tutor) {
       throw new NotFoundException('Tutor not found');
+    }
+
+    // Decorate KYC doc URLs with signed readable URLs
+    if (tutor.kycDocs?.length) {
+      tutor.kycDocs = await Promise.all(
+        tutor.kycDocs.map(async (doc) => ({
+          ...doc,
+          url: await this.uploads.toReadableReference(doc.url),
+        })),
+      );
     }
 
     // Get conversations and messages

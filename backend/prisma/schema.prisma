@@ -873,6 +873,7 @@ model Tutor {
   status              TutorStatus           @default(PENDING)
   country             String?
   isTrending          Boolean               @default(false)
+  trendingManualOverride Boolean             @default(false) // true = admin explicitly removed from trending; cron won't re-add
   tutorTid            String?               @unique(map: "tutor_tid_unique") @map("tutor_tid")
   demeritPoints       Int                   @default(0)
   lastDemeritReset    DateTime?

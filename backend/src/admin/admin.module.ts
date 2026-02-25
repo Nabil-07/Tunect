@@ -9,9 +9,10 @@ import { AuditModule } from '../audit/audit.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { PolicyConfigModule } from '../policy-config/policy-config.module';
 import { CommonModule } from '../common/common.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
-  imports: [AuditModule, MetricsModule, PolicyConfigModule, CommonModule],
+  imports: [AuditModule, MetricsModule, PolicyConfigModule, CommonModule, UploadsModule],
   controllers: [AdminController, AdminReportsController, PayoutsController, ExpensesController],
   providers: [AdminService, TokenLedgerService],
 })

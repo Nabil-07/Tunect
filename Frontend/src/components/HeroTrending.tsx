@@ -134,6 +134,7 @@ const Dots: FC<{ count: number; active: number }> = ({ count, active }) => (
 const HeroTrending: FC = () => {
   const navigate = useNavigate();
   const [data, setData] = useState<TrendingTutor[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -146,11 +147,28 @@ const HeroTrending: FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await api.get('/tutors/trending');
-        const raw = Array.isArray(res.data?.data) ? res.data.data : res.data;
-        const list = (Array.isArray(raw) ? raw : []).map(normItem).filter(Boolean) as TrendingTutor[];
+        // Fetch paginated endpoint to get total count
+        const res = await api.get('/tutors/trending/all', { params: { page: 1, pageSize: 5 } });
+        const responseData = res.data;
+
+        let list: TrendingTutor[] = [];
+        let total = 0;
+
+        if (responseData && typeof responseData === 'object' && 'items' in responseData) {
+          // Paginated response
+          const raw = Array.isArray(responseData.items) ? responseData.items : [];
+          list = raw.map(normItem).filter(Boolean) as TrendingTutor[];
+          total = responseData.total ?? list.length;
+        } else {
+          // Legacy flat array response
+          const raw = Array.isArray(responseData?.data) ? responseData.data : responseData;
+          list = (Array.isArray(raw) ? raw : []).map(normItem).filter(Boolean) as TrendingTutor[];
+          total = list.length;
+        }
+
         if (!mounted) return;
-        setData(list);
+        setData(list.slice(0, 5)); // Show max 5 in carousel
+        setTotalCount(total);
         setIndex(0);
       } catch {
         if (!mounted) return;
@@ -193,6 +211,19 @@ const HeroTrending: FC = () => {
       </button>
 
       <Dots count={data.length} active={index} />
+
+      {/* View All Trending Tutors link - shown when more than 5 trending tutors exist */}
+      {totalCount > 5 && (
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => navigate('/trending-tutors')}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-ocean-600 hover:text-ocean-700 transition"
+          >
+            View all {totalCount} trending tutors
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

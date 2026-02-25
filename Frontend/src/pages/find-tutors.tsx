@@ -8,6 +8,7 @@ import { searchTutors, listTutors, getFilterOptions } from '../services/tutorSer
 import type { Tutor, TutorSearchHistoryEntry } from '../services/tutorService';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
 import { getDemoStatusesForTutors, getDemoStatusForTutor } from '../services/bookingsService';
+import { useAuth } from '../contexts/AuthContext';
 
 // simple debounce hook
 function useDebounced<T>(value: T, ms = 350) {
@@ -70,6 +71,8 @@ function writeSearchHistory(entry: TutorSearchHistoryEntry) {
 export default function FindTutors() {
   const [sp, setSp] = useSearchParams();
   const { currency: displayCurrency, rates } = useDisplayCurrency();
+  const { user } = useAuth();
+  const isLoggedIn = !!user;
 
   const page = Number(sp.get('page') || 1);
   const pageSize = Number(sp.get('pageSize') || 12);
@@ -176,8 +179,9 @@ export default function FindTutors() {
         setTotal(backendTotal);
 
         // 4) fetch demo-used statuses in parallel and merge into items
+        // Only fetch demo statuses if user is logged in (requires auth)
         const ids = list.map((t) => t.id).filter(Boolean);
-        if (ids.length) {
+        if (ids.length && isLoggedIn) {
           const map = await getDemoStatusesForTutors(ids);
           if (!mounted) return;
 
@@ -194,7 +198,7 @@ export default function FindTutors() {
       mounted = false;
     };
     // Depend on debounced q and shouldUseSearch (which includes q in its calculation)
-  }, [q, subject, classTeach, board, language, minRating, priceMin, priceMax, sort, page, pageSize, shouldUseSearch]);
+  }, [q, subject, classTeach, board, language, minRating, priceMin, priceMax, sort, page, pageSize, shouldUseSearch, isLoggedIn]);
 
   // Track recent searches and filters for recommendations
   useEffect(() => {
@@ -208,8 +212,10 @@ export default function FindTutors() {
     });
   }, [q, subject, classTeach, board, language]);
 
-  // Listen for demo status changes and refresh
+  // Listen for demo status changes and refresh (only when logged in)
   useEffect(() => {
+    if (!isLoggedIn) return;
+
     const handleDemoStatusChange = async (event: CustomEvent) => {
       const tutorId = event.detail?.tutorId;
       if (!tutorId) return;
@@ -229,7 +235,7 @@ export default function FindTutors() {
     return () => {
       window.removeEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
     };
-  }, []);
+  }, [isLoggedIn]);
 
   const setParam = (k: string, v?: string) => {
     const nxt = new URLSearchParams(sp);
@@ -453,7 +459,7 @@ export default function FindTutors() {
               ))
             : items.length > 0
             ? items.map((t) => (
-                <div key={t.id} className="space-y-2">
+                <div key={t.id}>
                   <TutorCard tutor={t} searchSubject={subject || undefined} />
                 </div>
               ))

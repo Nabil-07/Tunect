@@ -1007,6 +1007,7 @@ export default function TutorPublicProfile() { // NOSONAR
                                   {new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                                   {' — '}
                                   {new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                  <span className="text-xs text-slate-400 ml-1">({timezoneAbbr})</span>
                                 </div>
                               </div>
                             </div>
@@ -1061,6 +1062,7 @@ export default function TutorPublicProfile() { // NOSONAR
                           <div key={`${s.startTime}-${idx}`} className="flex flex-col gap-0.5">
                             <div className="text-[10px] text-slate-600 truncate">
                               {new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                              <span className="text-slate-400 ml-0.5">({timezoneAbbr})</span>
                             </div>
                             <button
                               disabled={busy}
@@ -1112,6 +1114,7 @@ export default function TutorPublicProfile() { // NOSONAR
                         {new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                         {' — '}
                         {new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        <span className="text-xs text-slate-400 ml-1">({timezoneAbbr})</span>
                       </div>
                       <button
                         disabled={busy}

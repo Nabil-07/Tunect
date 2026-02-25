@@ -175,6 +175,34 @@ export class TutorsController {
     }
   }
 
+  @ApiOperation({ summary: 'Trending tutors with pagination and filters (dedicated page)' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'pageSize', required: false, example: 12 })
+  @ApiQuery({ name: 'subject', required: false, example: 'Mathematics' })
+  @ApiQuery({ name: 'class', required: false, example: 'Grade 6-8' })
+  @Get('trending/all')
+  async trendingAll(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('subject') subject?: string,
+    @Query('class') classTeach?: string,
+  ) {
+    try {
+      return await this.svc.getTrendingPaginated({
+        page: page ? Number(page) : 1,
+        pageSize: pageSize ? Number(pageSize) : 12,
+        subject: subject || undefined,
+        classTeach: classTeach || undefined,
+      });
+    } catch (error: any) {
+      console.error('[TutorsController.trendingAll] Error:', {
+        message: error?.message,
+        stack: error?.stack,
+      });
+      return { items: [], total: 0, page: 1, pageSize: 12 };
+    }
+  }
+
   @ApiOperation({ summary: 'Get available filter options (subjects and ratings)' })
   @Get('filters/options')
   getFilterOptions() {

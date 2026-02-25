@@ -5,7 +5,7 @@ import { ChevronUp, ChevronDown, ChevronDown as ChevronDownIcon } from 'lucide-r
 import { TableRowSkeleton } from '../../components/skeletons';
 import { fetchStudents, unbanUser, type StudentSummary } from '../../services/adminService';
 
-type SortField = 'name' | 'grade' | 'tokens' | 'accountStatus' | 'createdAt';
+type SortField = 'name' | 'grade' | 'profileCompletion' | 'tokens' | 'accountStatus' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
 export default function AdminStudents() {
@@ -165,6 +165,10 @@ export default function AdminStudents() {
           aVal = a.tokens;
           bVal = b.tokens;
           break;
+        case 'profileCompletion':
+          aVal = a.profileCompletion ?? -1;
+          bVal = b.profileCompletion ?? -1;
+          break;
         case 'accountStatus':
           aVal = a.user.isBanned ? 1 : 0;
           bVal = b.user.isBanned ? 1 : 0;
@@ -295,68 +299,75 @@ export default function AdminStudents() {
 
       {loading ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
+          <table className="w-full text-sm table-fixed" style={{ minWidth: '900px' }}>
             <thead className="bg-slate-50 text-slate-600">
               <tr>
-                <th className="px-4 py-3 text-left">Student</th>
-                <th className="px-4 py-3 text-left">Grade</th>
-                <th className="px-4 py-3 text-left">Tokens</th>
-                <th className="px-4 py-3 text-left">Terms</th>
-                <th className="px-4 py-3 text-left">Account Status</th>
-                <th className="px-4 py-3 text-left">Created</th>
-                <th className="px-4 py-3 text-left">Actions</th>
+                <th className="px-3 py-3 text-left w-[160px]">Student</th>
+                <th className="px-3 py-3 text-left w-[80px]">Grade</th>
+                <th className="px-3 py-3 text-left w-[80px]">Profile %</th>
+                <th className="px-3 py-3 text-left w-[80px]">Tokens</th>
+                <th className="px-3 py-3 text-left w-[100px]">Terms</th>
+                <th className="px-3 py-3 text-left w-[100px]">Account</th>
+                <th className="px-3 py-3 text-left w-[100px]">Created</th>
+                <th className="px-3 py-3 text-left w-[80px]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {Array.from({ length: 10 }).map((_, i) => (
-                <TableRowSkeleton key={i} columns={7} />
+                <TableRowSkeleton key={i} columns={8} />
               ))}
             </tbody>
           </table>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
+          <table className="w-full text-sm table-fixed" style={{ minWidth: '900px' }}>
             <thead className="bg-slate-50 text-slate-600">
               <tr>
-                <th className="px-4 py-3 text-left">
+                <th className="px-3 py-3 text-left w-[160px]">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('name')}>
                     <span>Student</span>
                     <SortIcon field="name" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">
+                <th className="px-3 py-3 text-left w-[80px]">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('grade')}>
                     <span>Grade</span>
                     <SortIcon field="grade" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">
+                <th className="px-3 py-3 text-left w-[80px]">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('profileCompletion')}>
+                    <span>Profile %</span>
+                    <SortIcon field="profileCompletion" />
+                  </div>
+                </th>
+                <th className="px-3 py-3 text-left w-[80px]">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('tokens')}>
                     <span>Tokens</span>
                     <SortIcon field="tokens" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">
+                <th className="px-3 py-3 text-left w-[100px]">
                   <span>Terms</span>
                 </th>
-                <th className="px-4 py-3 text-left">
+                <th className="px-3 py-3 text-left w-[100px]">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('accountStatus')}>
-                    <span>Account Status</span>
+                    <span>Account</span>
                     <SortIcon field="accountStatus" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">
+                <th className="px-3 py-3 text-left w-[100px]">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('createdAt')}>
                     <span>Created</span>
                     <SortIcon field="createdAt" />
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left">Actions</th>
+                <th className="px-3 py-3 text-left w-[80px]">Actions</th>
               </tr>
               {/* Filter Row */}
               <tr className="bg-white">
-                <th className="px-4 py-2">
+                <th className="px-3 py-2">
                   <div className="relative" ref={nameDropdownRef}>
                     <div className="flex items-center gap-1">
                       <input
@@ -423,7 +434,7 @@ export default function AdminStudents() {
                     )}
                   </div>
                 </th>
-                <th className="px-4 py-2">
+                <th className="px-3 py-2">
                   <input
                     type="text"
                     placeholder="Filter grade..."
@@ -432,9 +443,10 @@ export default function AdminStudents() {
                     onChange={(e) => setGradeFilter(e.target.value)}
                   />
                 </th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2">
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2">
                   <select
                     className="w-full text-xs border rounded px-2 py-1"
                     value={accountStatusFilter}
@@ -445,68 +457,76 @@ export default function AdminStudents() {
                     <option value="BLOCKED">Blocked</option>
                   </select>
                 </th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2"></th>
-                <th className="px-4 py-2"></th>
+                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedResults.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <Link 
                       to={`/admin/students/${s.id}`}
-                      className="font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                      className="font-semibold text-xs text-blue-600 hover:text-blue-800 hover:underline"
                     >
                       {getDisplayName(s.user)}
                     </Link>
-                    <div className="text-xs text-slate-500">{s.user.email}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{s.user.email}</div>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{s.grade || '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{s.tokens}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 text-xs text-slate-700">{s.grade || '—'}</td>
+                  <td className="px-3 py-3">
+                    {s.profileCompletion != null ? (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        s.profileCompletion >= 100
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : s.profileCompletion >= 50
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-red-100 text-red-800'
+                      }`}>
+                        {s.profileCompletion}%
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-700">{s.tokens}</td>
+                  <td className="px-3 py-3">
                     {s.user.terms?.accepted ? (
-                      <div className="flex flex-col gap-1 text-xs text-slate-700">
-                        <span className="inline-flex items-center px-2 py-1 rounded-full font-medium bg-emerald-100 text-emerald-800 w-fit">
-                          Accepted
+                      <div className="flex flex-col gap-0.5 text-[11px] text-slate-700">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800 w-fit">
+                          v{s.user.terms.version ?? '—'}
                         </span>
-                        <span>v{s.user.terms.version ?? '—'}</span>
                         <span className="text-slate-500">
                           {s.user.terms.acceptedAt ? new Date(s.user.terms.acceptedAt).toLocaleDateString() : '—'}
                         </span>
                       </div>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                         Pending
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
+                  <td className="px-3 py-3">
+                    <div className="flex flex-col gap-0.5">
                       {s.user.isBanned ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                           🚫 Blocked
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                           ✓ Active
                         </span>
                       )}
-                      {s.user.bannedAt && (
-                        <span className="text-xs text-slate-500">
-                          {new Date(s.user.bannedAt).toLocaleDateString()}
-                        </span>
-                      )}
-                      <span className="text-xs text-slate-500">
+                      <span className="text-[11px] text-slate-500">
                         Strikes: {s.user.piiStrikes}/{s.user.piiMaxStrikes}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{new Date(s.createdAt).toLocaleDateString()}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 text-xs text-slate-700">{new Date(s.createdAt).toLocaleDateString()}</td>
+                  <td className="px-3 py-3">
                     {(s.user.isBanned || s.user.piiStrikes >= s.user.piiMaxStrikes) && (
                       <button
-                        className="text-green-600 text-sm font-semibold hover:text-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="text-green-600 text-xs font-semibold hover:text-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => handleUnban(s.user.id)}
                         disabled={unbanningUserId === s.user.id}
                       >
