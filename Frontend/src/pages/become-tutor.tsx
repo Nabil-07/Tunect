@@ -1,4 +1,4 @@
-// src/pages/BecomeTutor.tsx
+﻿// src/pages/BecomeTutor.tsx
 import { useState } from "react";
 import {
   DollarSign,
@@ -8,7 +8,6 @@ import {
   ShieldCheck,
   BookOpen,
   HelpCircle,
-  Star,
   CheckCircle2,
   IndianRupee,
   ChevronDown,
@@ -31,8 +30,8 @@ export default function BecomeTutor() {
   const platformFeePercent = (r: number) => {
     if (!Number.isFinite(r) || r <= 0) return 25;
     if (r < 400) return 25;
-    if (r < 700) return 18;
-    return 15;
+    if (r < 700) return 22;
+    return 18;
   };
   const currentPlatformFee = platformFeePercent(rate);
   const tutorShare = (100 - currentPlatformFee) / 100;
@@ -160,7 +159,7 @@ export default function BecomeTutor() {
                 <p className="text-sm">Active Tutors</p>
               </div>
               <div>
-                <p className="font-bold text-xl">85%</p>
+                <p className="font-bold text-xl">82%</p>
                 <p className="text-sm">Earnings Share (max)</p>
               </div>
               <div>
@@ -246,7 +245,7 @@ export default function BecomeTutor() {
             {
               icon: <DollarSign className="h-8 w-8 text-green-600" />,
               title: "Earn Fair Income",
-              desc: "Set your own hourly rates and keep 75–85% after platform fees. No hidden deductions.",
+              desc: "Set your own hourly rates and keep 75–82% after platform fees. No hidden deductions.",
             },
             {
               icon: <Globe2 className="h-8 w-8 text-blue-600" />,
@@ -316,8 +315,8 @@ export default function BecomeTutor() {
         </h2>
         <p className="text-center text-slate-600 mb-10">
           Move the sliders or pick a preset to see your monthly & yearly
-          estimates. Platform fee: 25% below ₹400/hr, 18% between ₹400–₹699,
-          and 15% at ₹700+.
+          estimates. Platform fee: 25% below ₹400/hr, 22% between ₹400–₹699,
+          and 18% at ₹700+.
         </p>
 
         <div className="grid md:grid-cols-2 gap-8">
@@ -407,7 +406,7 @@ export default function BecomeTutor() {
           {/* Benefits & Quick examples */}
           <div className="space-y-4">
             {[
-              "Keep 75–85% of session fees",
+              "Keep 75–82% of session fees",
               "No subscription fees",
               "Weekly payouts to bank",
               "Set your own rates",
@@ -442,29 +441,6 @@ export default function BecomeTutor() {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="bg-slate-50 py-16">
-        <h2 className="text-3xl font-bold text-center mb-10">
-          What Tutors Say
-        </h2>
-        <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-6">
-          {[
-            { name: "Sarah K.", quote: "Tunect helped me reach students worldwide. I doubled my income within 3 months!" },
-            { name: "Arjun M.", quote: "The flexible schedule lets me balance teaching with my PhD research." },
-            { name: "Fatima R.", quote: "Payments are always on time, and I love the one-on-one teaching format." },
-          ].map((t, i) => (
-            <div
-              key={i}
-              className="bg-white border rounded-xl p-6 text-center shadow hover:shadow-lg transition"
-            >
-              <Star className="w-6 h-6 text-yellow-400 mx-auto" />
-              <p className="italic mt-4">“{t.quote}”</p>
-              <h4 className="mt-4 font-semibold">{t.name}</h4>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Tutor FAQ — Accordion */}
       <section className="py-16 max-w-4xl mx-auto px-6">
         <h2 className="text-3xl font-bold text-center mb-2">Tutor FAQ</h2>
@@ -495,7 +471,7 @@ export default function BecomeTutor() {
 
         <div className="text-center mt-8">
           <Link
-            to="/contact"
+            to="/support"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-slate-50 transition"
           >
             Still have a question? Contact support
