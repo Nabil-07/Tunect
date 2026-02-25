@@ -24,8 +24,8 @@ logs/
 *.log
 pnpm-debug.log*
 
-# Prisma
-prisma/migrations/
+# Prisma - generated client only (migrations MUST be version-controlled)
+# prisma/migrations/ — DO NOT ignore, Prisma requires migration history in VCS
 
 # Temporary files
 tmp/
