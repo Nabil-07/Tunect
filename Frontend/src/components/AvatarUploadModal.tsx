@@ -8,6 +8,10 @@ type AvatarUploadModalProps = {
   uploading: boolean;
   onClose: () => void;
   onUpload: (file: File) => Promise<void>;
+  /** When true, only allow repositioning/cropping of the existing avatar (no camera/file-pick) */
+  repositionMode?: boolean;
+  /** Current avatar URL to load into cropper when in reposition mode */
+  currentAvatarUrl?: string | null;
 };
 
 type Step = 'choose' | 'camera' | 'crop';
@@ -17,7 +21,7 @@ function cleanupObjectUrl(url: string | null) {
   URL.revokeObjectURL(url);
 }
 
-export default function AvatarUploadModal({ open, uploading, onClose, onUpload }: AvatarUploadModalProps) {
+export default function AvatarUploadModal({ open, uploading, onClose, onUpload, repositionMode, currentAvatarUrl }: AvatarUploadModalProps) {
   const [step, setStep] = useState<Step>('choose');
   const [error, setError] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -33,11 +37,21 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload }
 
   useEffect(() => {
     if (!open) return;
-    setStep('choose');
     setError(null);
+    if (repositionMode && currentAvatarUrl) {
+      // In reposition mode, go directly to crop with the current avatar
+      setImageSrc(currentAvatarUrl);
+      setSourceName('avatar-reposition');
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setStep('crop');
+    } else {
+      setStep('choose');
+    }
     return () => {
       stopCamera();
-      cleanupObjectUrl(imageSrc);
+      // Don't revoke external URLs (reposition mode uses the existing avatar URL)
+      if (!repositionMode && imageSrc) cleanupObjectUrl(imageSrc);
     };
   }, [open]);
 
@@ -148,13 +162,18 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload }
     }
   };
 
+  const submitLabel = (() => {
+    if (uploading) return repositionMode ? 'Saving...' : 'Uploading...';
+    return repositionMode ? 'Save' : 'Upload';
+  })();
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-xl rounded-xl bg-white shadow-xl border border-slate-200">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-900">Change Photo</h3>
+          <h3 className="text-base font-semibold text-slate-900">{repositionMode ? 'Adjust Position' : 'Change Photo'}</h3>
           <button type="button" onClick={close} className="text-slate-500 hover:text-slate-700">✕</button>
         </div>
 
@@ -239,24 +258,26 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload }
                 />
               </div>
               <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('choose');
-                    setImageSrc(null);
-                  }}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                  disabled={uploading}
-                >
-                  Back
-                </button>
+                {!repositionMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('choose');
+                      setImageSrc(null);
+                    }}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                    disabled={uploading}
+                  >
+                    Back
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={submitCrop}
                   disabled={uploading}
                   className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
                 >
-                  {uploading ? 'Uploading...' : 'Upload'}
+                  {submitLabel}
                 </button>
               </div>
             </div>

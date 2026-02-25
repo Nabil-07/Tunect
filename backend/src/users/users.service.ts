@@ -133,6 +133,7 @@ export class UsersService {
 
     // For tutors: use approved KYC selfie as profile picture (overrides any manually set avatar)
     let effectiveAvatarUrl = safeUser.avatarUrl;
+    let kycSelfieApproved = false;
     if (safeUser.tutor?.id) {
       const approvedSelfie = await this.prisma.kycDocument.findFirst({
         where: { tutorId: safeUser.tutor.id, docType: 'selfie', status: 'APPROVED' },
@@ -141,6 +142,7 @@ export class UsersService {
       });
       if (approvedSelfie?.url) {
         effectiveAvatarUrl = approvedSelfie.url;
+        kycSelfieApproved = true;
       }
     }
 
@@ -162,6 +164,7 @@ export class UsersService {
     return {
       ...safeUser,
       avatarUrl: readableAvatarUrl ? this.encryptionService.encrypt(readableAvatarUrl) : readableAvatarUrl,
+      kycSelfieApproved,
       name: displayName, // Use fallback if original was null
       hasPassword: Boolean(password && password.length > 0),
       piiStrikes,
@@ -231,16 +234,19 @@ export class UsersService {
     };
   }
 
-  async uploadAvatar(userId: string, file: Express.Multer.File) {
+  async uploadAvatar(userId: string, file: Express.Multer.File, reposition = false) {
     // Block manual avatar upload for tutors with approved KYC selfie
-    const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
-    if (tutor) {
-      const approvedSelfie = await this.prisma.kycDocument.findFirst({
-        where: { tutorId: tutor.id, docType: 'selfie', status: 'APPROVED' },
-        select: { id: true },
-      });
-      if (approvedSelfie) {
-        throw new BadRequestException('Profile picture is set from your approved KYC selfie and cannot be changed manually');
+    // (allow reposition — re-cropping the existing avatar is fine)
+    if (!reposition) {
+      const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+      if (tutor) {
+        const approvedSelfie = await this.prisma.kycDocument.findFirst({
+          where: { tutorId: tutor.id, docType: 'selfie', status: 'APPROVED' },
+          select: { id: true },
+        });
+        if (approvedSelfie) {
+          throw new BadRequestException('Profile picture is set from your approved KYC selfie and cannot be changed manually');
+        }
       }
     }
 
@@ -269,7 +275,22 @@ export class UsersService {
     };
   }
 
-  async finalizeAvatarUpload(userId: string, keyOrUrl: string, userRole?: string) {
+  async finalizeAvatarUpload(userId: string, keyOrUrl: string, userRole?: string, reposition = false) {
+    // Block presigned avatar upload for tutors with approved KYC selfie
+    // (allow reposition — re-cropping the existing avatar is fine)
+    if (!reposition) {
+      const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+      if (tutor) {
+        const approvedSelfie = await this.prisma.kycDocument.findFirst({
+          where: { tutorId: tutor.id, docType: 'selfie', status: 'APPROVED' },
+          select: { id: true },
+        });
+        if (approvedSelfie) {
+          throw new BadRequestException('Profile picture is set from your approved KYC selfie and cannot be changed manually');
+        }
+      }
+    }
+
     const key = await this.uploadsService.assertKeyAllowedForUseCase({
       userId,
       useCase: 'avatars',

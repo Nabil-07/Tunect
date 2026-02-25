@@ -1648,10 +1648,18 @@ export class TutorsService {
       ? await this.uploadsService.toReadableReference(t.user.avatarUrl, t.userId, 'TUTOR')
       : null;
 
+    // Check if tutor has an approved KYC selfie (locks profile pic)
+    const approvedSelfie = await this.prisma.kycDocument.findFirst({
+      where: { tutorId, docType: 'selfie', status: 'APPROVED' },
+      select: { id: true },
+    });
+    const kycSelfieApproved = !!approvedSelfie;
+
     return {
       name: t.user?.name ?? null,
       email: t.user?.email ?? null,
       avatarUrl: readableAvatarUrl,
+      kycSelfieApproved,
       status: t.status ?? null,
       bio: t.bio ?? null,
       summary: t.summary ?? null,
@@ -1686,10 +1694,18 @@ export class TutorsService {
       ? await this.uploadsService.toReadableReference(t.user.avatarUrl, userId, 'TUTOR')
       : null;
 
+    // Check if tutor has an approved KYC selfie (locks profile pic)
+    const approvedSelfie = await this.prisma.kycDocument.findFirst({
+      where: { tutorId: t.id, docType: 'selfie', status: 'APPROVED' },
+      select: { id: true },
+    });
+    const kycSelfieApproved = !!approvedSelfie;
+
     return {
       name: t.user?.name ?? null,
       email: t.user?.email ?? null,
       avatarUrl: readableAvatarUrl,
+      kycSelfieApproved,
       status: t.status ?? null,
       bio: t.bio ?? null,
       summary: t.summary ?? null,

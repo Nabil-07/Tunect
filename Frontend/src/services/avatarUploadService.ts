@@ -29,7 +29,7 @@ function validateAvatarFile(file: File) {
   }
 }
 
-async function uploadWithPresign(file: File): Promise<AvatarUploadResponse> {
+async function uploadWithPresign(file: File, reposition = false): Promise<AvatarUploadResponse> {
   const presign = await api.post<{ key: string; uploadUrl: string; expiresAt: string }>(
     '/uploads/presign',
     {
@@ -59,13 +59,15 @@ async function uploadWithPresign(file: File): Promise<AvatarUploadResponse> {
   const finalize = await api.post<AvatarUploadResponse>('/users/me/avatar/finalize', {
     avatarKey: key,
     avatarUrl: key,
+    ...(reposition ? { reposition: true } : {}),
   });
   return finalize.data;
 }
 
-async function uploadWithMultipart(file: File): Promise<AvatarUploadResponse> {
+async function uploadWithMultipart(file: File, reposition = false): Promise<AvatarUploadResponse> {
   const fd = new FormData();
   fd.append('file', file);
+  if (reposition) fd.append('reposition', 'true');
 
   const res = await api.post<AvatarUploadResponse>('/users/me/avatar', fd, {
     headers: {
@@ -76,15 +78,15 @@ async function uploadWithMultipart(file: File): Promise<AvatarUploadResponse> {
   return res.data;
 }
 
-export async function uploadMyAvatar(file: File): Promise<AvatarUploadResponse> {
+export async function uploadMyAvatar(file: File, reposition = false): Promise<AvatarUploadResponse> {
   validateAvatarFile(file);
 
   if (shouldUseDirectMultipartUpload()) {
-    return uploadWithMultipart(file);
+    return uploadWithMultipart(file, reposition);
   }
 
   try {
-    return await uploadWithPresign(file);
+    return await uploadWithPresign(file, reposition);
   } catch (error: any) {
     const requestUrl = String(error?.config?.url || '');
     const responseStatus = Number(error?.response?.status || 0);
@@ -100,6 +102,6 @@ export async function uploadMyAvatar(file: File): Promise<AvatarUploadResponse> 
       throw error;
     }
 
-    return uploadWithMultipart(file);
+    return uploadWithMultipart(file, reposition);
   }
 }

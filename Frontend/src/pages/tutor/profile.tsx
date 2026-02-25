@@ -116,6 +116,7 @@ type ProfileData = {
   classesTeach?: string[];
   boards?: string[];
   classSubjectMappings?: Array<{ classRange: string; subjects: string[] }>;
+  kycSelfieApproved?: boolean;
 };
 
 export default function Profile() {
@@ -184,6 +185,7 @@ export default function Profile() {
         classSubjectMappings: Array.isArray(raw?.classSubjectMappings)
           ? raw.classSubjectMappings
           : raw?.tutor?.classSubjectMappings ?? [],
+        kycSelfieApproved: raw?.kycSelfieApproved === true,
       };
       setData(next);
     } catch (e) {
@@ -346,7 +348,8 @@ export default function Profile() {
   const handleAvatarUpload = async (file: File) => {
     try {
       setUploadingAvatar(true);
-      const uploaded = await uploadMyAvatar(file);
+      const isReposition = !!data.kycSelfieApproved;
+      const uploaded = await uploadMyAvatar(file, isReposition);
 
       const freshMe = await fetchMe();
       const resolved = (freshMe as any)?.user ?? freshMe ?? null;
@@ -493,6 +496,11 @@ export default function Profile() {
     Math.round((amountInInr * (rate(target) / Math.max(rate('INR'), 1e-9))) * 100) / 100;
   const preview = hourlyInInr !== undefined ? toDisplay(hourlyInInr, displayCurrency) : undefined;
 
+  const avatarButtonLabel = (() => {
+    if (uploadingAvatar) return data.kycSelfieApproved ? 'Saving...' : 'Uploading...';
+    return data.kycSelfieApproved ? 'Adjust Position' : 'Change Photo';
+  })();
+
   return (
     <div className="px-4 sm:px-6 lg:px-8">
       {/* Header Card */}
@@ -506,15 +514,20 @@ export default function Profile() {
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-semibold truncate">{data.name || 'Your Name'}</h1>
             <p className="text-white/90 text-sm truncate">{data.email || '--'}</p>
-            <div className="mt-3">
+            <div className="mt-3 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setAvatarModalOpen(true)}
                 disabled={uploadingAvatar}
                 className="rounded-md bg-white/20 px-3 py-1.5 text-sm font-medium hover:bg-white/30 disabled:opacity-60"
               >
-                {uploadingAvatar ? 'Uploading...' : 'Change Photo'}
+                {avatarButtonLabel}
               </button>
+              {data.kycSelfieApproved && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-1 text-xs text-white/80" title="Profile photo is set from your verified KYC selfie">
+                  🔒 KYC Verified
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1093,6 +1106,8 @@ export default function Profile() {
         uploading={uploadingAvatar}
         onClose={() => setAvatarModalOpen(false)}
         onUpload={handleAvatarUpload}
+        repositionMode={!!data.kycSelfieApproved}
+        currentAvatarUrl={avatar}
       />
     </div>
   );

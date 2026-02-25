@@ -74,7 +74,8 @@ export class UsersController {
       throw new BadRequestException('Avatar file is required');
     }
     const userId: string = req.user?.sub ?? req.user?.id;
-    return this.users.uploadAvatar(userId, file);
+    const reposition = req.body?.reposition === 'true' || req.body?.reposition === true;
+    return this.users.uploadAvatar(userId, file, reposition);
   }
 
   @Post('me/avatar/finalize')
@@ -85,7 +86,7 @@ export class UsersController {
     if (!keyOrUrl) {
       throw new BadRequestException('avatar key/url is required');
     }
-    return this.users.finalizeAvatarUpload(userId, keyOrUrl, userRole);
+    return this.users.finalizeAvatarUpload(userId, keyOrUrl, userRole, dto.reposition);
   }
 
   @Patch('me/password')
