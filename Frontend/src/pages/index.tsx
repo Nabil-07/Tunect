@@ -98,7 +98,7 @@ export default function Home() {
         name: 'What is Tunect?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Tunect is a global 1-on-1 online tutoring platform that connects students with verified tutors across India. Students can book personalized sessions and get their first session free as a demo.',
+          text: 'Tunect is a global 1-on-1 online tutoring platform that connects students with verified tutors across the globe. Students can book personalized sessions and get their first session free as a demo.',
         },
       },
       {
