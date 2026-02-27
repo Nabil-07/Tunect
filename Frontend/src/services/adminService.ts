@@ -138,6 +138,7 @@ export interface PolicyConfig {
 		cin: string;
 		officialEmail: string;
 		supportEmail: string;
+		supportPhone: string;
 		jurisdictionCity: string;
 	};
 	student: {

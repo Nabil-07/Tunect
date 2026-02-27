@@ -4,6 +4,7 @@ export type PolicyConfig = {
     cin: string;
     officialEmail: string;
     supportEmail: string;
+    supportPhone: string;
     jurisdictionCity: string;
   };
   student: {
@@ -35,6 +36,7 @@ export const DEFAULT_POLICY_CONFIG: PolicyConfig = {
     cin: 'U85500BR2026PTC081390',
     officialEmail: 'official@tunectnow.com',
     supportEmail: 'support@tunectnow.com',
+    supportPhone: '+91 7903464425',
     jurisdictionCity: 'Patna',
   },
   student: {

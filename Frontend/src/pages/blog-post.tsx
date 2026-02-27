@@ -155,7 +155,7 @@ export default function BlogPost() {
           {post.summary ? (
             <p className="mt-4 text-slate-700 font-medium">{post.summary}</p>
           ) : null}
-          <div className="prose prose-slate mt-6 max-w-none"
+          <div className="rich-text-content mt-6 max-w-none"
             dangerouslySetInnerHTML={{ __html: post.content }}
           />
         </div>

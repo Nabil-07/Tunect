@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import {
   Shield, UserPlus, Crown, Search, Check, X, Copy, Eye, EyeOff,
-  ToggleLeft, ToggleRight, AlertTriangle,
+  ToggleLeft, ToggleRight, AlertTriangle, Trash2,
 } from 'lucide-react';
 import api from '../../services/apiClient';
 import { useAuth } from '../../contexts/AuthContext';
@@ -42,6 +42,8 @@ export default function AdminManagement() {
   const [createdAdmin, setCreatedAdmin] = useState<CreatedAdmin | null>(null);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [togglingDirector, setTogglingDirector] = useState<string | null>(null);
+  const [deletingAdmin, setDeletingAdmin] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     loadAdmins();
@@ -51,21 +53,8 @@ export default function AdminManagement() {
     try {
       setLoading(true);
       setError(null);
-      const { data } = await api.get('/admin/users', { params: { page: 1, pageSize: 200 } });
-      const items = data?.items || [];
-      const adminUsers = items.filter((u: any) => u.role === 'ADMIN');
-      // Fetch full details for each admin to get isDirector
-      const detailed = await Promise.all(
-        adminUsers.map(async (u: any) => {
-          try {
-            const { data: detail } = await api.get(`/admin/admin-users/${u.id}`);
-            return { ...u, isDirector: detail.isDirector ?? false, name: detail.name || u.name };
-          } catch {
-            return { ...u, isDirector: false };
-          }
-        }),
-      );
-      setAdmins(detailed);
+      const { data } = await api.get('/admin/admin-users', { params: { page: 1, pageSize: 200, q: search || undefined } });
+      setAdmins(data?.items || []);
     } catch (err: any) {
       // Fallback: just list from users endpoint
       try {
@@ -120,6 +109,32 @@ export default function AdminManagement() {
       setError(err?.response?.data?.message || 'Failed to update director access');
     } finally {
       setTogglingDirector(null);
+    }
+  }
+
+  function deleteAdminUser(target: AdminUser) {
+    // Directors can delete anyone (except self/last director); regular admins can only delete non-directors
+    if (target.isDirector && !isDirector) {
+      setError('Only directors can delete director accounts');
+      return;
+    }
+    setConfirmDelete(target);
+  }
+
+  async function confirmDeleteAdmin() {
+    if (!confirmDelete) return;
+    try {
+      setDeletingAdmin(confirmDelete.id);
+      setError(null);
+      await api.delete(`/admin/admin-users/${confirmDelete.id}`);
+      setSuccessMsg('Admin user deleted successfully');
+      setTimeout(() => setSuccessMsg(null), 4000);
+      setAdmins((prev) => prev.filter((a) => a.id !== confirmDelete.id));
+      setConfirmDelete(null);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to delete admin user');
+    } finally {
+      setDeletingAdmin(null);
     }
   }
 
@@ -298,8 +313,8 @@ export default function AdminManagement() {
         ) : (
           <div className="divide-y divide-slate-100">
             {filteredAdmins.map((admin) => (
-              <div key={admin.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition">
-                <div className="flex items-center gap-4">
+              <div key={admin.id} className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition">
+                <div className="flex items-center gap-4 min-w-0 flex-1">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm">
                     {(admin.name || admin.email).charAt(0).toUpperCase()}
                   </div>
@@ -320,31 +335,38 @@ export default function AdminManagement() {
                   </div>
                 </div>
 
-                {isDirector && admin.id !== user?.id && (
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div className="text-xs text-slate-500 mb-1">Director Access</div>
-                      <button
-                        onClick={() => toggleDirector(admin.id, admin.isDirector)}
-                        disabled={togglingDirector === admin.id}
-                        className={`transition-colors ${admin.isDirector ? 'text-amber-600' : 'text-slate-400'} ${togglingDirector === admin.id ? 'opacity-50' : ''}`}
-                        title={admin.isDirector ? 'Revoke director access' : 'Grant director access'}
-                      >
-                        {admin.isDirector ? (
-                          <ToggleRight className="w-8 h-8" />
-                        ) : (
-                          <ToggleLeft className="w-8 h-8" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <div className="flex items-center justify-end gap-3 min-w-[220px]">
+                  {isDirector && admin.id !== user?.id && (
+                    <button
+                      onClick={() => toggleDirector(admin.id, admin.isDirector)}
+                      disabled={togglingDirector === admin.id}
+                      className={`transition-colors ${admin.isDirector ? 'text-amber-600' : 'text-slate-400'} ${togglingDirector === admin.id ? 'opacity-50' : ''}`}
+                      title={admin.isDirector ? 'Revoke director access' : 'Grant director access'}
+                    >
+                      {admin.isDirector ? (
+                        <ToggleRight className="w-8 h-8" />
+                      ) : (
+                        <ToggleLeft className="w-8 h-8" />
+                      )}
+                    </button>
+                  )}
 
-                {!isDirector && (
-                  <div className="text-xs text-slate-400 italic">
+                  {admin.id !== user?.id && (
+                    <button
+                      onClick={() => deleteAdminUser(admin)}
+                      disabled={deletingAdmin === admin.id}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      title="Delete admin user"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {deletingAdmin === admin.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  )}
+
+                  <div className="w-14 text-right text-xs text-slate-400 italic">
                     {admin.isDirector ? 'Director' : 'Admin'}
                   </div>
-                )}
+                </div>
               </div>
             ))}
           </div>
@@ -359,6 +381,55 @@ export default function AdminManagement() {
             <div className="text-sm text-amber-700 mt-1">
               Only director admins can create new admin accounts and manage director access.
               Contact a director admin for these actions.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setConfirmDelete(null)}
+          />
+          {/* Dialog */}
+          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Delete Admin Account</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Are you sure you want to delete{' '}
+                  <span className="font-medium text-slate-800">
+                    {confirmDelete.name || confirmDelete.email}
+                  </span>
+                  ? This will permanently deactivate their login access.
+                </p>
+                {confirmDelete.email && confirmDelete.name && (
+                  <p className="mt-1 text-xs text-slate-400">{confirmDelete.email}</p>
+                )}
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deletingAdmin === confirmDelete.id}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteAdmin}
+                disabled={deletingAdmin === confirmDelete.id}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 transition disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                {deletingAdmin === confirmDelete.id ? 'Deleting...' : 'Delete Account'}
+              </button>
             </div>
           </div>
         </div>

@@ -1,8 +1,26 @@
 // src/components/Footer.tsx
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../services/apiClient';
+
+interface SupportContact {
+  phone: string | null;
+  email: string | null;
+}
 
 export default function Footer() {
   const year = new Date().getFullYear();
+  const [support, setSupport] = useState<SupportContact>({ phone: null, email: null });
+
+  useEffect(() => {
+    api.get('/policy-config')
+      .then(({ data }) => {
+        const phone = data?.legal?.supportPhone?.trim() || null;
+        const email = data?.legal?.supportEmail?.trim() || null;
+        setSupport({ phone, email });
+      })
+      .catch(() => { /* keep nulls = don't render */ });
+  }, []);
   const socials = [
     {
       label: "Instagram",
@@ -127,29 +145,35 @@ export default function Footer() {
             </ul>
           </nav>
 
-          {/* Customer Support */}
-          <div>
-            <h3 className="text-lg font-semibold text-white">Customer Support</h3>
-            <ul className="mt-4 space-y-3 text-[15px]">
-              <li>
-                <a href="tel:+917903464425" className="text-slate-300 hover:text-white transition-colors inline-flex items-center gap-2">
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="currentColor" aria-hidden="true">
-                    <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2Z" />
-                  </svg>
-                  +91 7903464425
-                </a>
-                <p className="text-xs text-slate-500 mt-0.5 ml-6">Available: 10 AM – 8 PM (IST)</p>
-              </li>
-              <li>
-                <a href="mailto:support@tunectnow.com" className="text-slate-300 hover:text-white transition-colors inline-flex items-center gap-2">
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="currentColor" aria-hidden="true">
-                    <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2Zm0 4-8 5-8-5V6l8 5 8-5v2Z" />
-                  </svg>
-                  support@tunectnow.com
-                </a>
-              </li>
-            </ul>
-          </div>
+          {/* Customer Support – only rendered when at least one contact is configured */}
+          {(support.phone ?? support.email) && (
+            <div>
+              <h3 className="text-lg font-semibold text-white">Customer Support</h3>
+              <ul className="mt-4 space-y-3 text-[15px]">
+                {support.phone && (
+                  <li>
+                    <a href={`tel:${support.phone.replaceAll(' ', '')}`} className="text-slate-300 hover:text-white transition-colors inline-flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="currentColor" aria-hidden="true">
+                        <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2Z" />
+                      </svg>
+                      {support.phone}
+                    </a>
+                    <p className="text-xs text-slate-500 mt-0.5 ml-6">Available: 10 AM – 8 PM (IST)</p>
+                  </li>
+                )}
+                {support.email && (
+                  <li>
+                    <a href={`mailto:${support.email}`} className="text-slate-300 hover:text-white transition-colors inline-flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="currentColor" aria-hidden="true">
+                        <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2Zm0 4-8 5-8-5V6l8 5 8-5v2Z" />
+                      </svg>
+                      {support.email}
+                    </a>
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* Divider */}

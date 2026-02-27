@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { resolveSocketBaseUrl } from '../lib/runtimeApi';
 
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000';
+const SOCKET_URL = resolveSocketBaseUrl();
 
 export interface UseSocketOptions {
   namespace?: string;

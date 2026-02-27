@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, Param, Patch, Body, Post, Req } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, Param, Patch, Body, Post, Req, Delete } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AuditService } from '../audit/audit.service';
@@ -160,5 +160,13 @@ export class AdminController {
     @Req() req: any,
   ) {
     return this.svc.toggleDirectorAccess(id, dto.isDirector, req.user!.id, req);
+  }
+
+  @Delete('admin-users/:id')
+  removeAdminUser(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    return this.svc.removeAdminUser(id, req.user!.id, req);
   }
 }

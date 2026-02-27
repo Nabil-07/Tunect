@@ -4,6 +4,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 import { decryptField } from '../utils/decryption';
+import { resolveApiBaseUrl } from './runtimeApi';
 
 /* ------------------------------------------------------------------
    Debug logging
@@ -178,8 +179,7 @@ export function isTokenExpiringSoon(token?: string | null, thresholdSec = EXPIRY
 /* ------------------------------------------------------------------
    Axios instance
 -------------------------------------------------------------------*/
-const rawBase = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
-const normalizedBase = rawBase.replace(/\/+$/, "");
+const normalizedBase = resolveApiBaseUrl();
 const useDevProxy = import.meta.env.DEV;
 export const baseURL = useDevProxy ? "/api" : normalizedBase;
 
@@ -273,6 +273,17 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 
 api.interceptors.response.use(
   async (res) => {
+    const responseType = (res.config as any)?.responseType;
+    const isBinaryResponse =
+      responseType === 'blob' ||
+      responseType === 'arraybuffer' ||
+      res.data instanceof Blob ||
+      res.data instanceof ArrayBuffer;
+
+    if (isBinaryResponse) {
+      return res;
+    }
+
     // Auto-decrypt encrypted fields if decryption is enabled
     if (res.data && import.meta.env.VITE_ENCRYPTION_KEY) {
       try {

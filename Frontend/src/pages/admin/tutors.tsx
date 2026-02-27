@@ -378,13 +378,13 @@ export default function AdminTutors() {
               </tr>
               {/* Filter Row */}
               <tr className="bg-white">
-                <th className="px-4 py-2">
+                <th className="px-3 py-2">
                   <div className="relative" ref={nameDropdownRef}>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 min-w-0">
                       <input
                         type="text"
                         placeholder="Filter name..."
-                        className="flex-1 text-xs border rounded px-2 py-1 pr-6"
+                        className="min-w-0 flex-1 text-xs border rounded px-2 py-1"
                         value={nameFilter}
                         onChange={(e) => setNameFilter(e.target.value)}
                       />
@@ -439,7 +439,7 @@ export default function AdminTutors() {
                   <input
                     type="text"
                     placeholder="Filter subjects..."
-                    className="w-full text-xs border rounded px-2 py-1"
+                    className="w-full min-w-0 text-xs border rounded px-2 py-1"
                     value={subjectsFilter}
                     onChange={(e) => setSubjectsFilter(e.target.value)}
                   />

@@ -1,5 +1,5 @@
 import { Prisma, PrismaPromise, AuditEntityType, BookingStatus, PaymentStatus, TutorStatus, TokenReason, KycStatus } from '@prisma/client';
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto } from './dto/pagination.dto';
 import { SetTutorStatusDto } from './dto/set-tutor-status.dto';
@@ -94,14 +94,10 @@ export class AdminService {
 
   // ---------- Dashboard ----------
   async dashboard() {
-    const cacheKey = 'GET /admin/dashboard';
-    const cached = this.getFromCache<any>(cacheKey);
-    if (cached) return cached;
-
     const [users, tutors, students, bookings, payments, revenueMinor] = await this.prisma.$transaction([
-      this.prisma.user.count(),
-      this.prisma.tutor.count(),
-      this.prisma.student.count(),
+      this.prisma.user.count({ where: { deletedAt: null } }),
+      this.prisma.tutor.count({ where: { user: { is: { deletedAt: null } } } }),
+      this.prisma.student.count({ where: { user: { is: { deletedAt: null } } } }),
       this.prisma.booking.count(),
       this.prisma.payment.count({ where: { status: PaymentStatus.SUCCEEDED } }),
       this.prisma.payment.aggregate({
@@ -111,6 +107,7 @@ export class AdminService {
     ]);
 
     const latestSignups = await this.prisma.user.findMany({
+      where: { deletedAt: null },
       orderBy: { createdAt: 'asc' }, // or 'desc' if you prefer newest first
       take: 10,
       select: { id: true, email: true, role: true, createdAt: true },
@@ -129,7 +126,6 @@ export class AdminService {
       pendingKyc,
     };
 
-    this.setCache(cacheKey, result);
     return result;
   }
 
@@ -983,7 +979,7 @@ export class AdminService {
   async listAdminUsers(q: PaginationDto) {
     const { page, pageSize, skip } = this.paginate(q);
 
-    const where: Prisma.UserWhereInput = { role: 'ADMIN' };
+    const where: Prisma.UserWhereInput = { role: 'ADMIN', deletedAt: null };
     if (q.q) {
       where.OR = [
         { email: { contains: q.q, mode: Prisma.QueryMode.insensitive } },
@@ -1006,15 +1002,14 @@ export class AdminService {
   }
 
   async getAdminUser(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, role: 'ADMIN', deletedAt: null },
       select: {
         id: true, email: true, name: true, role: true,
         isDirector: true, createdAt: true, updatedAt: true,
       },
     });
     if (!user) throw new NotFoundException('Admin user not found');
-    if (user.role !== 'ADMIN') throw new BadRequestException('User is not an admin');
     return user;
   }
 
@@ -1046,5 +1041,87 @@ export class AdminService {
     });
 
     return { ok: true, user: updated };
+  }
+
+  async removeAdminUser(userId: string, adminId: string, req?: Request) {
+    const actor = await this.prisma.user.findUnique({
+      where: { id: adminId },
+      select: { id: true, role: true, isDirector: true, deletedAt: true },
+    });
+    if (!actor || actor.deletedAt || actor.role !== 'ADMIN') {
+      throw new ForbiddenException('Only active admin users can perform this action');
+    }
+
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isDirector: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!target) throw new NotFoundException('Admin user not found');
+    if (target.deletedAt) throw new BadRequestException('Account is already deleted');
+    if (target.role !== 'ADMIN') throw new BadRequestException('User is not an admin');
+    if (target.id === adminId) throw new BadRequestException('You cannot delete your own admin account');
+    if (target.isDirector && !actor.isDirector) {
+      throw new ForbiddenException('Only a director can delete a director admin account');
+    }
+
+    if (target.isDirector) {
+      const directorCount = await this.prisma.user.count({
+        where: { role: 'ADMIN', isDirector: true, deletedAt: null },
+      });
+      if (directorCount <= 1) {
+        throw new BadRequestException('Cannot delete the last director admin');
+      }
+    }
+
+    const now = new Date();
+    const scrambledEmail = `deleted_${userId}@deleted.tunect.com`;
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        deletedAt: now,
+        email: scrambledEmail,
+        name: 'Deleted User',
+        avatarUrl: null,
+        phone: null,
+        password: '',
+        role: null,
+        hasChosenRole: false,
+        isDirector: false,
+      },
+    });
+
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
+    this.audit.log({
+      adminId,
+      action: 'ADMIN_USER_DELETED',
+      entityType: AuditEntityType.USER,
+      entityId: userId,
+      beforeData: {
+        email: target.email,
+        name: target.name,
+        role: target.role,
+        isDirector: target.isDirector,
+      },
+      afterData: {
+        deletedAt: now,
+        role: null,
+        isDirector: false,
+      },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
+    });
+
+    this.cache.delete('GET /admin/dashboard');
+
+    return { ok: true, message: 'Admin account deleted successfully' };
   }
 }

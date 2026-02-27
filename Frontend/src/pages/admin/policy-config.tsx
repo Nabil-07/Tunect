@@ -103,6 +103,10 @@ export default function AdminPolicyConfig() {
             <span className="text-sm text-slate-700">Support Email</span>
             <input className="w-full rounded-lg border border-slate-300 px-3 py-2" value={config.legal.supportEmail} onChange={(e) => updateField('legal.supportEmail', e.target.value)} />
           </label>
+          <label className="space-y-1">
+            <span className="text-sm text-slate-700">Support Phone</span>
+            <input type="tel" className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="+91 XXXXXXXXXX" value={config.legal.supportPhone ?? ''} onChange={(e) => updateField('legal.supportPhone', e.target.value)} />
+          </label>
           <label className="space-y-1 md:col-span-2">
             <span className="text-sm text-slate-700">Jurisdiction City</span>
             <input className="w-full rounded-lg border border-slate-300 px-3 py-2" value={config.legal.jurisdictionCity} onChange={(e) => updateField('legal.jurisdictionCity', e.target.value)} />

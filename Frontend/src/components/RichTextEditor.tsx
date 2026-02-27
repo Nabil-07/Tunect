@@ -193,7 +193,7 @@ export default function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-slate max-w-none min-h-[200px] px-4 py-3 focus:outline-none',
+        class: 'rich-text-content tiptap-content max-w-none min-h-[200px] px-4 py-3 focus:outline-none',
       },
     },
   });

@@ -3,10 +3,10 @@ import axios, { AxiosError } from 'axios';
 import { clearTokens } from '../lib/auth';
 import { refreshAccessToken, readToken } from '../lib/apiClient';
 import { decryptObject } from '../utils/decryption';
+import { resolveApiBaseUrl } from '../lib/runtimeApi';
 
 /** Normalize VITE_API_URL and ensure no trailing slash */
-const rawBase = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
-const baseURL = rawBase.replace(/\/+$/, '');
+const baseURL = resolveApiBaseUrl();
 
 /** Optional: change this if you want longer network waits */
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -51,6 +51,17 @@ http.interceptors.request.use((config: any) => {
 /** Response interceptor: handle 401 with token refresh retry */
 http.interceptors.response.use(
   async (response) => {
+    const responseType = (response.config as any)?.responseType;
+    const isBinaryResponse =
+      responseType === 'blob' ||
+      responseType === 'arraybuffer' ||
+      response.data instanceof Blob ||
+      response.data instanceof ArrayBuffer;
+
+    if (isBinaryResponse) {
+      return response;
+    }
+
     if (response.data && import.meta.env.VITE_ENCRYPTION_KEY) {
       try {
         const fieldsToDecrypt = [

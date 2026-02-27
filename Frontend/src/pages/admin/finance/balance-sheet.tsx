@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import api from '../../../lib/apiClient';
 import { ArrowLeft, Download, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -18,24 +18,27 @@ type BalanceSheet = {
   };
   equity: BalanceSheetLine[];
   totals: {
-    totalAssets: number;
-    totalLiabilities: number;
-    totalEquity: number;
-    checksum: number;
+    assets: number;
+    liabilities: number;
+    equity: number;
+  };
+  validation?: {
+    isBalanced: boolean;
+    difference: number;
   };
 };
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(n);
 
-function Section({ title, lines }: { title: string; lines: BalanceSheetLine[] }) {
+function Section({ title, lines }: Readonly<{ title: string; lines: BalanceSheetLine[] }>) {
   if (!lines.length) return null;
   const total = lines.reduce((s, l) => s + l.amount, 0);
   return (
     <div className="mb-4">
       <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{title}</div>
       {lines.map((l, i) => (
-        <div key={i} className="flex items-center justify-between py-1.5 px-2 text-sm hover:bg-slate-50 rounded">
+        <div key={`${l.label}-${l.note ?? ''}-${i}`} className="flex items-center justify-between py-1.5 px-2 text-sm hover:bg-slate-50 rounded">
           <span className="text-slate-700">
             {l.label}
             {l.note && <span className="text-xs text-slate-400 ml-2">({l.note})</span>}
@@ -76,6 +79,13 @@ export default function BalanceSheetPage() {
     loadData(period);
   }, [period]);
 
+  useEffect(() => {
+    const id = globalThis.setInterval(() => {
+      loadData(period);
+    }, 20_000);
+    return () => globalThis.clearInterval(id);
+  }, [period]);
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -95,6 +105,60 @@ export default function BalanceSheetPage() {
       setExporting(false);
     }
   };
+
+  const totalAssets = (data as any)?.totals?.totalAssets ?? data?.totals?.assets ?? 0;
+  const totalLiabilities = (data as any)?.totals?.totalLiabilities ?? data?.totals?.liabilities ?? 0;
+  const totalEquity = (data as any)?.totals?.totalEquity ?? data?.totals?.equity ?? 0;
+  const checksum = (data as any)?.totals?.checksum ?? data?.validation?.difference ?? 0;
+  let content: ReactNode = null;
+
+  if (loading) {
+    content = (
+      <div className="flex items-center justify-center py-16 text-slate-500">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading balance sheet…
+      </div>
+    );
+  } else if (data) {
+    content = (
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold mb-4 text-emerald-700">Assets</h2>
+          <Section title="Current Assets" lines={data.assets.current} />
+          <Section title="Non-Current Assets" lines={data.assets.nonCurrent} />
+          <div className="flex items-center justify-between py-2 px-2 text-base font-bold border-t-2 border-emerald-200 mt-2">
+            <span>Total Assets</span>
+            <span className="font-mono text-emerald-700">{fmt(totalAssets)}</span>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold mb-4 text-rose-700">Liabilities</h2>
+          <Section title="Current Liabilities" lines={data.liabilities.current} />
+          <Section title="Non-Current Liabilities" lines={data.liabilities.nonCurrent} />
+          <div className="flex items-center justify-between py-2 px-2 text-base font-bold border-t-2 border-rose-200 mt-2">
+            <span>Total Liabilities</span>
+            <span className="font-mono text-rose-700">{fmt(totalLiabilities)}</span>
+          </div>
+
+          <h2 className="text-lg font-bold mb-4 mt-6 text-indigo-700">Equity</h2>
+          <Section title="Shareholders' Equity" lines={data.equity} />
+          <div className="flex items-center justify-between py-2 px-2 text-base font-bold border-t-2 border-indigo-200 mt-2">
+            <span>Total Equity</span>
+            <span className="font-mono text-indigo-700">{fmt(totalEquity)}</span>
+          </div>
+        </div>
+
+        <div className="md:col-span-2 rounded-xl bg-slate-50 border p-4 flex items-center justify-between">
+          <span className="text-sm font-medium text-slate-600">
+            Assets = Liabilities + Equity check
+          </span>
+          <span className={`text-sm font-bold ${Math.abs(checksum) < 0.01 ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {Math.abs(checksum) < 0.01 ? 'Balanced' : `Difference: ${fmt(checksum)}`}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -139,53 +203,7 @@ export default function BalanceSheetPage() {
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
-
-      {loading ? (
-        <div className="flex items-center justify-center py-16 text-slate-500">
-          <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading balance sheet…
-        </div>
-      ) : data ? (
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Assets */}
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold mb-4 text-emerald-700">Assets</h2>
-            <Section title="Current Assets" lines={data.assets.current} />
-            <Section title="Non-Current Assets" lines={data.assets.nonCurrent} />
-            <div className="flex items-center justify-between py-2 px-2 text-base font-bold border-t-2 border-emerald-200 mt-2">
-              <span>Total Assets</span>
-              <span className="font-mono text-emerald-700">{fmt(data.totals.totalAssets)}</span>
-            </div>
-          </div>
-
-          {/* Liabilities & Equity */}
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold mb-4 text-rose-700">Liabilities</h2>
-            <Section title="Current Liabilities" lines={data.liabilities.current} />
-            <Section title="Non-Current Liabilities" lines={data.liabilities.nonCurrent} />
-            <div className="flex items-center justify-between py-2 px-2 text-base font-bold border-t-2 border-rose-200 mt-2">
-              <span>Total Liabilities</span>
-              <span className="font-mono text-rose-700">{fmt(data.totals.totalLiabilities)}</span>
-            </div>
-
-            <h2 className="text-lg font-bold mb-4 mt-6 text-indigo-700">Equity</h2>
-            <Section title="Shareholders' Equity" lines={data.equity} />
-            <div className="flex items-center justify-between py-2 px-2 text-base font-bold border-t-2 border-indigo-200 mt-2">
-              <span>Total Equity</span>
-              <span className="font-mono text-indigo-700">{fmt(data.totals.totalEquity)}</span>
-            </div>
-          </div>
-
-          {/* Checksum */}
-          <div className="md:col-span-2 rounded-xl bg-slate-50 border p-4 flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-600">
-              Assets = Liabilities + Equity check
-            </span>
-            <span className={`text-sm font-bold ${Math.abs(data.totals.checksum) < 0.01 ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {Math.abs(data.totals.checksum) < 0.01 ? 'Balanced' : `Difference: ${fmt(data.totals.checksum)}`}
-            </span>
-          </div>
-        </div>
-      ) : null}
+      {content}
     </div>
   );
 }
