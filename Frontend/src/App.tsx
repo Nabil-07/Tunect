@@ -135,6 +135,9 @@ const Terms = lazy(() => import('./pages/terms'));
 const Blogs = lazy(() => import('./pages/blogs'));
 const BlogPost = lazy(() => import('./pages/blog-post'));
 
+/** SEO Subject Landing Pages */
+const SubjectLandingPage = lazy(() => import('./pages/SubjectLandingRouter'));
+
 const ForgotPassword = lazy(() => import('./pages/forgot-password'));
 const ResetPassword = ForgotPassword;
 
@@ -332,6 +335,12 @@ function App() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/blogs" element={<Blogs />} />
           <Route path="/blogs/:slug" element={<BlogPost />} />
+          {/* SEO Subject Landing Pages */}
+          <Route path="/online-maths-tutor" element={<SubjectLandingPage />} />
+          <Route path="/online-physics-tutor" element={<SubjectLandingPage />} />
+          <Route path="/online-chemistry-tutor" element={<SubjectLandingPage />} />
+          <Route path="/online-biology-tutor" element={<SubjectLandingPage />} />
+          <Route path="/online-english-tutor" element={<SubjectLandingPage />} />
           <Route path="/tutors" element={<Navigate to="/find-tutors" replace />} />
           <Route path="/become-a-tutor" element={<Navigate to="/become-tutor" replace />} />
         </Route>

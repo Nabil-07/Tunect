@@ -353,11 +353,20 @@ export default function Profile() {
 
       const freshMe = await fetchMe();
       const resolved = (freshMe as any)?.user ?? freshMe ?? null;
+
+      // Determine the best avatar URL: prefer the direct upload response,
+      // then the refreshed /users/me response
+      const latestAvatarUrl = uploaded?.avatarUrl || resolved?.avatarUrl || null;
+
       if (resolved) {
+        // Ensure the auth context user gets the latest avatar URL
+        // (the upload response is the most reliable source)
+        if (latestAvatarUrl) {
+          resolved.avatarUrl = latestAvatarUrl;
+        }
         setUser(resolved as any);
       }
 
-      const latestAvatarUrl = uploaded?.avatarUrl || resolved?.avatarUrl || null;
       if (latestAvatarUrl) {
         setData((prev) => ({
           ...prev,

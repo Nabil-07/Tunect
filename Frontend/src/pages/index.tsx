@@ -25,14 +25,14 @@ let Motion: any = null;
 })();
 
 const subjects = [
+  'Science',
   'Mathematics',
   'Physics',
   'Chemistry',
   'Biology',
-  'Computer Science',
+  'Computer Applications',
+  'Python',
   'English',
-  'Arabic',
-  'French',
 ];
 
 export default function Home() {
@@ -40,7 +40,7 @@ export default function Home() {
   const [q, setQ] = useState('');
 
   const HeroTitle = useMemo(() => {
-    const children = 'Find verified tutors you’ll love.';
+    const children = 'Online tutoring: find verified tutors you’ll love.';
     if (!Motion) {
       return (
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-ink">{children}</h1>
@@ -88,6 +88,22 @@ export default function Home() {
     },
   };
 
+  // WebSite + SearchAction schema (sitelinks search box eligibility)
+  const websiteSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Tunect',
+    url: 'https://tunectnow.com',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: 'https://tunectnow.com/find-tutors?q={search_term_string}',
+      },
+      'query-input': 'required name=search_term_string',
+    },
+  };
+
   // FAQ Schema
   const faqSchema = {
     '@context': 'https://schema.org',
@@ -131,10 +147,10 @@ export default function Home() {
   return (
     <main>
       <SEO
-        title="Global 1-on-1 Online Tutoring | Free Demo | Tunect"
-        description="Find verified tutors for 1-on-1 online tutoring worldwide. Book your first session free! Learn Mathematics, Physics, Chemistry, English, and more from expert tutors. Personalized learning at your pace."
+        title="Online tutoring | Find a tutor online | Online tutors India | Tunect"
+        description="Online tutoring with verified tutors for 1-on-1 learning. Find a tutor online for Mathematics, Physics, Chemistry, English, and more. Online tutors India and worldwide — book a free demo on Tunect."
         url="/"
-        structuredData={[organizationSchema, faqSchema]}
+        structuredData={[organizationSchema, websiteSchema, faqSchema]}
         preloadImages={["/tunect_logo_hd.png"]}
       />
       {/* Hero – premium subtle background */}

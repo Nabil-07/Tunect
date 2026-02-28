@@ -2,7 +2,7 @@
 import type { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Star, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Star, AlertCircle, Search, Sparkles } from 'lucide-react';
 import api from '../lib/apiClient';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
 import { formatCurrency } from '../utils/currency';
@@ -192,7 +192,26 @@ const HeroTrending: FC = () => {
 
   if (loading) return <div className="card p-6 text-center">Loading tutors...</div>;
   if (error) return <div className="card p-6 text-center text-red-600">{error}</div>;
-  if (data.length === 0) return <div className="card p-6 text-center">No trending tutors yet. Check back soon!</div>;
+
+  if (data.length === 0)
+    return (
+      <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-ocean-100">
+          <Sparkles className="h-7 w-7 text-ocean-600" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-900">Discover amazing tutors</h3>
+        <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+          Our trending section highlights top-rated tutors loved by students.
+          Browse all tutors to find your perfect match today.
+        </p>
+        <button
+          onClick={() => navigate('/find-tutors')}
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-ocean-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-ocean-700 transition"
+        >
+          <Search className="h-4 w-4" /> Browse all tutors
+        </button>
+      </div>
+    );
 
   const activeItem = data[index]!;
   const canSlide = data.length > 1;

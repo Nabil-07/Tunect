@@ -1,6 +1,7 @@
 // src/pages/find-tutors.tsx
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { SlidersHorizontal, X } from 'lucide-react';
 import SEO from '../components/SEO';
 import TutorCard from '../components/TutorCard';
 import { TutorCardSkeleton } from '../components/skeletons';
@@ -261,7 +262,7 @@ export default function FindTutors() {
     if (q) {
       return `Find ${q} Tutors Online in India | Free Demo | Tunect`;
     }
-    return 'Find Online Tutors in India | 1-on-1 Tutoring | Free Demo | Tunect';
+    return 'Find a tutor online | Online tutors India | 1-on-1 online tutoring | Tunect';
   }, [subject, q]);
 
   const seoDescription = useMemo(() => {
@@ -274,6 +275,12 @@ export default function FindTutors() {
     return 'Search and find verified online tutors in India. Book 1-on-1 personalized tutoring sessions. First session is free! Learn Mathematics, Physics, Chemistry, English, and more.';
   }, [subject, q]);
 
+  // count active filters (excluding search text)
+  const activeFilterCount = [subject, classTeach, board, language, minRating > 0 ? '1' : '', priceMinStr, priceMaxStr, sort !== 'rating_desc' ? '1' : ''].filter(Boolean).length;
+
+  // mobile filter toggle
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   return (
     <main className="container-px mx-auto py-8">
       <SEO
@@ -283,121 +290,148 @@ export default function FindTutors() {
       />
       <h1 className="text-2xl font-bold">Find Tutors</h1>
 
-      {/* Filters */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_180px_180px_180px_180px_160px_160px]">
+      {/* ── Search bar (always visible) ──────────────────────── */}
+      <div className="mt-4 flex gap-2">
         <input
           value={qRaw}
           onChange={(e) => setParam('q', e.target.value)}
           placeholder="Search subject, topic, or tutor name"
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-300"
+          className="flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-300"
         />
-
-        <select
-          value={subject}
-          onChange={(e) => setParam('subject', e.target.value)}
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">All subjects</option>
-          {availableSubjects.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={classTeach}
-          onChange={(e) => setParam('class', e.target.value)}
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">All classes</option>
-          {availableClassesTeach.map((cls) => (
-            <option key={cls} value={cls}>
-              {cls}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={board}
-          onChange={(e) => setParam('board', e.target.value)}
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">All boards</option>
-          {availableBoards.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={language}
-          onChange={(e) => setParam('language', e.target.value)}
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">All languages</option>
-          {availableLanguages.map((lang) => (
-            <option key={lang} value={lang}>
-              {lang}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={String(minRating)}
-          onChange={(e) => setParam('minRating', e.target.value)}
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-        >
-          {availableRatingOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-
-        {/* sort: rating + price */}
-        <select
-          value={sort}
-          onChange={(e) => setParam('sort', e.target.value)}
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="rating_desc">Top rated</option>
-          <option value="price_asc">Price: Low to High</option>
-          <option value="price_desc">Price: High to Low</option>
-        </select>
-      </div>
-
-      <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-xs text-slate-500">
-          Tip: pick a subject from the dropdown or type one above.
-        </div>
+        {/* Mobile-only filter toggle */}
         <button
-          onClick={clearFilters}
-          className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          onClick={() => setFiltersOpen((v) => !v)}
+          className="sm:hidden inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 relative"
         >
-          Clear filters
+          <SlidersHorizontal className="h-4 w-4" />
+          Filters
+          {activeFilterCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ocean-600 text-[10px] font-bold text-white">
+              {activeFilterCount}
+            </span>
+          )}
         </button>
       </div>
 
-      {/* Price range in your display currency (converted to INR internally) */}
-      <div className="mt-3 flex flex-wrap gap-3">
-        <input
-          type="number"
-          placeholder={`Min ${displayCurrency} / hr`}
-          value={priceMinStr}
-          onChange={(e) => setPriceMinStr(e.target.value)}
-          onBlur={(e) => setParam('priceMin', e.currentTarget.value)}
-          className="w-40 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-        />
-        <input
-          type="number"
-          placeholder={`Max ${displayCurrency} / hr`}
-          value={priceMaxStr}
-          onChange={(e) => setPriceMaxStr(e.target.value)}
-          onBlur={(e) => setParam('priceMax', e.currentTarget.value)}
-          className="w-40 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-        />
+      {/* ── Filter panel ─────────────────────────────────────── */}
+      {/* On mobile: slide-down panel; on sm+: always visible grid */}
+      <div className={`${filtersOpen ? 'block' : 'hidden'} sm:block`}>
+        {/* Mobile header for filter panel */}
+        <div className="flex items-center justify-between sm:hidden mt-3 mb-2">
+          <span className="text-sm font-semibold text-slate-700">Filters</span>
+          <button
+            onClick={() => setFiltersOpen(false)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+          >
+            <X className="h-3.5 w-3.5" /> Close
+          </button>
+        </div>
+
+        <div className="mt-2 sm:mt-4 grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+          <select
+            value={subject}
+            onChange={(e) => setParam('subject', e.target.value)}
+            className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+          >
+            <option value="">All subjects</option>
+            {availableSubjects.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={classTeach}
+            onChange={(e) => setParam('class', e.target.value)}
+            className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+          >
+            <option value="">All classes</option>
+            {availableClassesTeach.map((cls) => (
+              <option key={cls} value={cls}>
+                {cls}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={board}
+            onChange={(e) => setParam('board', e.target.value)}
+            className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+          >
+            <option value="">All boards</option>
+            {availableBoards.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={language}
+            onChange={(e) => setParam('language', e.target.value)}
+            className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+          >
+            <option value="">All languages</option>
+            {availableLanguages.map((lang) => (
+              <option key={lang} value={lang}>
+                {lang}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={String(minRating)}
+            onChange={(e) => setParam('minRating', e.target.value)}
+            className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+          >
+            {availableRatingOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={sort}
+            onChange={(e) => setParam('sort', e.target.value)}
+            className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+          >
+            <option value="rating_desc">Top rated</option>
+            <option value="price_asc">Price: Low → High</option>
+            <option value="price_desc">Price: High → Low</option>
+          </select>
+        </div>
+
+        {/* Price range + clear */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
+          <input
+            type="number"
+            placeholder={`Min ${displayCurrency} / hr`}
+            value={priceMinStr}
+            onChange={(e) => setPriceMinStr(e.target.value)}
+            onBlur={(e) => setParam('priceMin', e.currentTarget.value)}
+            className="w-[calc(50%-6px)] sm:w-36 rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+          />
+          <input
+            type="number"
+            placeholder={`Max ${displayCurrency} / hr`}
+            value={priceMaxStr}
+            onChange={(e) => setPriceMaxStr(e.target.value)}
+            onBlur={(e) => setParam('priceMax', e.currentTarget.value)}
+            className="w-[calc(50%-6px)] sm:w-36 rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+          />
+          <button
+            onClick={() => { clearFilters(); setFiltersOpen(false); }}
+            className="rounded-xl border border-slate-300 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Clear filters
+          </button>
+        </div>
+
+        <p className="mt-2 text-xs text-slate-500 hidden sm:block">
+          Tip: pick a subject from the dropdown or type one above.
+        </p>
       </div>
 
       {/* Results */}
@@ -498,6 +532,28 @@ export default function FindTutors() {
           </div>
         )}
       </div>
+
+      {/* SEO internal links to subject landing pages */}
+      <section className="mt-12 border-t border-slate-200 pt-8">
+        <h2 className="text-lg font-bold mb-3">Popular subject pages</h2>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: 'Online maths tutor', href: '/online-maths-tutor' },
+            { label: 'Online physics tutor', href: '/online-physics-tutor' },
+            { label: 'Online chemistry tutor', href: '/online-chemistry-tutor' },
+            { label: 'Online biology tutor', href: '/online-biology-tutor' },
+            { label: 'Online english tutor', href: '/online-english-tutor' },
+          ].map((s) => (
+            <a
+              key={s.href}
+              href={s.href}
+              className="px-3 py-1.5 rounded-xl text-sm bg-ocean-50 text-ocean-800 hover:bg-ocean-100 transition"
+            >
+              {s.label}
+            </a>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }

@@ -22,6 +22,8 @@ export type Tutor = {
   pricePerHour?: number;
   avatarUrl?: string | null;
   user?: { name?: string; email?: string } | null;
+  bio?: string;
+  summary?: string;
   video?: {
     id: string;
     videoUrl: string;
@@ -117,6 +119,8 @@ function normalizeTutor(raw: any): Tutor {
     reviews,
     avatarUrl: raw?.avatarUrl ?? raw?.user?.avatarUrl ?? null,
     user: raw?.user ?? null,
+    bio: raw?.bio ?? undefined,
+    summary: raw?.summary ?? undefined,
   };
 }
 

@@ -38,6 +38,58 @@
     <priority>0.3</priority>
   </url>
 
+  <!-- Subject landing pages (SEO) -->
+  <url>
+    <loc>https://tunectnow.com/online-maths-tutor</loc>
+    <lastmod>2026-02-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://tunectnow.com/online-physics-tutor</loc>
+    <lastmod>2026-02-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://tunectnow.com/online-chemistry-tutor</loc>
+    <lastmod>2026-02-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://tunectnow.com/online-biology-tutor</loc>
+    <lastmod>2026-02-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://tunectnow.com/online-english-tutor</loc>
+    <lastmod>2026-02-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- Trending tutors -->
+  <url>
+    <loc>https://tunectnow.com/trending-tutors</loc>
+    <lastmod>2026-02-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://tunectnow.com/about</loc>
+    <lastmod>2026-02-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://tunectnow.com/how-it-works</loc>
+    <lastmod>2026-02-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
   <!-- Dynamic tutor profile URLs should be generated at build-time and added below.
        CI script example: fetch /api/tutors?active=true -> map to /tutors/{slug} -> append <url> entries.
        Example entry to be generated dynamically:

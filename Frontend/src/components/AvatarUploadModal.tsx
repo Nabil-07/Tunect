@@ -243,6 +243,7 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload, 
                   onCropChange={setCrop}
                   onZoomChange={setZoom}
                   onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+                  mediaProps={{ crossOrigin: 'anonymous' }}
                 />
               </div>
               <div>

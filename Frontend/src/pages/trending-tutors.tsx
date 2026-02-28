@@ -1,6 +1,6 @@
 // src/pages/trending-tutors.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Star, AlertCircle, MessageSquare, TrendingUp, Filter } from 'lucide-react';
 import SEO from '../components/SEO';
 import api from '../lib/apiClient';
@@ -58,7 +58,11 @@ function TrendingTutorCard({ tutor }: { tutor: TrendingTutor }) {
   const stars = Math.max(0, Math.min(5, Math.round(tutor.rating ?? 0)));
 
   const handleBookDemo = () => {
-    if (user?.role === 'TUTOR') {
+    if (!user) {
+      navigate('/login', { state: { from: '/trending-tutors', message: 'Sign in to book a demo session' } });
+      return;
+    }
+    if (user.role === 'TUTOR') {
       setToast('Tutor accounts cannot book demos with other tutors');
       setTimeout(() => setToast(null), 4000);
       return;
@@ -71,7 +75,11 @@ function TrendingTutorCard({ tutor }: { tutor: TrendingTutor }) {
   };
 
   const handleMessage = () => {
-    if (user?.role === 'TUTOR') {
+    if (!user) {
+      navigate('/login', { state: { from: '/trending-tutors', message: 'Sign in to message tutors' } });
+      return;
+    }
+    if (user.role === 'TUTOR') {
       setToast('Tutor accounts cannot message other tutors');
       setTimeout(() => setToast(null), 4000);
       return;
@@ -239,6 +247,7 @@ function TrendingTutorCardSkeleton() {
 }
 
 export default function TrendingTutors() {
+  const { user } = useAuth();
   const [sp, setSp] = useSearchParams();
   const page = Number(sp.get('page') || 1);
   const pageSize = 12;
@@ -296,12 +305,14 @@ export default function TrendingTutors() {
         setItems(list);
         setTotal(totalCount);
 
-        // Enrich with demo status
-        const ids = list.map((t) => t.id).filter(Boolean);
-        if (ids.length) {
-          const map = await getDemoStatusesForTutors(ids);
-          if (mounted) {
-            setItems((prev) => prev.map((t) => ({ ...t, demoUsed: !!map[t.id] })));
+        // Enrich with demo status (only when logged in — endpoint requires auth)
+        if (user) {
+          const ids = list.map((t) => t.id).filter(Boolean);
+          if (ids.length) {
+            const map = await getDemoStatusesForTutors(ids);
+            if (mounted) {
+              setItems((prev) => prev.map((t) => ({ ...t, demoUsed: !!map[t.id] })));
+            }
           }
         }
       } catch {
@@ -311,7 +322,7 @@ export default function TrendingTutors() {
       }
     })();
     return () => { mounted = false; };
-  }, [page, subject, classTeach]);
+  }, [page, subject, classTeach, user]);
 
   const setParam = (k: string, v?: string) => {
     const nxt = new URLSearchParams(sp);
@@ -429,16 +440,36 @@ export default function TrendingTutors() {
         </div>
 
         {!loading && items.length === 0 && !error && (
-          <div className="text-center py-12">
-            <TrendingUp className="mx-auto h-12 w-12 text-slate-300" />
-            <p className="mt-3 text-slate-600">No trending tutors match your filters.</p>
-            {(subject || classTeach) && (
-              <button
-                onClick={clearFilters}
-                className="mt-2 text-sm font-medium text-ocean-600 hover:text-ocean-700"
-              >
-                Clear filters to see all trending tutors
-              </button>
+          <div className="text-center py-16">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50">
+              <TrendingUp className="h-8 w-8 text-amber-400" />
+            </div>
+            {(subject || classTeach) ? (
+              <>
+                <h3 className="text-lg font-bold text-slate-800">No trending tutors match your filters</h3>
+                <p className="mt-2 text-sm text-slate-500 max-w-md mx-auto">
+                  Try broadening your search or clearing filters to see all trending tutors.
+                </p>
+                <button
+                  onClick={clearFilters}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Clear filters
+                </button>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-bold text-slate-800">Trending tutors are coming soon</h3>
+                <p className="mt-2 text-sm text-slate-500 max-w-md mx-auto">
+                  Our trending section highlights tutors with outstanding ratings, loved by students. Meanwhile, explore all verified tutors available right now.
+                </p>
+                <Link
+                  to="/find-tutors"
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-ocean-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-ocean-700 transition"
+                >
+                  Browse all tutors
+                </Link>
+              </>
             )}
           </div>
         )}

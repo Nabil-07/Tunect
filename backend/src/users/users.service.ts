@@ -267,6 +267,25 @@ export class UsersService {
       },
     });
 
+    // When repositioning a KYC selfie, also update the KYC document URL
+    // so that findMe() picks up the repositioned image
+    if (reposition) {
+      const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+      if (tutor) {
+        const approvedSelfie = await this.prisma.kycDocument.findFirst({
+          where: { tutorId: tutor.id, docType: 'selfie', status: 'APPROVED' },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        if (approvedSelfie) {
+          await this.prisma.kycDocument.update({
+            where: { id: approvedSelfie.id },
+            data: { url: avatarKey },
+          });
+        }
+      }
+    }
+
     return {
       ...updated,
       avatarUrl: updated.avatarUrl
@@ -307,6 +326,24 @@ export class UsersService {
         updatedAt: true,
       },
     });
+
+    // When repositioning a KYC selfie, also update the KYC document URL
+    if (reposition) {
+      const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+      if (tutor) {
+        const approvedSelfie = await this.prisma.kycDocument.findFirst({
+          where: { tutorId: tutor.id, docType: 'selfie', status: 'APPROVED' },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        if (approvedSelfie) {
+          await this.prisma.kycDocument.update({
+            where: { id: approvedSelfie.id },
+            data: { url: this.uploadsService.toStoredReference(key) },
+          });
+        }
+      }
+    }
 
     return {
       ...updated,

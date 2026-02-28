@@ -48,9 +48,9 @@ export default function Footer() {
 
       <div className="mx-auto max-w-7xl px-6 lg:px-8 py-16">
         {/* Top grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* Brand + tagline */}
-          <div>
+          <div className="lg:col-span-2">
             <div className="flex items-center gap-3">
               {/* Tunect Logo */}
               <div className="rounded-xl bg-white/95 px-4 py-2.5 shadow-lg shadow-emerald-500/10">
@@ -125,18 +125,33 @@ export default function Footer() {
               <li><Link to="/" className="text-slate-300 hover:text-white transition-colors">Home</Link></li>
               <li><Link to="/about" className="text-slate-300 hover:text-white transition-colors">About</Link></li>
               <li><Link to="/find-tutors" className="text-slate-300 hover:text-white transition-colors">Find Tutors</Link></li>
+              <li><Link to="/trending-tutors" className="text-slate-300 hover:text-white transition-colors">Trending Tutors</Link></li>
               <li><Link to="/become-tutor" className="text-slate-300 hover:text-white transition-colors">Become a Tutor</Link></li>
+              <li><Link to="/how-it-works" className="text-slate-300 hover:text-white transition-colors">How It Works</Link></li>
+              <li><Link to="/pricing" className="text-slate-300 hover:text-white transition-colors">Pricing</Link></li>
               <li><Link to="/blogs" className="text-slate-300 hover:text-white transition-colors">Blogs</Link></li>
             </ul>
           </nav>
 
-          {/* Platform */}
+          {/* Popular Subjects (SEO internal links) */}
+          <nav aria-label="Popular Subjects">
+            <h3 className="text-lg font-semibold text-white">Popular Subjects</h3>
+            <ul className="mt-4 space-y-3 text-[15px]">
+              <li><Link to="/online-maths-tutor" className="text-slate-300 hover:text-white transition-colors">Online Maths Tutor</Link></li>
+              <li><Link to="/online-physics-tutor" className="text-slate-300 hover:text-white transition-colors">Online Physics Tutor</Link></li>
+              <li><Link to="/online-chemistry-tutor" className="text-slate-300 hover:text-white transition-colors">Online Chemistry Tutor</Link></li>
+              <li><Link to="/online-biology-tutor" className="text-slate-300 hover:text-white transition-colors">Online Biology Tutor</Link></li>
+              <li><Link to="/online-english-tutor" className="text-slate-300 hover:text-white transition-colors">Online English Tutor</Link></li>
+            </ul>
+          </nav>
+
+          {/* Platform + Legal */}
           <nav aria-label="Platform">
             <h3 className="text-lg font-semibold text-white">Platform</h3>
             <ul className="mt-4 space-y-3 text-[15px]">
               <li><Link to="/student/dashboard" className="text-slate-300 hover:text-white transition-colors">Student Dashboard</Link></li>
               <li><Link to="/tutor/dashboard" className="text-slate-300 hover:text-white transition-colors">Tutor Dashboard</Link></li>
-              <li><Link to="/admin/dashboard" className="text-slate-300 hover:text-white transition-colors">Admin Dashboard</Link></li>
+              <li><Link to="/support" className="text-slate-300 hover:text-white transition-colors">Help &amp; Support</Link></li>
 
               <li className="my-2 border-t border-white/10 pt-4" />
 

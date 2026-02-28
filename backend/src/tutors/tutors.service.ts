@@ -20,6 +20,8 @@ export type TutorPublic = {
   hourlyRate?: number | null;
   avatarUrl?: string | null;
   country?: string | null;
+  bio?: string | null;
+  summary?: string | null;
 };
 
 function toNum(v: any, d = 0) {
@@ -294,6 +296,8 @@ function normalizeTutor(row: any): TutorPublic { // NOSONAR
     reviews: Number.isFinite(reviews as any) ? reviews : null,
     avatarUrl: row?.avatarUrl ?? row?.user?.avatarUrl ?? null,
     country: row?.country ?? null,
+    bio: row?.bio ?? null,
+    summary: row?.summary ?? null,
   };
 }
 
