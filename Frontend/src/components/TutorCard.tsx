@@ -8,6 +8,7 @@ import { useAuth } from "../contexts/AuthContext";
 import api from "../lib/apiClient";
 import TutorVideoHover from "./TutorVideoHover";
 import { generateTutorSlug } from "../utils/seo";
+import { compactClassRange } from "../utils/gradeUtils";
 
 export type TutorCardProps = {
   tutor: {
@@ -179,17 +180,18 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
     if (normalizedRows.length > 0) {
       const mergedMap = new Map<string, string[]>();
       for (const row of normalizedRows) {
-        const existing = mergedMap.get(row.classRange) ?? [];
+        const compacted = compactClassRange(row.classRange);
+        const existing = mergedMap.get(compacted) ?? [];
         for (const s of row.subjects) {
           if (!existing.includes(s)) existing.push(s);
         }
-        mergedMap.set(row.classRange, existing);
+        mergedMap.set(compacted, existing);
       }
       return Array.from(mergedMap.entries()).map(([classRange, subjects]) => ({ classRange, subjects }));
     }
 
     const classFallback = (tutor.classesTeach ?? [])
-      .map((cls) => String(cls || '').trim())
+      .map((cls) => compactClassRange(String(cls || '').trim()))
       .filter(Boolean);
     const subjectFallback = (sortedSubjects ?? [])
       .map((s) => String(s || '').trim())
@@ -417,7 +419,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
                       key={cls}
                       className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700"
                     >
-                      {cls}
+                      {compactClassRange(String(cls || ''))}
                     </span>
                   ))}
                 </div>

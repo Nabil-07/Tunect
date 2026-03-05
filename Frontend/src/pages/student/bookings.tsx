@@ -643,6 +643,27 @@ function BookingCard({
                   {statusMeta.label} {isDemo && "(Demo)"}
                 </span>
               </div>
+              {/* Study details entered when booking */}
+              {(booking.subject || booking.grade || booking.module) && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  {booking.subject && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+                      <BookOpen className="h-3 w-3" />
+                      {booking.subject}
+                    </span>
+                  )}
+                  {booking.grade && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                      {booking.grade}
+                    </span>
+                  )}
+                  {booking.module && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                      {booking.module}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

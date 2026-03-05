@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import NotificationModal from '../../components/common/NotificationModal';
 import { generateTutorSlug, parseTutorIdFromSlug } from '../../utils/seo';
 import { getTimezoneAbbr } from '../../utils/timezone';
+import { compactClassRange } from '../../utils/gradeUtils';
 
 type BookableSlot = { startTime: string; endTime: string };
 
@@ -443,6 +444,8 @@ export default function TutorPublicProfile() { // NOSONAR
     const slot = pendingSlot;
     if (!slot || !tutor?.id) return;
 
+    if (!studySubject.trim() || !studyGrade.trim()) return;
+
     try {
       setBusy(true);
       setShowStudyModal(false);
@@ -669,34 +672,97 @@ export default function TutorPublicProfile() { // NOSONAR
               Help the tutor prepare — tell them the subject, grade and topic.
             </p>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Subject <span className="text-slate-400 font-normal">(e.g. Mathematics)</span>
+              <label htmlFor="study-subject" className="block text-sm font-medium text-slate-700 mb-1">
+                Subject <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
-                value={studySubject}
-                onChange={e => setStudySubject(e.target.value)}
-                placeholder="e.g. Mathematics, Physics, English…"
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              {(() => {
+                const allSubjects = Array.from(
+                  new Set(mappingRows.flatMap((r) => r.subjects))
+                ).filter(Boolean);
+                if (allSubjects.length > 0) {
+                  return (
+                    <select
+                      id="study-subject"
+                      value={studySubject}
+                      onChange={e => setStudySubject(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select a subject…</option>
+                      {allSubjects.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  );
+                }
+                return (
+                  <input
+                    id="study-subject"
+                    type="text"
+                    value={studySubject}
+                    onChange={e => setStudySubject(e.target.value)}
+                    placeholder="e.g. Mathematics, Physics, English…"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                );
+              })()}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Grade / Level <span className="text-slate-400 font-normal">(e.g. Grade 10)</span>
+              <label htmlFor="study-grade" className="block text-sm font-medium text-slate-700 mb-1">
+                Grade / Level <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
-                value={studyGrade}
-                onChange={e => setStudyGrade(e.target.value)}
-                placeholder="e.g. Grade 10, A-Level, University Year 1…"
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              {(() => {
+                // Expand grade ranges like "Grade 6-8" → ["Grade 6","Grade 7","Grade 8"]
+                const gradeSet = new Set<string>();
+                for (const row of mappingRows) {
+                  const cr = row.classRange;
+                  const rangeMatch = /(?:Grade|Class)\s*(\d+)\s*[-–to]+\s*(\d+)/i.exec(cr);
+                  if (rangeMatch) {
+                    const lo = Number.parseInt(rangeMatch[1], 10);
+                    const hi = Number.parseInt(rangeMatch[2], 10);
+                    for (let g = lo; g <= hi; g++) gradeSet.add(`Grade ${g}`);
+                  } else if (cr) {
+                    gradeSet.add(cr);
+                  }
+                }
+                const allGrades = Array.from(gradeSet).sort((a, b) => {
+                  const na = Number.parseInt(a.replaceAll(/\D/g, ''), 10);
+                  const nb = Number.parseInt(b.replaceAll(/\D/g, ''), 10);
+                  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+                  return a.localeCompare(b);
+                });
+                if (allGrades.length > 0) {
+                  return (
+                    <select
+                      id="study-grade"
+                      value={studyGrade}
+                      onChange={e => setStudyGrade(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select a grade…</option>
+                      {allGrades.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  );
+                }
+                return (
+                  <input
+                    id="study-grade"
+                    type="text"
+                    value={studyGrade}
+                    onChange={e => setStudyGrade(e.target.value)}
+                    placeholder="e.g. Grade 10, A-Level, University Year 1…"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                );
+              })()}
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label htmlFor="study-module" className="block text-sm font-medium text-slate-700 mb-1">
                 Module / Topic <span className="text-slate-400 font-normal">(optional)</span>
               </label>
               <input
+                id="study-module"
                 type="text"
                 value={studyModule}
                 onChange={e => setStudyModule(e.target.value)}
@@ -713,7 +779,7 @@ export default function TutorPublicProfile() { // NOSONAR
               </button>
               <button
                 onClick={handleStudyDetailsSubmit}
-                disabled={busy}
+                disabled={busy || !studySubject.trim() || !studyGrade.trim()}
                 className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
               >
                 {busy ? 'Booking…' : 'Confirm Booking'}
@@ -951,7 +1017,7 @@ export default function TutorPublicProfile() { // NOSONAR
                   <div key={idx} className="flex flex-wrap items-center gap-2">
                     {row.classRange && (
                       <span className="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-700">
-                        {row.classRange}
+                        {compactClassRange(row.classRange)}
                       </span>
                     )}
                     {row.classRange && row.subjects.length > 0 && (

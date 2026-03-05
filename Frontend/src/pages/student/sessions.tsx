@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { getMyBookings } from '../../services/bookingsService';
 import { getBookingDetails } from '../../services/bookingsService';
-import { Clock, Calendar, Video, ExternalLink, IndianRupee, Users } from 'lucide-react';
+import { Clock, Calendar, Video, ExternalLink, IndianRupee, Users, BookOpen, GraduationCap } from 'lucide-react';
 import Loader from '../../components/common/Loader';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -18,6 +18,9 @@ type Booking = {
   currentEnrollment?: number;
   maxStudents?: number;
   hasAttended?: boolean; // Flag indicating if student joined/attended the session
+  subject?: string | null;
+  grade?: string | null;
+  module?: string | null;
 };
 
 function toArray(maybe: any): Booking[] {
@@ -25,6 +28,33 @@ function toArray(maybe: any): Booking[] {
   if (maybe && Array.isArray(maybe.items)) return maybe.items as Booking[];
   if (maybe && Array.isArray(maybe.all)) return maybe.all as Booking[];
   return [];
+}
+
+/** Compact display of subject / grade / module that the student entered when booking */
+function StudyInfoBadges({ session }: { readonly session: Booking }) {
+  const hasAny = session.subject || session.grade || session.module;
+  if (!hasAny) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+      {session.subject && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+          <BookOpen className="h-3 w-3" />
+          {session.subject}
+        </span>
+      )}
+      {session.grade && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+          <GraduationCap className="h-3 w-3" />
+          {session.grade}
+        </span>
+      )}
+      {session.module && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+          {session.module}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function MySessions() {
@@ -353,6 +383,7 @@ export default function MySessions() {
                           <p className="text-lg font-semibold text-slate-800">
                             {session.tutor?.name || 'Tutor'}
                           </p>
+                          <StudyInfoBadges session={session} />
                         </div>
                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${statusMeta.color}`}>
                           {statusMeta.label}
@@ -444,6 +475,7 @@ export default function MySessions() {
                           <p className="text-lg font-semibold text-slate-800">
                             {session.tutor?.name || 'Tutor'}
                           </p>
+                          <StudyInfoBadges session={session} />
                         </div>
                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${
                           sessionIsNowActive ? 'bg-green-100 text-green-700' : statusMeta.color
@@ -531,6 +563,7 @@ export default function MySessions() {
                           <p className="text-lg font-semibold text-slate-800">
                             {session.tutor?.name || 'Tutor'}
                           </p>
+                          <StudyInfoBadges session={session} />
                         </div>
                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${statusMeta.color}`}>
                           {statusMeta.label}

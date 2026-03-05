@@ -1396,6 +1396,9 @@ export class TutorsService {
         endTime: true,
         status: true,
         isDemo: true,
+        subject: true,
+        grade: true,
+        module: true,
         attendance: {
           select: {
             tutorJoinCount: true,
@@ -1439,9 +1442,10 @@ export class TutorsService {
           : 'Student');
 
       const subject =
-        Array.isArray(booking.tutor?.subjects) && booking.tutor.subjects.length
+        booking.subject ||
+        (Array.isArray(booking.tutor?.subjects) && booking.tutor.subjects.length
           ? booking.tutor.subjects[0]
-          : 'Session';
+          : 'Session');
 
       let status: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED' | 'EXPIRED' | 'NO_SHOW' | 'CANCELED' = 'CONFIRMED';
       const wbData = booking.whiteboardSessions?.[0]?.data;
@@ -1523,6 +1527,8 @@ export class TutorsService {
         studentName,
         studentGrade: booking.student?.grade ?? null,
         subject,
+        bookingGrade: booking.grade ?? null,
+        bookingModule: booking.module ?? null,
         startTime: booking.startTime!.toISOString(),
         endTime: booking.endTime!.toISOString(),
         status,

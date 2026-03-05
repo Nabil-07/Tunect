@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, CalendarDays, Clock, Loader2, RotateCw, X } from 'lucide-react';
 import { assignSlot, getTutorAvailability, listBookings } from '../services/bookingsService';
 import { http as api } from '../api/http';
+import { getTutor } from '../services/tutorService';
 import { addToWaitlist } from '../services/waitlistService';
 import NotificationModal from './common/NotificationModal';
 import { getTimezoneAbbr } from '../utils/timezone';
@@ -20,7 +21,7 @@ export default function SlotPicker({
   tutorId,
   isDemo = false,
   tz,
-  days = 14,
+  days = 30,
   onClose,
   onAssigned,
 }: {
@@ -45,6 +46,8 @@ export default function SlotPicker({
   const [studySubject, setStudySubject] = useState('');
   const [studyGrade, setStudyGrade] = useState('');
   const [studyModule, setStudyModule] = useState('');
+  const [tutorSubjects, setTutorSubjects] = useState<string[]>([]);
+  const [tutorGrades, setTutorGrades] = useState<string[]>([]);
 
   const dtDate = useMemo(
     () => new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
@@ -151,6 +154,64 @@ export default function SlotPicker({
     if (open) { setSelectedKey(null); setStep('slots'); setStudySubject(''); setStudyGrade(''); setStudyModule(''); }
   }, [open, fetchSlots]);
 
+  // Fetch tutor's subject/grade data for dropdowns
+  useEffect(() => {
+    if (!open || !tutorId) return;
+    getTutor(tutorId)
+      .then((t: any) => {
+        // Extract subjects from classSubjectMappings
+        const mappings = Array.isArray(t?.classSubjectMappings) ? t.classSubjectMappings : [];
+        const subjectSet = new Set<string>();
+        const gradeSet = new Set<string>();
+        for (const m of mappings) {
+          const cr = String(m?.classRange || '').trim();
+          const subjects = Array.isArray(m?.subjects) ? m.subjects : [];
+          for (const s of subjects) {
+            const sv = String(s || '').trim();
+            if (sv) subjectSet.add(sv);
+          }
+          if (cr) {
+            // Expand ranges like "Grade 6-8" → individual options
+            const rangeMatch = /(?:Grade|Class)\s*(\d+)\s*[-–to]+\s*(\d+)/i.exec(cr);
+            if (rangeMatch) {
+              const lo = Number.parseInt(rangeMatch[1], 10);
+              const hi = Number.parseInt(rangeMatch[2], 10);
+              for (let g = lo; g <= hi; g++) gradeSet.add(`Grade ${g}`);
+            } else {
+              gradeSet.add(cr);
+            }
+          }
+        }
+        // Fallback to tutor.subjects array
+        if (subjectSet.size === 0 && Array.isArray(t?.subjects)) {
+          for (const s of t.subjects) {
+            const sv = String(s || '').trim();
+            if (sv) subjectSet.add(sv);
+          }
+        }
+        // Fallback to tutor.classesTeach array
+        if (gradeSet.size === 0 && Array.isArray(t?.classesTeach)) {
+          for (const c of t.classesTeach) {
+            const cv = String(c || '').trim();
+            if (cv) gradeSet.add(cv);
+          }
+        }
+        setTutorSubjects(Array.from(subjectSet));
+        // Sort grades numerically
+        const sortedGrades = Array.from(gradeSet).sort((a, b) => {
+          const na = Number.parseInt(a.replaceAll(/\D/g, ''), 10);
+          const nb = Number.parseInt(b.replaceAll(/\D/g, ''), 10);
+          if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+          return a.localeCompare(b);
+        });
+        setTutorGrades(sortedGrades);
+      })
+      .catch(() => {
+        setTutorSubjects([]);
+        setTutorGrades([]);
+      });
+  }, [open, tutorId]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, AvailabilitySlot[]>();
     const now = new Date();
@@ -179,6 +240,11 @@ export default function SlotPicker({
     if (!selectedKey) return;
     const s = slots.find((x) => keyForSlot(x) === selectedKey);
     if (!s) return;
+
+    if (!studySubject.trim() || !studyGrade.trim()) {
+      setError('Please select a subject and grade before confirming.');
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -335,34 +401,65 @@ export default function SlotPicker({
                 Tell the tutor what you want to study in this session.
               </p>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Subject <span className="text-slate-400 font-normal">(e.g. Mathematics)</span>
+                <label htmlFor="sp-subject" className="block text-sm font-medium text-slate-700 mb-1">
+                  Subject <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={studySubject}
-                  onChange={e => setStudySubject(e.target.value)}
-                  placeholder="e.g. Mathematics, Physics, English…"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
-                />
+                {tutorSubjects.length > 0 ? (
+                  <select
+                    id="sp-subject"
+                    value={studySubject}
+                    onChange={e => setStudySubject(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                  >
+                    <option value="">Select a subject…</option>
+                    {tutorSubjects.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="sp-subject"
+                    type="text"
+                    value={studySubject}
+                    onChange={e => setStudySubject(e.target.value)}
+                    placeholder="e.g. Mathematics, Physics, English…"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                  />
+                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Grade / Level <span className="text-slate-400 font-normal">(e.g. Grade 10)</span>
+                <label htmlFor="sp-grade" className="block text-sm font-medium text-slate-700 mb-1">
+                  Grade / Level <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={studyGrade}
-                  onChange={e => setStudyGrade(e.target.value)}
-                  placeholder="e.g. Grade 10, A-Level, University Year 1…"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
-                />
+                {tutorGrades.length > 0 ? (
+                  <select
+                    id="sp-grade"
+                    value={studyGrade}
+                    onChange={e => setStudyGrade(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                  >
+                    <option value="">Select a grade…</option>
+                    {tutorGrades.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="sp-grade"
+                    type="text"
+                    value={studyGrade}
+                    onChange={e => setStudyGrade(e.target.value)}
+                    placeholder="e.g. Grade 10, A-Level, University Year 1…"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                  />
+                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label htmlFor="sp-module" className="block text-sm font-medium text-slate-700 mb-1">
                   Module / Topic <span className="text-slate-400 font-normal">(optional)</span>
                 </label>
                 <input
+                  id="sp-module"
                   type="text"
                   value={studyModule}
                   onChange={e => setStudyModule(e.target.value)}
@@ -390,7 +487,7 @@ export default function SlotPicker({
           
           {step === 'details' ? (
             <button
-              disabled={submitting}
+              disabled={submitting || !studySubject.trim() || !studyGrade.trim()}
               onClick={handleAssign}
               className="rounded-xl bg-ocean-700 px-4 py-2 font-medium text-white disabled:opacity-60"
             >

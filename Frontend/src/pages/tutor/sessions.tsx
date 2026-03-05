@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { getMySessions } from '../../services/sessionService';
 import { convertToGroupSession, getBookingDetails, cancelBooking } from '../../services/bookingsService';
-import { Users, Clock, Calendar, UserPlus, X, IndianRupee, XCircle } from 'lucide-react';
+import { Users, Clock, Calendar, UserPlus, X, IndianRupee, XCircle, BookOpen } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 import { differenceInHours } from 'date-fns';
 import Loader from '../../components/common/Loader';
@@ -13,6 +13,8 @@ type Session = {
   studentName?: string;
   studentGrade?: string | null;
   subject?: string;
+  bookingGrade?: string | null;
+  bookingModule?: string | null;
   startTime: string;
   endTime: string;
   status?: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED' | 'EXPIRED' | 'NO_SHOW' | 'CANCELED';
@@ -266,6 +268,16 @@ export default function MySessions() {
                 {!isGroup && session.studentGrade && (
                   <p className="text-sm text-slate-700 flex items-center gap-2">
                     <Users className="h-4 w-4" /> Class: {session.studentGrade}
+                  </p>
+                )}
+                {session.bookingGrade && (
+                  <p className="text-sm text-slate-700 flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" /> Grade: {session.bookingGrade}
+                  </p>
+                )}
+                {session.bookingModule && (
+                  <p className="text-sm text-slate-600 flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" /> Topic: {session.bookingModule}
                   </p>
                 )}
                 {isGroup && (
