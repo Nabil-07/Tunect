@@ -685,38 +685,44 @@ export default function TutorAvailability() {
                           {daySlots.map((s, idx) => {
                             const isCompleted = s.bookingStatus === 'COMPLETED';
                             return (
-                            <button
+                            <div
                               key={`${s.start}-${idx}`}
-                              className={`w-full text-left flex items-center justify-between text-xs rounded-lg px-2 py-1 group ${slotRowClassName(isCompleted, s.booked)}`}
-                              onClick={() => !s.booked && openEditEditor(key, idx)}
+                              className={`w-full flex items-center justify-between text-xs rounded-lg px-2 py-1 group ${slotRowClassName(isCompleted, s.booked)}`}
                               title={slotTitle(isCompleted, s.booked)}
                             >
-                              <span className="truncate">
-                                <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
-                                {s.title ? <span className="ml-1 text-slate-600">• {s.title}</span> : null}
-                              </span>
+                              <button
+                                type="button"
+                                className="flex-1 min-w-0 text-left truncate bg-transparent border-0 p-0 cursor-pointer disabled:cursor-default"
+                                onClick={() => !s.booked && openEditEditor(key, idx)}
+                                disabled={!!s.booked || isCompleted}
+                              >
+                                <span className="truncate">
+                                  <Clock size={12} className="inline mr-1" /> {s.start}–{s.end}
+                                  {s.title ? <span className="ml-1 text-slate-600">• {s.title}</span> : null}
+                                </span>
+                              </button>
                               {isCompleted && (
-                                <span className="inline-flex items-center gap-1 text-green-700 text-[10px] font-semibold">
+                                <span className="inline-flex items-center gap-1 text-green-700 text-[10px] font-semibold shrink-0">
                                   <CheckCircle2 size={12} /> Done
                                 </span>
                               )}
                               {!isCompleted && s.booked && (
-                                <span className="inline-flex items-center gap-1 text-amber-700">
+                                <span className="inline-flex items-center gap-1 text-amber-700 shrink-0">
                                   <Lock size={12} />
                                 </span>
                               )}
                               {!isCompleted && !s.booked && (
                                 <button
                                   type="button"
-                                  className="opacity-0 group-hover:opacity-100 transition text-red-600 hover:text-red-700"
-                                  onClick={(e) => { e.stopPropagation(); removeSlot(key, idx); }}
+                                  className="opacity-0 group-hover:opacity-100 transition text-red-600 hover:text-red-700 shrink-0"
+                                  onClick={() => removeSlot(key, idx)}
                                   title="Delete slot"
                                   aria-label="Delete slot"
                                 >
                                   <Trash2 size={14} />
                                 </button>
                               )}
-                            </button>
+                            </div>
                             );
                           })}
                         </div>

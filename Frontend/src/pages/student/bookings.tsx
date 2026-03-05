@@ -12,6 +12,7 @@ import {
   BookOpen,
   CheckCircle,
 } from "lucide-react";
+import { getTimezoneAbbr } from '../../utils/timezone';
 import {
   getMyBookings,
   type BookingDto,
@@ -568,9 +569,7 @@ function BookingCard({
   readonly tokenBalance?: number;
   readonly meetingLink?: string;
 }) {
-  const timezoneAbbr = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
-    .formatToParts(new Date())
-    .find((p) => p.type === 'timeZoneName')?.value || 'UTC';
+  const timezoneAbbr = getTimezoneAbbr();
   const {
     tutor,
     startTime,

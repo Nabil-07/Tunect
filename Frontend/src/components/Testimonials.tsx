@@ -122,10 +122,13 @@ const Testimonials: React.FC = () => {
     <section className="w-full bg-white py-14">
       <div className="mx-auto max-w-5xl px-4">
         <h2 className="text-center text-2xl sm:text-3xl font-bold text-slate-900">
-          What Our Students Say
+          Testimonials from Our Valued Students
         </h2>
-        <p className="mt-2 text-center text-slate-600">
-          Real feedback from students who’ve transformed their learning experience
+        <p className="mt-3 text-center text-slate-600 max-w-2xl mx-auto leading-relaxed">
+          Discover how students have transformed their academic journeys with Tunect.
+        </p>
+        <p className="mt-1 text-center text-sm text-slate-500 max-w-xl mx-auto leading-relaxed">
+          We encourage all users to leave a review after their session. This feedback is invaluable for helping other students find a tutor online who is perfectly suited to their needs and learning style.
         </p>
 
         <div className="relative mx-auto mt-10 max-w-3xl rounded-2xl bg-white p-8 shadow-md">

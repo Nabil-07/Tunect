@@ -69,6 +69,13 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     '/tutors/filters',
   ];
 
+  // Self-profile endpoints: the user is viewing their OWN data,
+  // so PII should NOT be encrypted (they need to see their own phone/email)
+  private readonly selfProfileEndpoints = [
+    '/students/me',
+    '/tutors/me',
+  ];
+
   constructor(
     private readonly encryptionService: EncryptionService,
     private readonly config: ConfigService,
@@ -96,6 +103,15 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     // This protects PII in public listings where authentication is optional
     // Internal tester exemption only applies to protected endpoints, not public ones
     const isPublicEndpoint = this.isPublicRoute(request.url);
+
+    // Self-profile endpoints: skip encryption so the user can see their own PII
+    const isSelfProfile = this.isSelfProfileRoute(request.url);
+    if (isSelfProfile && user) {
+      this.logger.log(
+        `[EncryptResponse] Self-profile endpoint - skipping encryption for ${user.email} on ${request.url}`
+      );
+      return next.handle();
+    }
 
     // For public endpoints, ALWAYS encrypt PII regardless of user authentication status
     // This ensures PII is protected in public listings (e.g., /tutors, /tutors/:id)
@@ -201,6 +217,15 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     }
 
     return data;
+  }
+
+  /**
+   * Check if a route is a self-profile endpoint where the user views their own PII
+   * These endpoints should NOT encrypt PII since the data belongs to the requesting user
+   */
+  private isSelfProfileRoute(url: string): boolean {
+    const path = url.split('?')[0];
+    return this.selfProfileEndpoints.some(route => path === route || path === `${route}/`);
   }
 
   /**

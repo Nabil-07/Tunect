@@ -4,6 +4,7 @@ import { assignSlot, getTutorAvailability, listBookings } from '../services/book
 import { http as api } from '../api/http';
 import { addToWaitlist } from '../services/waitlistService';
 import NotificationModal from './common/NotificationModal';
+import { getTimezoneAbbr } from '../utils/timezone';
 
 type AvailabilitySlot = {
   id?: string;
@@ -40,6 +41,10 @@ export default function SlotPicker({
   const [joiningWaitlist, setJoiningWaitlist] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNotification, setShowNotification] = useState(false);
+  const [step, setStep] = useState<'slots' | 'details'>('slots');
+  const [studySubject, setStudySubject] = useState('');
+  const [studyGrade, setStudyGrade] = useState('');
+  const [studyModule, setStudyModule] = useState('');
 
   const dtDate = useMemo(
     () => new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
@@ -54,9 +59,7 @@ export default function SlotPicker({
   const userTimezone = useMemo(() => {
     const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     // Get short abbreviation like "IST", "GST", "EST"
-    const abbr = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
-      .formatToParts(new Date())
-      .find((p) => p.type === 'timeZoneName')?.value || tzName;
+    const abbr = getTimezoneAbbr();
     return { name: tzName, abbr };
   }, []);
 
@@ -144,8 +147,8 @@ export default function SlotPicker({
   // initial + whenever reopened
   useEffect(() => {
     if (open) fetchSlots();
-    // clear selection each open
-    if (open) setSelectedKey(null);
+    // clear selection and step each open
+    if (open) { setSelectedKey(null); setStep('slots'); setStudySubject(''); setStudyGrade(''); setStudyModule(''); }
   }, [open, fetchSlots]);
 
   const grouped = useMemo(() => {
@@ -182,7 +185,13 @@ export default function SlotPicker({
     try {
       await assignSlot(
         bookingId,
-        { startTime: s.startTime, endTime: s.endTime },
+        {
+          startTime: s.startTime,
+          endTime: s.endTime,
+          subject: studySubject.trim() || undefined,
+          grade: studyGrade.trim() || undefined,
+          module: studyModule.trim() || undefined,
+        },
         tz
       );
       onAssigned({ startTime: s.startTime, endTime: s.endTime });
@@ -320,19 +329,80 @@ export default function SlotPicker({
 
         {/* Body */}
         <div className="max-h-[70vh] overflow-auto p-4">
-          {content}
+          {step === 'slots' ? content : (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Tell the tutor what you want to study in this session.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Subject <span className="text-slate-400 font-normal">(e.g. Mathematics)</span>
+                </label>
+                <input
+                  type="text"
+                  value={studySubject}
+                  onChange={e => setStudySubject(e.target.value)}
+                  placeholder="e.g. Mathematics, Physics, English…"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Grade / Level <span className="text-slate-400 font-normal">(e.g. Grade 10)</span>
+                </label>
+                <input
+                  type="text"
+                  value={studyGrade}
+                  onChange={e => setStudyGrade(e.target.value)}
+                  placeholder="e.g. Grade 10, A-Level, University Year 1…"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Module / Topic <span className="text-slate-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={studyModule}
+                  onChange={e => setStudyModule(e.target.value)}
+                  placeholder="e.g. Algebra, Organic Chemistry, Essay Writing…"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                />
+              </div>
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
           <button
-            onClick={onClose}
+            onClick={step === 'details' ? () => setStep('slots') : onClose}
             className="rounded-xl px-4 py-2 text-slate-700 hover:bg-slate-100"
           >
-            Cancel
+            {step === 'details' ? '← Back' : 'Cancel'}
           </button>
           
-          {grouped.length === 0 && !loading ? (
+          {step === 'details' ? (
+            <button
+              disabled={submitting}
+              onClick={handleAssign}
+              className="rounded-xl bg-ocean-700 px-4 py-2 font-medium text-white disabled:opacity-60"
+            >
+              {submitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Confirming…
+                </span>
+              ) : (
+                'Confirm Booking'
+              )}
+            </button>
+          ) : grouped.length === 0 && !loading ? (
             <button
               disabled={joiningWaitlist}
               onClick={handleNotifyMe}
@@ -351,16 +421,10 @@ export default function SlotPicker({
           ) : (
             <button
               disabled={!selectedKey || submitting}
-              onClick={handleAssign}
+              onClick={() => setStep('details')}
               className="rounded-xl bg-ocean-700 px-4 py-2 font-medium text-white disabled:opacity-60"
             >
-              {submitting ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Assigning…
-                </span>
-              ) : (
-                'Assign Slot'
-              )}
+              Next →
             </button>
           )}
         </div>

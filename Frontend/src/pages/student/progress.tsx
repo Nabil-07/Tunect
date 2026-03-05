@@ -31,6 +31,11 @@ export default function StudentProgress() {
 
   useEffect(() => {
     loadData();
+    // Poll every 30 seconds for real-time updates
+    const interval = setInterval(() => {
+      refreshData();
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {
@@ -54,6 +59,22 @@ export default function StudentProgress() {
       })
       .catch(err => console.error('Failed to load hours:', err))
       .finally(() => setLoadingHours(false));
+  };
+
+  // Silent refresh without loading spinners
+  const refreshData = async () => {
+    apiClient.get('/student-progress/me')
+      .then(res => setProgress(res.data || []))
+      .catch(() => {});
+    apiClient.get('/certificates/my')
+      .then(res => setCertificates(res.data || []))
+      .catch(() => {});
+    getMe()
+      .then((me) => {
+        const hours = me?.student?.hoursStudied;
+        setTotalHours(typeof hours === 'number' ? hours : 0);
+      })
+      .catch(() => {});
   };
 
   const getCertificateColor = (type: string) => {

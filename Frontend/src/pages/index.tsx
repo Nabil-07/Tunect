@@ -40,7 +40,7 @@ export default function Home() {
   const [q, setQ] = useState('');
 
   const HeroTitle = useMemo(() => {
-    const children = 'Online tutoring: find verified tutors you’ll love.';
+    const children = 'Expert Online Tutoring: Find a Tutor Online with Tunect';
     if (!Motion) {
       return (
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-ink">{children}</h1>
@@ -165,8 +165,11 @@ export default function Home() {
         <div className="container-px mx-auto grid lg:grid-cols-2 items-center gap-8 py-16">
           <div>
             {HeroTitle}
-            <p className="mt-4 text-lg text-slate-600">
-              Book 1-on-1 sessions with top tutors worldwide. First session can be a <b>free demo</b>.
+            <p className="mt-4 text-lg text-slate-600 leading-relaxed">
+              Tunect offers a premier platform for personalized 1-on-1 learning. We connect students with verified, expert tutors from across the globe.
+            </p>
+            <p className="mt-2 text-base text-slate-500 leading-relaxed">
+              Whether you need assistance in mathematics, science, or English, our service is designed to help you achieve academic excellence. Experience the benefits of dedicated online tutoring and book your first session, which can be a <b className="text-slate-700">free demonstration</b>.
             </p>
 
             {/* Search bar */}
@@ -197,6 +200,36 @@ export default function Home() {
 
       {/* Stats Strip */}
       <StatsStrip />
+
+      {/* Connect with Premier Online Tutors India */}
+      <section className="w-full bg-slate-50 py-14">
+        <div className="container-px mx-auto max-w-4xl text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-ink">
+            Connect with Premier <span className="text-emerald-600">Online Tutors India</span>
+          </h2>
+          <p className="mt-3 text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            Join a growing global community that trusts Tunect for its educational needs. Our platform is home to thousands of active students and verified tutors across many countries.
+          </p>
+          <p className="mt-2 text-sm text-slate-500 max-w-xl mx-auto leading-relaxed">
+            With a proven track record of successfully completed sessions, we are proud to facilitate a connection between students and the finest online tutors India has to offer, as well as experts from other nations.
+          </p>
+
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-8 text-left">
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold text-ink">A Secure and Reliable Learning Platform</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Every tutor is KYC-verified, sessions run on encrypted video, and your data stays private. Learn with confidence on a platform built for safety and trust.
+              </p>
+            </div>
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold text-ink">Achieve Your Academic Goals with Us</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                From exam prep to skill building, our tutors craft personalised plans that keep you on track. Set goals, measure progress, and reach your full potential with dedicated online tutoring.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Testimonials */}
       <Testimonials />

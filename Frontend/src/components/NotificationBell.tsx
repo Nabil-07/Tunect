@@ -27,6 +27,25 @@ export default function NotificationBell() {
     }
   };
 
+  const markAsRead = async (id: string) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      setItems(prev => prev.map(item =>
+        item.id === id ? { ...item, isRead: true } : item
+      ));
+      // Notify other components (e.g. notifications page) to update
+      globalThis.dispatchEvent(new Event('notifications:updated'));
+    } catch (err) {
+      console.error("Failed to mark notification as read", err);
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    if (!notification.isRead) {
+      markAsRead(notification.id);
+    }
+  };
+
   useEffect(() => {
     loadNotifications();
 
@@ -35,10 +54,14 @@ export default function NotificationBell() {
       loadNotifications();
     };
 
-    window.addEventListener('notifications:updated', handleUpdate);
+    globalThis.addEventListener('notifications:updated', handleUpdate);
+
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(loadNotifications, 30000);
 
     return () => {
-      window.removeEventListener('notifications:updated', handleUpdate);
+      globalThis.removeEventListener('notifications:updated', handleUpdate);
+      clearInterval(interval);
     };
   }, []);
 
@@ -67,14 +90,32 @@ export default function NotificationBell() {
               {items.slice(0, 5).map((n) => (
                 <li
                   key={n.id}
-                  className="p-3 border-b text-sm hover:bg-gray-50"
+                  className={`p-3 border-b text-sm hover:bg-gray-50 cursor-pointer ${
+                    n.isRead ? '' : 'bg-blue-50 font-medium'
+                  }`}
                 >
                   {n.bookingId ? (
-                    <Link to={`/student/my-bookings?focus=${n.bookingId}`}>
+                    <Link
+                      to={`/student/bookings?focus=${n.bookingId}`}
+                      onClick={() => { handleNotificationClick(n); setOpen(false); }}
+                      className="block"
+                    >
                       {n.message}
+                      {!n.isRead && (
+                        <span className="inline-block ml-2 w-2 h-2 bg-blue-500 rounded-full" />
+                      )}
                     </Link>
                   ) : (
-                    n.message
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      onClick={() => handleNotificationClick(n)}
+                    >
+                      {n.message}
+                      {!n.isRead && (
+                        <span className="inline-block ml-2 w-2 h-2 bg-blue-500 rounded-full" />
+                      )}
+                    </button>
                   )}
                 </li>
               ))}
@@ -84,6 +125,7 @@ export default function NotificationBell() {
             <Link
               to={user?.role === 'TUTOR' ? "/tutor/notifications" : "/student/notifications"}
               className="text-blue-600 text-sm hover:underline"
+              onClick={() => setOpen(false)}
             >
               View all
             </Link>

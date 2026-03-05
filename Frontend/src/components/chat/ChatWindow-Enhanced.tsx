@@ -1,7 +1,7 @@
 // Frontend/src/components/chat/ChatWindow-Enhanced.tsx
 import { useState, useEffect, useRef } from 'react';
 import { Send, Users, Lock, AlertTriangle, Trash2 } from 'lucide-react';
-import { getConversation, sendMessage, deleteMessage } from '../../services/chatService';
+import { getConversation, sendMessage, deleteMessage, markThreadRead } from '../../services/chatService';
 import type { ConversationDetail, Message } from '../../services/chatService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../hooks/useSocket';
@@ -94,6 +94,11 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
       const data = await getConversation(conversationId);
       setConversation(data);
       setError('');
+
+      // Mark as read when opening this thread and refresh navbar unread badge
+      markThreadRead(conversationId)
+        .then(() => globalThis.dispatchEvent(new Event('messages:updated')))
+        .catch(() => {});
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load conversation');
     } finally {

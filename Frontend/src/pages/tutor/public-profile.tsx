@@ -11,6 +11,7 @@ import { createDemoBooking, assignSlot, getDemoDetailForTutor } from '../../serv
 import { useAuth } from '../../contexts/AuthContext';
 import NotificationModal from '../../components/common/NotificationModal';
 import { generateTutorSlug, parseTutorIdFromSlug } from '../../utils/seo';
+import { getTimezoneAbbr } from '../../utils/timezone';
 
 type BookableSlot = { startTime: string; endTime: string };
 
@@ -78,11 +79,7 @@ export default function TutorPublicProfile() { // NOSONAR
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     [],
   );
-  const timezoneAbbr = useMemo(() => {
-    return new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
-      .formatToParts(new Date())
-      .find((p) => p.type === 'timeZoneName')?.value || timezone;
-  }, [timezone]);
+  const timezoneAbbr = useMemo(() => getTimezoneAbbr(), []);
 
   const { currency, rates } = useDisplayCurrency();
   const r = (code: string) => rates[code] ?? 1; // USD->code
@@ -96,8 +93,14 @@ export default function TutorPublicProfile() { // NOSONAR
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<string | null>(null);
+  const [successModal, setSuccessModal] = useState<string | null>(null);
   const [expandedDaySlots, setExpandedDaySlots] = useState<{ date: Date; slots: BookableSlot[] } | null>(null);
   const [selectedMobileDay, setSelectedMobileDay] = useState<Date | null>(null);
+  const [pendingSlot, setPendingSlot] = useState<BookableSlot | null>(null);
+  const [showStudyModal, setShowStudyModal] = useState(false);
+  const [studySubject, setStudySubject] = useState('');
+  const [studyGrade, setStudyGrade] = useState('');
+  const [studyModule, setStudyModule] = useState('');
   const [tokenBalance, setTokenBalance] = useState<number | null>(null);
   const [tokenBalanceLoading, setTokenBalanceLoading] = useState(false);
   const [daysUntilExpiry, setDaysUntilExpiry] = useState<number | null>(null);
@@ -428,8 +431,21 @@ export default function TutorPublicProfile() { // NOSONAR
       }
     }
 
+    // All validations passed — store slot and open study-details popup
+    setPendingSlot(slot);
+    setStudySubject('');
+    setStudyGrade('');
+    setStudyModule('');
+    setShowStudyModal(true);
+  }
+
+  async function handleStudyDetailsSubmit() {
+    const slot = pendingSlot;
+    if (!slot || !tutor?.id) return;
+
     try {
       setBusy(true);
+      setShowStudyModal(false);
 
       if (isDemoIntent) {
         // Check if a PENDING demo already exists (e.g., created from checkout page)
@@ -440,7 +456,14 @@ export default function TutorPublicProfile() { // NOSONAR
           // Assign the slot to the existing PENDING demo booking
           await assignSlot(
             demoDetail.bookingId,
-            { startTime: slot.startTime, endTime: slot.endTime, notes: 'Demo from public profile' },
+            {
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              notes: 'Demo from public profile',
+              subject: studySubject.trim() || undefined,
+              grade: studyGrade.trim() || undefined,
+              module: studyModule.trim() || undefined,
+            },
             timezone,
           );
         } else if (demoDetail.used) {
@@ -455,6 +478,9 @@ export default function TutorPublicProfile() { // NOSONAR
               startTime: slot.startTime,
               endTime: slot.endTime,
               notes: 'Demo from public profile',
+              subject: studySubject.trim() || undefined,
+              grade: studyGrade.trim() || undefined,
+              module: studyModule.trim() || undefined,
             },
             timezone,
           );
@@ -468,7 +494,15 @@ export default function TutorPublicProfile() { // NOSONAR
         // paid booking flow (requires tokens)
         await api.post(
           '/bookings',
-          { tutorId: tutor.id, startTime: slot.startTime, endTime: slot.endTime, notes: 'Booked from public profile' },
+          {
+            tutorId: tutor.id,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            notes: 'Booked from public profile',
+            subject: studySubject.trim() || undefined,
+            grade: studyGrade.trim() || undefined,
+            module: studyModule.trim() || undefined,
+          },
           { params: { tz: timezone } },
         );
         
@@ -481,9 +515,25 @@ export default function TutorPublicProfile() { // NOSONAR
       }
 
       // refresh slots so the taken one disappears for everyone
-      const slots = await fetchSlots(month);
-      setBookable(slots);
-      setToast(isDemoIntent ? 'Demo slot confirmed!' : 'Booking created!');
+      const freshSlots = await fetchSlots(month);
+      setBookable(freshSlots);
+      
+      // Show success confirmation modal
+      const slotStart = new Date(slot.startTime);
+      const dateStr = slotStart.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const timeStr = slotStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      const details = [
+        `📅 ${dateStr}`,
+        `🕐 ${timeStr} (${timezoneAbbr})`,
+        studySubject ? `📘 Subject: ${studySubject}` : '',
+        studyGrade ? `🎓 Grade: ${studyGrade}` : '',
+        studyModule ? `📝 Topic: ${studyModule}` : '',
+      ].filter(Boolean).join('\n');
+      setSuccessModal(
+        isDemoIntent
+          ? `Your free demo session has been confirmed!\n\n${details}\n\nYou can view it in your Bookings page.`
+          : `Your session has been booked successfully!\n\n${details}\n\nYou can view it in your Bookings page.`
+      );
     } catch (e: any) {
       console.error('Booking error response:', e?.response?.data);
       const status = e?.response?.status;
@@ -512,8 +562,8 @@ export default function TutorPublicProfile() { // NOSONAR
           setErrorModal(message);
         } else {
           setErrorModal('That slot was just taken. Please pick another.');
-          const slots = await fetchSlots(month);
-          setBookable(slots);
+          const freshSlots = await fetchSlots(month);
+          setBookable(freshSlots);
         }
       } else {
         setErrorModal(e?.response?.data?.message || 'Could not book. Please try again.');
@@ -601,6 +651,77 @@ export default function TutorPublicProfile() { // NOSONAR
         type="error"
         confirmText="Close"
       />
+      <NotificationModal
+        open={!!successModal}
+        onClose={() => setSuccessModal(null)}
+        title="Slot Booked!"
+        message={successModal || 'Your session has been booked successfully!'}
+        type="success"
+        confirmText="Got it"
+      />
+
+      {/* Study details popup – opens after the student selects a time slot */}
+      {showStudyModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-slate-900">What do you want to study?</h3>
+            <p className="text-sm text-slate-500">
+              Help the tutor prepare — tell them the subject, grade and topic.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Subject <span className="text-slate-400 font-normal">(e.g. Mathematics)</span>
+              </label>
+              <input
+                type="text"
+                value={studySubject}
+                onChange={e => setStudySubject(e.target.value)}
+                placeholder="e.g. Mathematics, Physics, English…"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Grade / Level <span className="text-slate-400 font-normal">(e.g. Grade 10)</span>
+              </label>
+              <input
+                type="text"
+                value={studyGrade}
+                onChange={e => setStudyGrade(e.target.value)}
+                placeholder="e.g. Grade 10, A-Level, University Year 1…"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Module / Topic <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={studyModule}
+                onChange={e => setStudyModule(e.target.value)}
+                placeholder="e.g. Algebra, Organic Chemistry, Essay Writing…"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowStudyModal(false)}
+                className="rounded-xl px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleStudyDetailsSubmit}
+                disabled={busy}
+                className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {busy ? 'Booking…' : 'Confirm Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         <div className="space-y-4">

@@ -57,11 +57,29 @@ export default function StudentGoals() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate targetDate is not in the past
+    if (formData.targetDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const target = new Date(formData.targetDate);
+      if (target < today) {
+        showError('Target date cannot be in the past');
+        return;
+      }
+    } else {
+      showError('Target date is required');
+      return;
+    }
     try {
+      // Convert date to ISO 8601 format for the API
+      const payload = {
+        ...formData,
+        targetDate: formData.targetDate ? new Date(formData.targetDate).toISOString() : undefined,
+      };
       if (editingGoal) {
-        await apiClient.put(`/learning-goals/${editingGoal.id}`, formData);
+        await apiClient.put(`/learning-goals/${editingGoal.id}`, payload);
       } else {
-        await apiClient.post('/learning-goals', formData);
+        await apiClient.post('/learning-goals', payload);
       }
       setShowForm(false);
       setEditingGoal(null);
@@ -196,12 +214,14 @@ export default function StudentGoals() {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Target Date</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Target Date *</label>
                   <input
                     type="date"
                     value={formData.targetDate}
                     onChange={e => setFormData({ ...formData, targetDate: e.target.value })}
+                    min={new Date().toISOString().split('T')[0]}
                     className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-ocean-500 outline-none"
+                    required
                   />
                 </div>
 

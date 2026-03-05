@@ -8,7 +8,11 @@ export async function getUnreadCount(): Promise<UnreadCount> {
   const t = getAccessToken();
   if (!t) return { count: 0 };        // 🚫 no token → no request
   try {
-    const { data } = await api.get('/chat/unread-count');
+    // Cache-bust to avoid 304 stale responses after marking threads as read
+    const { data } = await api.get('/chat/unread-count', {
+      params: { _t: Date.now() },
+      headers: { 'Cache-Control': 'no-cache' },
+    });
     if (typeof data === 'number') return { count: data };
     if (data && typeof data.count === 'number') return { count: data.count };
     return { count: 0 };

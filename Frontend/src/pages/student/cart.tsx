@@ -35,7 +35,7 @@ export default function Cart() {
   const [tutor, setTutor] = useState<Tutor | null>(null);
   const [qty, setQty] = useState<number>(() => {
     const q = Number(sp.get('tokens') || 5);
-    return Number.isFinite(q) ? Math.max(5, q) : 5;
+    return Number.isFinite(q) && q >= 5 ? q : 5;
   }); // tokens count
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
@@ -121,9 +121,11 @@ export default function Cart() {
   );
 
   const onQtyChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const n = Number.parseInt(e.target.value || '5', 10);
-    if (Number.isNaN(n)) return;
-    setQty(Math.max(5, n));
+    const raw = e.target.value;
+    if (raw === '') { setQty(0); return; }
+    const n = Number.parseInt(raw, 10);
+    if (Number.isNaN(n) || n < 0) return;
+    setQty(n);
   };
 
   const slotsSection = (() => {
@@ -294,12 +296,15 @@ export default function Cart() {
             <input
               id="cart-tokens"
               type="number"
-              min={5}
+              min={1}
               step={1}
-              value={qty}
+              value={qty || ''}
               onChange={onQtyChange}
               className="w-40 rounded-xl border px-3 py-2 text-sm focus:border-ocean-500 focus:outline-none focus:ring-1 focus:ring-ocean-500"
             />
+            {qty < 5 && (
+              <p className="mt-1 text-xs text-red-500">Minimum 5 tokens required</p>
+            )}
             <p className="mt-2 text-xs text-slate-500">
               You need at least 5 tokens to book a tutor. First session can be a free demo.
             </p>
@@ -358,7 +363,12 @@ export default function Cart() {
 
           <button
             onClick={proceedToPayment}
-            className="mt-4 w-full rounded-xl bg-ocean-700 py-3 font-medium text-white hover:bg-ocean-800 active:scale-[0.99]"
+            disabled={qty < 5}
+            className={`mt-4 w-full rounded-xl py-3 font-medium text-white active:scale-[0.99] ${
+              qty < 5
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-ocean-700 hover:bg-ocean-800'
+            }`}
           >
             <div className="flex items-center justify-center gap-2">
               <CreditCard className="h-5 w-5" />

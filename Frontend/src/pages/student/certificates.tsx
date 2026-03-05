@@ -23,6 +23,11 @@ export default function Certificates() {
 
   useEffect(() => {
     loadCertificates();
+    // Poll every 30 seconds for real-time updates
+    const interval = setInterval(() => {
+      refreshCertificates();
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadCertificates = async () => {
@@ -33,6 +38,16 @@ export default function Certificates() {
       console.error('Failed to load certificates:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Silent refresh without loading spinner
+  const refreshCertificates = async () => {
+    try {
+      const res = await apiClient.get('/certificates/my');
+      setCertificates(res.data || []);
+    } catch {
+      // Silently ignore refresh errors
     }
   };
 

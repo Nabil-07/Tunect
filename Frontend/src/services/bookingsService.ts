@@ -6,6 +6,9 @@ export type CreateDemoPayload = {
   startTime?: string; // ISO
   endTime?: string;   // ISO
   notes?: string;
+  subject?: string;
+  grade?: string;
+  module?: string;
 };
 
 export type CreatePaidPayload = {
@@ -14,12 +17,18 @@ export type CreatePaidPayload = {
   startTime?: string; // ISO
   endTime?: string;   // ISO
   notes?: string;
+  subject?: string;
+  grade?: string;
+  module?: string;
 };
 
 export type AssignSlotPayload = {
   startTime: string; // ISO
   endTime: string;   // ISO
   notes?: string;
+  subject?: string;
+  grade?: string;
+  module?: string;
 };
 
 export type BookingDto = {

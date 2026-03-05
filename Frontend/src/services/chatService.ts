@@ -10,6 +10,7 @@ export interface Conversation {
   referenceId: string | null;
   isActive: boolean;
   memberCount: number;
+  unreadCount?: number;
   lastMessage: {
     id: string;
     content: string;
@@ -80,6 +81,11 @@ export async function listConversations(): Promise<Conversation[]> {
 export async function getConversation(conversationId: string): Promise<ConversationDetail> {
   const response = await api.get(`/chat/thread/${conversationId}`);
   return response.data;
+}
+
+// Mark a conversation thread as read
+export async function markThreadRead(conversationId: string): Promise<void> {
+  await api.post(`/chat/threads/${conversationId}/read`);
 }
 
 // Send a message in a conversation

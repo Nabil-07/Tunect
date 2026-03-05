@@ -20,4 +20,19 @@ export class AssignDemoSlotDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ example: 'Mathematics', description: 'Subject the student wants to study.' })
+  @IsOptional()
+  @IsString()
+  subject?: string;
+
+  @ApiPropertyOptional({ example: 'Grade 10', description: 'Grade or level of the student.' })
+  @IsOptional()
+  @IsString()
+  grade?: string;
+
+  @ApiPropertyOptional({ example: 'Algebra', description: 'Specific module or topic to cover.' })
+  @IsOptional()
+  @IsString()
+  module?: string;
 }

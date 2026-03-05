@@ -158,6 +158,9 @@ model Booking {
   demeritApplied          Boolean?                  @default(false)
   noShowCheckAt           DateTime?
   refundProcessed         Boolean?                  @default(false)
+  subject                 String?
+  grade                   String?
+  module                  String?
 
   @@index([isGroupSession, currentEnrollment, maxStudents])
   @@index([recurringTemplateId])

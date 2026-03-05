@@ -7,6 +7,7 @@ import {
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationBell from './NotificationBell';
+import { getUnreadCount } from '../services/messagesService';
 
 /* ---------------- helpers ---------------- */
 type RoleLower = 'student' | 'tutor' | 'admin';
@@ -86,9 +87,29 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [unreadMsgCount, setUnreadMsgCount] = useState(0);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const extraRef = useRef<HTMLDivElement | null>(null);
+
+  // Fetch unread message count
+  useEffect(() => {
+    if (!isAuthed) return;
+    const fetchCount = () => {
+      getUnreadCount()
+        .then(({ count }) => setUnreadMsgCount(count))
+        .catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000);
+    // Also listen for custom event when messages are read
+    const handleMsgUpdate = () => fetchCount();
+    globalThis.addEventListener('messages:updated', handleMsgUpdate);
+    return () => {
+      clearInterval(interval);
+      globalThis.removeEventListener('messages:updated', handleMsgUpdate);
+    };
+  }, [isAuthed]);
 
   const storedTutorStatus = useMemo(() => {
     try {
@@ -310,11 +331,16 @@ export default function Navbar() {
             <>
               <Link
                 to={roleMessages(role)}
-                className="inline-flex items-center justify-center rounded-xl p-2 hover:bg-slate-100"
+                className="relative inline-flex items-center justify-center rounded-xl p-2 hover:bg-slate-100"
                 aria-label="Open messages"
                 title="Messages"
               >
                 <MessageSquare className="h-5 w-5 text-slate-700" />
+                {unreadMsgCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                    {unreadMsgCount}
+                  </span>
+                )}
               </Link>
 
               <div className="inline-flex items-center justify-center rounded-xl hover:bg-slate-100">
@@ -419,12 +445,17 @@ export default function Navbar() {
               <div className="flex items-center gap-2 px-3 py-2">
                 <NavLink
                   to={roleMessages(role)}
-                  className="btn-ghost inline-flex items-center gap-2"
+                  className="btn-ghost relative inline-flex items-center gap-2"
                   onClick={() => setOpen(false)}
                   aria-label="Open messages"
                 >
                   <MessageSquare className="h-5 w-5" />
                   <span>Messages</span>
+                  {unreadMsgCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      {unreadMsgCount}
+                    </span>
+                  )}
                 </NavLink>
 
                 <NavLink

@@ -452,6 +452,9 @@ export class BookingsService {
               status: BookingStatus.PENDING,
               tokensCharged: new Prisma.Decimal(0),
               notes: dto.notes,
+              subject: dto.subject,
+              grade: dto.grade,
+              module: dto.module,
             },
           });
 
@@ -469,6 +472,9 @@ export class BookingsService {
             endTime: end,
             tokensCharged: new Prisma.Decimal(0),
             notes: dto.notes,
+            subject: dto.subject,
+            grade: dto.grade,
+            module: dto.module,
           },
         });
 
@@ -486,6 +492,9 @@ export class BookingsService {
             status: BookingStatus.PENDING,
             tokensCharged: new Prisma.Decimal(0),
             notes: dto.notes,
+            subject: dto.subject,
+            grade: dto.grade,
+            module: dto.module,
           },
         });
 
@@ -536,6 +545,9 @@ export class BookingsService {
           status: BookingStatus.PENDING_SLOT,
           tokensCharged: new Prisma.Decimal(0),
           notes: dto.notes,
+          subject: dto.subject,
+          grade: dto.grade,
+          module: dto.module,
         },
       });
     }
@@ -609,6 +621,9 @@ export class BookingsService {
           endTime: end,
           tokensCharged: new Prisma.Decimal(cost),
           notes: dto.notes,
+          subject: dto.subject,
+          grade: dto.grade,
+          module: dto.module,
         },
       });
 
@@ -1532,7 +1547,7 @@ export class BookingsService {
   // ---------- assign slot ----------
   async assignSlot(
     bookingId: string,
-    dto: { startTime: string; endTime: string; notes?: string },
+    dto: { startTime: string; endTime: string; notes?: string; subject?: string; grade?: string; module?: string },
     tz?: string,
   ) {
     const start = toUtc(dto.startTime, tz);
@@ -1631,6 +1646,9 @@ export class BookingsService {
             endTime: end,
             status: BookingStatus.CONFIRMED,
             notes: dto.notes ?? booking.notes,
+            subject: dto.subject ?? booking.subject,
+            grade: dto.grade ?? booking.grade,
+            module: dto.module ?? booking.module,
           },
         });
       } else {
@@ -1690,6 +1708,9 @@ export class BookingsService {
             status: BookingStatus.CONFIRMED,
             tokensCharged: new Prisma.Decimal(cost),
             notes: dto.notes ?? booking.notes,
+            subject: dto.subject ?? booking.subject,
+            grade: dto.grade ?? booking.grade,
+            module: dto.module ?? booking.module,
           },
         });
       }

@@ -1,7 +1,7 @@
 // Frontend/src/components/chat/ChatWindow.tsx
 import { useState, useEffect, useRef } from 'react';
 import { Send, Users, Lock, AlertTriangle, Trash2 } from 'lucide-react';
-import { getConversation, sendMessage, deleteMessage } from '../../services/chatService';
+import { getConversation, sendMessage, deleteMessage, markThreadRead } from '../../services/chatService';
 import type { ConversationDetail, Message } from '../../services/chatService';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -32,6 +32,11 @@ export default function ChatWindow({ conversationId }: ChatWindowProps) {
       setError(null);
       const data = await getConversation(conversationId);
       setConversation(data);
+
+      // Mark conversation as read and notify Navbar to refresh unread badge
+      markThreadRead(conversationId)
+        .then(() => globalThis.dispatchEvent(new Event('messages:updated')))
+        .catch(() => {}); // fire-and-forget
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load conversation');
     } finally {
@@ -54,6 +59,8 @@ export default function ChatWindow({ conversationId }: ChatWindowProps) {
           : null,
       );
       setMessageText('');
+      // Refresh unread badge (sending marks the conversation as read)
+      globalThis.dispatchEvent(new Event('messages:updated'));
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to send message');
     } finally {

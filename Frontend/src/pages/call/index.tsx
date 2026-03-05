@@ -237,7 +237,9 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
       // Get live scene data directly from Excalidraw (avoids stale backend data)
       const liveData = whiteboardRef.current?.getSceneData();
       const wbData = liveData ?? await whiteboardService.getWhiteboardData(bookingId);
-      if (!wbData || (!wbData.elements?.length)) {
+      // Filter to only non-deleted elements for the emptiness check
+      const visibleElements = wbData?.elements?.filter((el: any) => !el.isDeleted) ?? [];
+      if (!wbData || visibleElements.length === 0) {
         showToastError("Whiteboard is empty \u2014 nothing to save.");
         return;
       }
@@ -325,13 +327,16 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
             </div>
           )}
 
-          {isWhiteboardActive ? (
-            <div className="absolute inset-0 rounded-2xl border bg-white overflow-hidden">
-              <Whiteboard ref={whiteboardRef} bookingId={bookingId} realtime className="w-full h-full" />
-            </div>
-          ) : (
+          {/* Keep both Whiteboard and LivekitStage mounted to prevent data loss on tab switch */}
+          <div
+            className="absolute inset-0 rounded-2xl border bg-white overflow-hidden"
+            style={{ display: isWhiteboardActive ? 'block' : 'none' }}
+          >
+            <Whiteboard ref={whiteboardRef} bookingId={bookingId} realtime className="w-full h-full" />
+          </div>
+          <div style={{ display: isWhiteboardActive ? 'none' : 'contents' }}>
             <LivekitStage />
-          )}
+          </div>
         </div>
 
         {/* ── Mobile toggle button (visible only on small screens) ── */}

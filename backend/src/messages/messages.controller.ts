@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
   HttpCode,
+  Header,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -151,6 +152,8 @@ export class MessagesController {
 
   /** Dashboard widget: unread count */
   @ApiOperation({ summary: 'Get my unread message count' })
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  @Header('Pragma', 'no-cache')
   @Get('unread_count')
   unread(@CurrentUser('id') userId: string) {
     const svcAny = this.svc as any;
@@ -162,6 +165,8 @@ export class MessagesController {
 
   // Alias with dash for frontend variants
   @ApiOperation({ summary: 'Get my unread message count (alias)' })
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+  @Header('Pragma', 'no-cache')
   @Get('unread-count')
   unreadDash(@CurrentUser('id') userId: string) {
     return this.unread(userId);

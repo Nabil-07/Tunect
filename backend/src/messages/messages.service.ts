@@ -18,6 +18,10 @@ const CONVO_PAGE_SIZE_DEFAULT = 20;
 
 @Injectable()
 export class MessagesService {
+  // In-memory read tracking: Map<`${userId}:${conversationId}`, Date>
+  // Tracks when a user last read a conversation (no schema migration needed)
+  private readonly readReceipts = new Map<string, Date>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ctx: RequestContext,
@@ -507,6 +511,16 @@ export class MessagesService {
         !c.booking ||
         (c.booking.status !== 'CANCELED' && c.booking.status !== 'COMPLETED');
 
+      // Compute per-conversation unread count
+      const lastMsg = c.messages[0] ?? null;
+      let unreadCount = 0;
+      if (lastMsg && lastMsg.senderId !== userId) {
+        const readAt = this.readReceipts.get(`${userId}:${c.id}`);
+        if (!readAt || readAt < lastMsg.createdAt) {
+          unreadCount = 1;
+        }
+      }
+
       acc.push({
         id: c.id,
         type: 'DIRECT' as const,
@@ -514,13 +528,14 @@ export class MessagesService {
         referenceId: c.bookingId,
         isActive,
         memberCount: 2,
-        lastMessage: c.messages[0]
+        unreadCount,
+        lastMessage: lastMsg
           ? {
-              id: c.messages[0].id,
-              content: c.messages[0].text,
+              id: lastMsg.id,
+              content: lastMsg.text,
               isDeleted: false,
-              createdAt: c.messages[0].createdAt.toISOString(),
-              senderId: c.messages[0].senderId,
+              createdAt: lastMsg.createdAt.toISOString(),
+              senderId: lastMsg.senderId,
             }
           : null,
         createdAt: c.createdAt.toISOString(),
@@ -528,6 +543,13 @@ export class MessagesService {
 
       return acc;
     }, []);
+
+    // Sort by most recent message first (fall back to conversation createdAt)
+    items.sort((a, b) => {
+      const aTime = a.lastMessage?.createdAt || a.createdAt;
+      const bTime = b.lastMessage?.createdAt || b.createdAt;
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
 
     const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].createdAt.toISOString() : null;
 
@@ -742,17 +764,41 @@ export class MessagesService {
   }
 
   /**
-   * No-op until you add a read-receipts table.
-   * Kept for controller compatibility: POST /messages/threads/:id/read
+   * Mark a conversation as read for the given user.
+   * Also marks all sibling conversations (same student-tutor pair) as read,
+   * since the UI deduplicates conversations by the other participant.
    */
-  async markThreadRead(_conversationId: string, userId: string) {
+  async markThreadRead(conversationId: string, userId: string) {
     if (!userId) throw new ForbiddenException('Not authenticated');
+    const now = new Date();
+    this.readReceipts.set(`${userId}:${conversationId}`, now);
+
+    // Also mark all sibling conversations (same student-tutor pair)
+    try {
+      const convo = await this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { studentId: true, tutorId: true },
+      });
+      if (convo) {
+        const siblings = await this.prisma.conversation.findMany({
+          where: { studentId: convo.studentId, tutorId: convo.tutorId },
+          select: { id: true },
+        });
+        for (const s of siblings) {
+          this.readReceipts.set(`${userId}:${s.id}`, now);
+        }
+      }
+    } catch {
+      // Non-critical: the primary receipt was already set
+    }
     return { success: true as const };
   }
 
   /**
-   * Approximate unread count without extra tables:
-   * Count conversations where the latest message exists AND was sent by someone else.
+   * Count conversations with unread messages.
+   * A conversation is "unread" if:
+   *   - It has a last message sent by someone else, AND
+   *   - The user hasn't marked it as read since that message was sent
    */
   async getUnreadCount(userId: string) {
     if (!userId) throw new ForbiddenException('Not authenticated');
@@ -774,15 +820,27 @@ export class MessagesService {
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { id: true, senderId: true },
+          select: { id: true, senderId: true, createdAt: true },
         },
       },
     });
 
+    // Deduplicate by other participant (matches listConversations UI behavior)
+    const seen = new Set<string>();
     const count = convos.reduce((acc, c) => {
       const last = c.messages[0];
-      if (last && last.senderId !== userId) return acc + 1;
-      return acc;
+      if (!last || last.senderId === userId) return acc;
+
+      // Check if user has read this conversation after the last message
+      const readAt = this.readReceipts.get(`${userId}:${c.id}`);
+      if (readAt && readAt >= last.createdAt) return acc;
+
+      // Deduplicate: only count once per other participant
+      const otherId = last.senderId;
+      if (seen.has(otherId)) return acc;
+      seen.add(otherId);
+
+      return acc + 1;
     }, 0);
 
     return { count };

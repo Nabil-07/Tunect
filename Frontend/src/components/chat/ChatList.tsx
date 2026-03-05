@@ -156,26 +156,31 @@ export default function ChatList() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
                 <h4 className="font-semibold text-gray-900 truncate">{getConversationLabel(conv)}</h4>
-                {conv.lastMessage && (
-                  <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
-                    {formatLastMessageTime(conv.lastMessage.createdAt)}
+                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                  {conv.lastMessage && (
+                    <span className="text-xs text-gray-500">
+                      {formatLastMessageTime(conv.lastMessage.createdAt)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                {conv.lastMessage ? (
+                  <p className="text-sm text-gray-600 truncate flex-1 mr-2">
+                    {conv.lastMessage.isDeleted
+                      ? 'Message removed by admin'
+                      : conv.lastMessage.content}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-400 truncate flex-1 mr-2">No messages yet</p>
+                )}
+                {(conv.unreadCount ?? 0) > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold text-white bg-green-500 rounded-full">
+                    {conv.unreadCount}
                   </span>
                 )}
               </div>
-              
-              {conv.lastMessage && (
-                <p className="text-sm text-gray-600 truncate">
-                  {conv.lastMessage.isDeleted
-                    ? 'Message removed by admin'
-                    : conv.lastMessage.content}
-                </p>
-              )}
-              
-              {!conv.isActive && (
-                <span className="inline-block mt-2 text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded">
-                  Archived
-                </span>
-              )}
             </div>
           </div>
         </div>

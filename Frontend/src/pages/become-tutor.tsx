@@ -1,5 +1,5 @@
 ﻿// src/pages/BecomeTutor.tsx
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   DollarSign,
   Globe2,
@@ -19,10 +19,69 @@ import { http } from "../api/http";
 import { getAccessToken, setTokens } from "../lib/auth";
 import { decryptField } from '../utils/decryption';
 import Loader from "../components/common/Loader";
+import api from "../lib/apiClient";
+
+/** Hook: counts from 0 to `end` over `duration` ms when element is in view */
+function useCountUp(end: number, duration = 1500) {
+  const [count, setCount] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
+  const started = useRef(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !started.current) {
+          started.current = true;
+          const startTime = performance.now();
+          const animate = (now: number) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // ease-out quad
+            const eased = 1 - (1 - progress) * (1 - progress);
+            setCount(Math.round(eased * end));
+            if (progress < 1) requestAnimationFrame(animate);
+          };
+          requestAnimationFrame(animate);
+        }
+      },
+      { threshold: 0.3 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [end, duration]);
+
+  // Reset if target changes
+  useEffect(() => { started.current = false; setCount(0); }, [end]);
+
+  return { ref, count };
+}
 
 export default function BecomeTutor() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+
+  // Real-time stats from /stats/public
+  const [liveStats, setLiveStats] = useState<{ tutors: number; countries: number } | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    api.get("/stats/public").then(({ data }) => {
+      if (mounted) {
+        setLiveStats({
+          tutors: Number(data?.tutors ?? 0),
+          countries: Number(data?.countries ?? 0),
+        });
+      }
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  const tutorCount = liveStats ? Math.max(liveStats.tutors, 1) : 2500;
+  const countryCount = liveStats ? Math.max(liveStats.countries, 1) : 50;
+  const tutorAnim = useCountUp(tutorCount, 1800);
+  const earningsAnim = useCountUp(82, 1200);
+  const countryAnim = useCountUp(countryCount, 1400);
 
   // Earnings calculator state
   const [rate, setRate] = useState(1200);
@@ -155,15 +214,21 @@ export default function BecomeTutor() {
             </div>
             <div className="mt-8 flex gap-8 text-slate-700">
               <div>
-                <p className="font-bold text-xl">2,500+</p>
+                <p className="font-bold text-xl">
+                  <span ref={tutorAnim.ref}>{tutorAnim.count.toLocaleString("en-IN")}</span>+
+                </p>
                 <p className="text-sm">Active Tutors</p>
               </div>
               <div>
-                <p className="font-bold text-xl">82%</p>
+                <p className="font-bold text-xl">
+                  <span ref={earningsAnim.ref}>{earningsAnim.count}</span>%
+                </p>
                 <p className="text-sm">Earnings Share (max)</p>
               </div>
               <div>
-                <p className="font-bold text-xl">50+</p>
+                <p className="font-bold text-xl">
+                  <span ref={countryAnim.ref}>{countryAnim.count}</span>+
+                </p>
                 <p className="text-sm">Countries</p>
               </div>
             </div>

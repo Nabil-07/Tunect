@@ -207,6 +207,17 @@ export class StudentsService {
       ? this.encryptionService.encrypt(readableAvatarUrl)
       : readableAvatarUrl;
 
+    // Decrypt phone for current user's own profile so they can see their own number
+    let decryptedPhone = user.phone ?? null;
+    if (decryptedPhone) {
+      try {
+        const tryDecrypt = this.encryptionService.decrypt(decryptedPhone);
+        if (tryDecrypt) decryptedPhone = tryDecrypt;
+      } catch {
+        // If decryption fails, return as-is (phone may not be encrypted)
+      }
+    }
+
     return {
       id: student.id,
       userId: user.id,
@@ -217,7 +228,7 @@ export class StudentsService {
         id: user.id,
         name: user.name ?? null,
         email: user.email,
-        phone: user.phone ?? null,
+        phone: decryptedPhone,
         avatarUrl: encryptedAvatarUrl,
         createdAt: user.createdAt,
       },
