@@ -32,6 +32,8 @@ export default function StudentGoals() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [togglingGoalId, setTogglingGoalId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -47,7 +49,11 @@ export default function StudentGoals() {
   const loadGoals = async () => {
     try {
       const res = await apiClient.get('/learning-goals/my');
-      setGoals(res.data || []);
+      const mapped = (res.data || []).map((g: any) => ({
+        ...g,
+        completed: g.status === 'COMPLETED',
+      }));
+      setGoals(mapped);
     } catch (error) {
       console.error('Failed to load goals:', error);
     } finally {
@@ -70,6 +76,7 @@ export default function StudentGoals() {
       showError('Target date is required');
       return;
     }
+    setSubmitting(true);
     try {
       // Convert date to ISO 8601 format for the API
       const payload = {
@@ -78,8 +85,10 @@ export default function StudentGoals() {
       };
       if (editingGoal) {
         await apiClient.put(`/learning-goals/${editingGoal.id}`, payload);
+        showSuccess('Goal updated successfully');
       } else {
         await apiClient.post('/learning-goals', payload);
+        showSuccess('Goal created successfully');
       }
       setShowForm(false);
       setEditingGoal(null);
@@ -87,6 +96,9 @@ export default function StudentGoals() {
       loadGoals();
     } catch (error) {
       console.error('Failed to save goal:', error);
+      showError('Failed to save goal');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -133,11 +145,17 @@ export default function StudentGoals() {
   };
 
   const markGoalComplete = async (goalId: string, completed: boolean) => {
+    setTogglingGoalId(goalId);
     try {
-      await apiClient.put(`/learning-goals/${goalId}`, { completed: !completed });
+      const newStatus = completed ? 'IN_PROGRESS' : 'COMPLETED';
+      await apiClient.put(`/learning-goals/${goalId}`, { status: newStatus });
+      showSuccess(completed ? 'Goal marked as in progress' : 'Goal marked as complete');
       loadGoals();
     } catch (error) {
       console.error('Failed to mark goal:', error);
+      showError('Failed to update goal status');
+    } finally {
+      setTogglingGoalId(null);
     }
   };
 
@@ -240,9 +258,10 @@ export default function StudentGoals() {
               <div className="flex gap-3 pt-4">
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-ocean-700 text-white rounded-xl font-semibold hover:bg-ocean-800 transition"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 bg-ocean-700 text-white rounded-xl font-semibold hover:bg-ocean-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editingGoal ? 'Update Goal' : 'Create Goal'}
+                  {submitting ? 'Saving...' : editingGoal ? 'Update Goal' : 'Create Goal'}
                 </button>
                 <button
                   type="button"
@@ -313,7 +332,8 @@ export default function StudentGoals() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => markGoalComplete(goal.id, goal.completed)}
-                      className="p-2 hover:bg-slate-100 rounded-lg transition"
+                      disabled={togglingGoalId === goal.id}
+                      className="p-2 hover:bg-slate-100 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                       title={goal.completed ? 'Mark incomplete' : 'Mark complete'}
                     >
                       {goal.completed ? (
