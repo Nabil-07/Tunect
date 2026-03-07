@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Megaphone, Mail, ShieldCheck } from 'lucide-react';
-import { fetchMyAdminMessages, type AdminMessage } from '../../services/chatService';
+import { fetchMyAdminMessages, markAllThreadsRead, type AdminMessage } from '../../services/chatService';
 
 export default function AdminMessagesView() {
   const [messages, setMessages] = useState<AdminMessage[]>([]);
@@ -18,6 +18,10 @@ export default function AdminMessagesView() {
   };
 
   useEffect(() => {
+    markAllThreadsRead()
+      .then(() => globalThis.dispatchEvent(new Event('messages:updated')))
+      .catch(() => {});
+
     fetchMyAdminMessages()
       .then(setMessages)
       .catch((err) => setError(err?.response?.data?.message || 'Failed to load admin messages'))

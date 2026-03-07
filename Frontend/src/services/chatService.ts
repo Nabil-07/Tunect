@@ -88,6 +88,11 @@ export async function markThreadRead(conversationId: string): Promise<void> {
   await api.post(`/chat/threads/${conversationId}/read`);
 }
 
+// Mark all conversation threads as read for current user
+export async function markAllThreadsRead(): Promise<void> {
+  await api.post('/chat/threads/read-all');
+}
+
 // Send a message in a conversation
 export async function sendMessage(conversationId: string, content: string): Promise<Message> {
   const response = await api.post(`/chat/conversations/${conversationId}/messages`, {

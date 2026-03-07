@@ -90,7 +90,13 @@ export class MessagesController {
   @Post('threads/:id/read')
   async markRead(@CurrentUser('id') userId: string, @Param('id') id: string) {
     await this.svc.markThreadRead(id, userId);
-    return;
+  }
+
+  @ApiOperation({ summary: 'Mark all message threads as read' })
+  @HttpCode(204)
+  @Post('threads/read-all')
+  async markAllRead(@CurrentUser('id') userId: string) {
+    await this.svc.markAllThreadsRead(userId);
   }
 
   @ApiOperation({ summary: 'List my conversations (inbox)' })

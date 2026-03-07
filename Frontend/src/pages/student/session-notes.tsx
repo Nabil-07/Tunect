@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { FileText, BookOpen, Clock, User, Star, Download, ExternalLink, PenTool } from 'lucide-react';
 import apiClient from '../../services/apiClient';
+import { exportToBlob } from '@excalidraw/utils';
+import { jsPDF } from 'jspdf';
 
 interface SessionNote {
   id: string;
@@ -51,6 +53,7 @@ export default function SessionNotes() {
   const [whiteboardNotes, setWhiteboardNotes] = useState<WhiteboardNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'recent'>('all');
+  const [downloadingWbId, setDownloadingWbId] = useState<string | null>(null);
 
   useEffect(() => {
     loadNotes();
@@ -71,6 +74,104 @@ export default function SessionNotes() {
       console.error('Failed to load session notes:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDownloadWhiteboard = async (wb: WhiteboardNote) => {
+    try {
+      setDownloadingWbId(wb.id);
+      const res = await apiClient.get(`/whiteboard/notes/${wb.id}/download`, {
+        responseType: 'blob',
+      });
+
+      const text = await (res.data as Blob).text();
+      const wbData = JSON.parse(text || '{}');
+      const elements = wbData?.elements || [];
+      const appState = wbData?.appState || {};
+      const files = wbData?.files || null;
+
+      if (!Array.isArray(elements) || elements.length === 0) {
+        console.error('Whiteboard is empty — nothing to export.');
+        return;
+      }
+
+      // Render whiteboard as PNG blob using Excalidraw export
+      const blob = await exportToBlob({
+        elements,
+        appState: {
+          ...appState,
+          exportWithDarkMode: false,
+          exportBackground: true,
+          viewBackgroundColor: '#ffffff',
+        },
+        files,
+        mimeType: 'image/png',
+        getDimensions: (width: number, height: number) => ({
+          width: Math.min(width * 2, 4096),
+          height: Math.min(height * 2, 4096),
+          scale: 2,
+        }),
+      });
+
+      const imgDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = imgDataUrl;
+      });
+
+      const isLandscape = img.width > img.height;
+      const pdf = new jsPDF({
+        orientation: isLandscape ? 'landscape' : 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(wb.noteName || 'Whiteboard Notes', margin, margin + 6);
+
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(`Shared: ${new Date(wb.sharedAt || Date.now()).toLocaleString()}`, margin, margin + 12);
+      pdf.setTextColor(0, 0, 0);
+
+      const headerHeight = 18;
+      const availableW = pageWidth - margin * 2;
+      const availableH = pageHeight - margin * 2 - headerHeight;
+      const imgAspect = img.width / img.height;
+      const areaAspect = availableW / availableH;
+
+      let imgW: number;
+      let imgH: number;
+      if (imgAspect > areaAspect) {
+        imgW = availableW;
+        imgH = availableW / imgAspect;
+      } else {
+        imgH = availableH;
+        imgW = availableH * imgAspect;
+      }
+
+      const imgX = margin + (availableW - imgW) / 2;
+      const imgY = margin + headerHeight;
+      pdf.addImage(imgDataUrl, 'PNG', imgX, imgY, imgW, imgH);
+      pdf.save(`${wb.noteName || 'whiteboard-notes'}.pdf`);
+    } catch (error) {
+      console.error('Failed to download whiteboard note:', error);
+    } finally {
+      setDownloadingWbId(null);
     }
   };
 
@@ -304,17 +405,14 @@ export default function SessionNotes() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {wb.s3Url && (
-                    <a
-                      href={wb.s3Url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg bg-ocean-700 px-3 py-2 text-xs font-semibold text-white hover:bg-ocean-800"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      Download
-                    </a>
-                  )}
+                  <button
+                    onClick={() => handleDownloadWhiteboard(wb)}
+                    disabled={downloadingWbId === wb.id}
+                    className="inline-flex items-center gap-1 rounded-lg bg-ocean-700 px-3 py-2 text-xs font-semibold text-white hover:bg-ocean-800"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {downloadingWbId === wb.id ? 'Generating…' : 'Download'}
+                  </button>
                   <a
                     href={`/class/${wb.bookingId}`}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"

@@ -8,6 +8,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationBell from './NotificationBell';
 import { getUnreadCount } from '../services/messagesService';
+import { markAllThreadsRead } from '../services/chatService';
 
 /* ---------------- helpers ---------------- */
 type RoleLower = 'student' | 'tutor' | 'admin';
@@ -88,28 +89,62 @@ export default function Navbar() {
   const [extraOpen, setExtraOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  // Track the backend count at the moment the user viewed messages.
+  // Badge only reappears when backend count INCREASES (genuinely new message).
+  const dismissedCountRef = useRef<number | null>(null);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const extraRef = useRef<HTMLDivElement | null>(null);
 
-  // Fetch unread message count
+  const isMessagesPath = useCallback(
+    (path: string) =>
+      /^\/(student|tutor|admin)\/(messages|chat)(\/|$)/.test(path),
+    [],
+  );
+
+  // When user opens any messages/chat page → dismiss current count
+  useEffect(() => {
+    if (!isAuthed || !isMessagesPath(location.pathname)) return;
+
+    setUnreadMsgCount(0);
+
+    // Snapshot the current backend count so we can suppress it later
+    getUnreadCount()
+      .then(({ count }) => { dismissedCountRef.current = count; })
+      .catch(() => {});
+
+    // Best-effort: tell backend to mark threads read
+    markAllThreadsRead().catch(() => {});
+  }, [isAuthed, location.pathname, isMessagesPath]);
+
+  // Poll unread count every 30s
   useEffect(() => {
     if (!isAuthed) return;
+
     const fetchCount = () => {
+      // While on messages page, always show 0
+      if (isMessagesPath(location.pathname)) {
+        setUnreadMsgCount(0);
+        return;
+      }
+
       getUnreadCount()
-        .then(({ count }) => setUnreadMsgCount(count))
+        .then(({ count }) => {
+          // If user has viewed messages in this session and count hasn't
+          // increased, keep badge suppressed (backend receipts may be stale).
+          if (dismissedCountRef.current !== null && count <= dismissedCountRef.current) {
+            setUnreadMsgCount(0);
+            return;
+          }
+          setUnreadMsgCount(count);
+        })
         .catch(() => {});
     };
+
     fetchCount();
     const interval = setInterval(fetchCount, 30000);
-    // Also listen for custom event when messages are read
-    const handleMsgUpdate = () => fetchCount();
-    globalThis.addEventListener('messages:updated', handleMsgUpdate);
-    return () => {
-      clearInterval(interval);
-      globalThis.removeEventListener('messages:updated', handleMsgUpdate);
-    };
-  }, [isAuthed]);
+    return () => clearInterval(interval);
+  }, [isAuthed, location.pathname, isMessagesPath]);
 
   const storedTutorStatus = useMemo(() => {
     try {

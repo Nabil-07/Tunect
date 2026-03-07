@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
 import {
   Excalidraw,
   MainMenu,
@@ -24,6 +24,8 @@ interface WhiteboardProps {
   realtime?: boolean;
   /** Optional container class for embedding in panels. */
   className?: string;
+  /** Emit latest scene to parent on every change for resilient save flows. */
+  onSceneChange?: (scene: { elements: readonly ExcalidrawElement[]; appState: Partial<AppState> }) => void;
 }
 
 export interface WhiteboardHandle {
@@ -31,14 +33,22 @@ export interface WhiteboardHandle {
   getSceneData: () => { elements: readonly ExcalidrawElement[]; appState: Partial<AppState> } | null;
   /** Immediately persist the current scene to the backend. */
   flushSave: () => Promise<void>;
+  /** Add an image to the whiteboard canvas from a data URL. */
+  addImageToBoard: (dataUrl: string, width: number, height: number) => void;
 }
 
-export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ bookingId, isReadOnly = false, realtime = false, className }, ref) => {
+export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ bookingId, isReadOnly = false, realtime = false, className, onSceneChange }, ref) => {
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingScene, setPendingScene] = useState<{ elements: readonly ExcalidrawElement[]; appState: AppState } | null>(null);
-  const apiAvailableRef = useRef<boolean | null>(null);
+  const apiAvailableRef = useRef<boolean>(true);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastKnownSceneRef = useRef<{ elements: readonly ExcalidrawElement[]; appState: Partial<AppState> } | null>(null);
+
+  // Stable callback ref to prevent Excalidraw API going null on re-renders
+  const excalidrawRefCallback = useCallback((api: ExcalidrawImperativeAPI | null) => {
+    if (api) setExcalidrawAPI(api);
+  }, []);
 
   const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
   const whiteboardUrl = `${apiBase}/whiteboard/${bookingId}`;
@@ -46,22 +56,98 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
   // Expose imperative methods to parent via ref
   useImperativeHandle(ref, () => ({
     getSceneData: () => {
-      if (!excalidrawAPI) return null;
+      if (!excalidrawAPI) return lastKnownSceneRef.current;
       const elements = excalidrawAPI.getSceneElements();
       const appState = excalidrawAPI.getAppState();
-      return { elements, appState };
+      const scene = { elements, appState };
+      lastKnownSceneRef.current = scene;
+      return scene;
     },
     flushSave: async () => {
-      if (!excalidrawAPI) return;
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
         autoSaveTimerRef.current = null;
       }
-      const elements = excalidrawAPI.getSceneElements();
-      const appState = excalidrawAPI.getAppState();
-      await saveWhiteboardData({ elements, appState });
+      const scene = excalidrawAPI
+        ? {
+            elements: excalidrawAPI.getSceneElements(),
+            appState: excalidrawAPI.getAppState(),
+          }
+        : lastKnownSceneRef.current;
+      if (!scene) return;
+      lastKnownSceneRef.current = scene;
+      // Force-save directly, bypassing apiAvailableRef check
+      try {
+        const token = readToken();
+        await fetch(whiteboardUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(scene),
+        });
+      } catch (err) {
+        console.error('flushSave failed:', err);
+      }
     },
-  }), [excalidrawAPI]);
+    addImageToBoard: (dataUrl: string, width: number, height: number) => {
+      if (!excalidrawAPI) return;
+      const fileId = `img_${Date.now()}` as any;
+      const imgElement = {
+        type: 'image' as const,
+        id: `elem_${Date.now()}`,
+        fileId,
+        x: 50,
+        y: 50,
+        width: Math.min(width, 800),
+        height: Math.min(height, 800 * (height / width)),
+        strokeColor: 'transparent',
+        backgroundColor: 'transparent',
+        fillStyle: 'solid' as const,
+        strokeWidth: 0,
+        roughness: 0,
+        opacity: 100,
+        angle: 0,
+        groupIds: [],
+        boundElements: null,
+        locked: false,
+        link: null,
+        updated: Date.now(),
+        version: 1,
+        versionNonce: Math.floor(Math.random() * 1000000),
+        isDeleted: false,
+        roundness: null,
+        seed: Math.floor(Math.random() * 1000000),
+        status: 'saved' as const,
+        scale: [1, 1] as [number, number],
+      };
+      try {
+        (excalidrawAPI as any).updateScene({
+          elements: [...excalidrawAPI.getSceneElements(), imgElement as any],
+          files: {
+            [fileId]: {
+              id: fileId,
+              dataURL: dataUrl,
+              mimeType: 'image/png',
+              created: Date.now(),
+              lastRetrieved: Date.now(),
+            },
+          },
+        } as any);
+        onSceneChange?.({
+          elements: excalidrawAPI.getSceneElements(),
+          appState: excalidrawAPI.getAppState(),
+        });
+        lastKnownSceneRef.current = {
+          elements: excalidrawAPI.getSceneElements(),
+          appState: excalidrawAPI.getAppState(),
+        };
+      } catch (err) {
+        console.error('addImageToBoard failed:', err);
+      }
+    },
+  }), [excalidrawAPI, onSceneChange, whiteboardUrl]);
 
   useEffect(() => {
     // Load saved whiteboard data if exists
@@ -149,8 +235,9 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
       });
 
       if (response.status === 404) {
-        apiAvailableRef.current = false;
-        console.warn('Whiteboard API not available (404), starting with empty board');
+        // 404 means no saved data yet (or booking not found) — keep saves enabled
+        apiAvailableRef.current = true;
+        console.warn('No existing whiteboard data (404), starting with empty board');
         return;
       }
 
@@ -163,6 +250,8 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
             elements: data.elements || [],
             appState: data.appState || {},
           };
+          lastKnownSceneRef.current = scene;
+          onSceneChange?.(scene);
           if (excalidrawAPI) {
             excalidrawAPI.updateScene(scene);
           } else {
@@ -181,6 +270,9 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
 
   const handleChange = (elements: readonly ExcalidrawElement[], appState: AppState) => {
     if (isReadOnly) return;
+
+    lastKnownSceneRef.current = { elements, appState };
+    onSceneChange?.({ elements, appState });
 
     // Auto-save every 5 seconds
     debounceAutoSave({
@@ -218,8 +310,7 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        if (res.status === 404) apiAvailableRef.current = false;
-        console.warn('Whiteboard save skipped (API not available)');
+        console.warn('Whiteboard save failed:', res.status);
       }
     } catch (error) {
       console.error('Failed to save whiteboard:', error);
@@ -259,7 +350,7 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
       style={{ position: "relative", width: "100%", height: "100%" }}
     >
       <Excalidraw
-        ref={(api: ExcalidrawImperativeAPI | null) => setExcalidrawAPI(api)}
+        ref={excalidrawRefCallback}
         onChange={handleChange}
         viewModeEnabled={isReadOnly}
         theme="light"

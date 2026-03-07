@@ -328,4 +328,46 @@ export class WhiteboardService {
       }),
     );
   }
+
+  /**
+   * Download a shared whiteboard note as JSON through backend.
+   * This avoids exposing direct S3 URLs in the browser.
+   */
+  async downloadSharedNote(noteId: string, userId: string) {
+    const wb = await this.prisma.whiteboardSession.findUnique({
+      where: { id: noteId },
+      include: {
+        booking: {
+          include: {
+            tutor: true,
+            student: true,
+          },
+        },
+      },
+    });
+
+    if (!wb || !wb.booking) {
+      throw new NotFoundException('Whiteboard note not found');
+    }
+
+    const isTutor = wb.booking.tutor.userId === userId;
+    const isStudent = wb.booking.student.userId === userId;
+    if (!isTutor && !isStudent) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const payload = this.isPlainObject(wb.data) ? wb.data : { data: wb.data };
+    const jsonBuffer = Buffer.from(JSON.stringify(payload, null, 2));
+    const baseName = String(wb.noteName || `whiteboard-note-${wb.bookingId}`).trim();
+    const safeName = baseName
+      .replace(/[\\/:*?"<>|]/g, '-')
+      .replace(/\s+/g, ' ')
+      .slice(0, 120);
+
+    return {
+      fileName: `${safeName || 'whiteboard-notes'}.json`,
+      contentType: 'application/json',
+      content: jsonBuffer,
+    };
+  }
 }

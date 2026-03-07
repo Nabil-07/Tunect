@@ -795,6 +795,36 @@ export class MessagesService {
   }
 
   /**
+   * Mark all conversations for the current user as read.
+   * Used when user opens the messages inbox and has effectively viewed new items.
+   */
+  async markAllThreadsRead(userId: string) {
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    const [student, tutor] = await Promise.all([
+      this.prisma.student.findUnique({ where: { userId }, select: { id: true } }),
+      this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } }),
+    ]);
+
+    const ors: Array<Record<string, any>> = [];
+    if (student) ors.push({ studentId: student.id });
+    if (tutor) ors.push({ tutorId: tutor.id });
+    if (ors.length === 0) return { success: true as const };
+
+    const convos = await this.prisma.conversation.findMany({
+      where: { OR: ors },
+      select: { id: true },
+    });
+
+    const now = new Date();
+    for (const convo of convos) {
+      this.readReceipts.set(`${userId}:${convo.id}`, now);
+    }
+
+    return { success: true as const };
+  }
+
+  /**
    * Count conversations with unread messages.
    * A conversation is "unread" if:
    *   - It has a last message sent by someone else, AND

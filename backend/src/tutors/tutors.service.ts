@@ -1608,11 +1608,13 @@ export class TutorsService {
       },
     });
 
-    const attendedCompletedBookings = completedBookings.filter((b) =>
-      hasVerifiedAttendanceCombined(b.attendance, b.whiteboardSessions?.[0]?.data),
-    );
-
-    const sessionsCompleted = attendedCompletedBookings.length;
+    // Sessions completed: count ALL completed bookings (including demos)
+    const sessionsCompleted = await this.prisma.booking.count({
+      where: {
+        tutorId,
+        status: BookingStatus.COMPLETED,
+      },
+    });
 
     // ✅ Get actual earnings from wallet + payouts (source of truth)
     const wallet = await this.prisma.tutorWallet.findUnique({

@@ -56,6 +56,8 @@ export class LivekitService {
         status: true,
         isGroupSession: true,
         isDemo: true,
+        tutor: { select: { user: { select: { name: true } } } },
+        student: { select: { user: { select: { name: true } } } },
       },
     });
 
@@ -183,8 +185,16 @@ export class LivekitService {
       throw new ForbiddenException('LiveKit is not configured');
     }
 
+    // Determine participant name and role for display in the classroom
+    const participantRole = isTutor ? 'tutor' : 'student';
+    const participantName = isTutor
+      ? (booking as any).tutor?.user?.name || 'Tutor'
+      : (booking as any).student?.user?.name || 'Student';
+
     const token = new AccessToken(apiKey, apiSecret, {
       identity: userId,
+      name: participantName,
+      metadata: JSON.stringify({ role: participantRole }),
       ttl: 60 * 60, // 1 hour
     });
 

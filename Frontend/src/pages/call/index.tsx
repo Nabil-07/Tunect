@@ -12,7 +12,7 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, type Participant, DisconnectReason, RoomEvent } from "livekit-client";
-import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle } from "lucide-react";
+import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle, BookOpen } from "lucide-react";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
 import { useToast } from "../../contexts/ToastContext";
 import api, { getTokenPayload } from "../../lib/apiClient";
@@ -21,7 +21,17 @@ import { getBookingPerspective } from "../../utils/bookingPerspective";
 import { useAuth } from "../../contexts/AuthContext";
 import Whiteboard, { type WhiteboardHandle } from "../../components/Whiteboard/Whiteboard";
 import { whiteboardService } from "../../services/whiteboardService";
+import CallMaterials from "../../components/CallMaterials";
 import "@livekit/components-styles";
+
+function getParticipantRole(p: Participant): string {
+  try {
+    const meta = p.metadata ? JSON.parse(p.metadata) : null;
+    if (meta?.role === 'tutor') return 'Tutor';
+    if (meta?.role === 'student') return 'Student';
+  } catch { /* ignore parse errors */ }
+  return 'Participant';
+}
 
 function ParticipantList() {
   const participants = useParticipants() as Participant[];
@@ -30,12 +40,15 @@ function ParticipantList() {
       {participants.length === 0 ? (
         <div className="text-slate-500">Waiting for participants…</div>
       ) : (
-        participants.map((p) => (
-          <div key={p.identity} className="flex items-center justify-between rounded-lg border px-3 py-2">
-            <span className="truncate">{p.name || p.identity}</span>
-            <span className="text-xs text-slate-500">{p.isLocal ? "You" : "Participant"}</span>
-          </div>
-        ))
+        participants.map((p) => {
+          const role = getParticipantRole(p);
+          return (
+            <div key={p.identity} className="flex items-center justify-between rounded-lg border px-3 py-2">
+              <span className="truncate">{p.name || role}</span>
+              <span className="text-xs text-slate-500">{p.isLocal ? "You" : role}</span>
+            </div>
+          );
+        })
       )}
     </div>
   );
@@ -70,13 +83,14 @@ function LivekitStage() {
   );
 }
 
-function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate, tutorAlreadyJoined, onNoShow, onClassEnded }: {
+function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate, tutorAlreadyJoined, studentId, onNoShow, onClassEnded }: {
   bookingId: string;
   endTime?: string | null;
   isTutor?: boolean;
   counterpartName?: string;
   classDate?: string;
   tutorAlreadyJoined?: boolean;
+  studentId?: string;
   onNoShow?: () => void;
   onClassEnded?: () => void;
 }) {
@@ -84,7 +98,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   const room = useRoomContext();
   const navigate = useNavigate();
   const [callStartedAt, setCallStartedAt] = useState<Date | null>(null);
-  const [sideTab, setSideTab] = useState<"participants" | "whiteboard">("participants");
+  const [sideTab, setSideTab] = useState<"participants" | "whiteboard" | "materials">("participants");
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
   const [isOvertime, setIsOvertime] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
@@ -93,6 +107,27 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   const [showNoShowModal, setShowNoShowModal] = useState(false);
   const { showError: showToastError, showSuccess: showToastSuccess } = useToast();
   const whiteboardRef = useRef<WhiteboardHandle>(null);
+  const whiteboardSceneRef = useRef<{ elements: any[]; appState: any } | null>(null);
+  const [openMaterialUrl, setOpenMaterialUrl] = useState<string | null>(null);
+  const [openMaterialTitle, setOpenMaterialTitle] = useState<string>('Class Material');
+  const [openingMaterial, setOpeningMaterial] = useState(false);
+
+  const closeMaterialViewer = useCallback(() => {
+    setOpenMaterialUrl((current) => {
+      if (current?.startsWith('blob:')) {
+        URL.revokeObjectURL(current);
+      }
+      return null;
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (openMaterialUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(openMaterialUrl);
+      }
+    };
+  }, [openMaterialUrl]);
 
   const hasBothJoined = participants.length >= 2;
 
@@ -234,17 +269,32 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   const handleSaveWhiteboardNotes = useCallback(async () => {
     try {
       setSavingNotes(true);
+      // Flush the latest data to the backend first to ensure it's up to date
+      await whiteboardRef.current?.flushSave();
       // Get live scene data directly from Excalidraw (avoids stale backend data)
-      const liveData = whiteboardRef.current?.getSceneData();
-      const wbData = liveData ?? await whiteboardService.getWhiteboardData(bookingId);
-      // Filter to only non-deleted elements for the emptiness check
-      const visibleElements = wbData?.elements?.filter((el: any) => !el.isDeleted) ?? [];
-      if (!wbData || visibleElements.length === 0) {
-        showToastError("Whiteboard is empty \u2014 nothing to save.");
+      let liveData = whiteboardRef.current?.getSceneData();
+      // If excalidrawAPI wasn't ready, wait briefly and retry once
+      if (!liveData) {
+        await new Promise(r => setTimeout(r, 200));
+        liveData = whiteboardRef.current?.getSceneData();
+      }
+      const snapshot = whiteboardSceneRef.current;
+      const hasVisibleElements = (data: any) => {
+        const arr = Array.isArray(data?.elements) ? data.elements : [];
+        return arr.some((el: any) => el && !el.isDeleted);
+      };
+
+      let wbData = hasVisibleElements(liveData)
+        ? liveData
+        : hasVisibleElements(snapshot)
+          ? snapshot
+          : await whiteboardService.getWhiteboardData(bookingId);
+
+      // Only fail if no scene is available at all; avoid false-empty due transient API state.
+      if (!wbData) {
+        showToastError("Whiteboard data is unavailable. Please try again.");
         return;
       }
-      // Flush the latest data to the backend first
-      await whiteboardRef.current?.flushSave();
       // Format the date for the filename
       const dateStr = classDate
         ? new Date(classDate).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-")
@@ -334,9 +384,35 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
           >
             <Whiteboard ref={whiteboardRef} bookingId={bookingId} realtime className="w-full h-full" />
           </div>
-          <div style={{ display: isWhiteboardActive ? 'none' : 'contents' }}>
-            <LivekitStage />
-          </div>
+          {openMaterialUrl ? (
+            <div className="absolute inset-0 rounded-2xl border bg-white overflow-hidden">
+              <div className="h-10 px-3 border-b bg-slate-50 flex items-center justify-between">
+                <span className="text-xs sm:text-sm font-medium text-slate-700 truncate">{openMaterialTitle}</span>
+                <button
+                  type="button"
+                  onClick={closeMaterialViewer}
+                  className="text-xs rounded-md border px-2 py-1 bg-white hover:bg-slate-100"
+                >
+                  Close
+                </button>
+              </div>
+              {openingMaterial ? (
+                <div className="h-[calc(100%-2.5rem)] flex items-center justify-center text-sm text-slate-500">
+                  Opening material...
+                </div>
+              ) : (
+                <iframe
+                  title={openMaterialTitle}
+                  src={openMaterialUrl}
+                  className="w-full h-[calc(100%-2.5rem)]"
+                />
+              )}
+            </div>
+          ) : (
+            <div style={{ display: isWhiteboardActive ? 'none' : 'contents' }}>
+              <LivekitStage />
+            </div>
+          )}
         </div>
 
         {/* ── Mobile toggle button (visible only on small screens) ── */}
@@ -380,34 +456,79 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
             </button>
           </div>
 
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900 shrink-0">
+          <div className="mb-2 grid grid-cols-3 gap-0.5 shrink-0">
             <button
               type="button"
-              onClick={() => setSideTab("participants")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 sm:py-1 transition-colors ${
+              onClick={() => {
+                closeMaterialViewer();
+                setSideTab("participants");
+              }}
+              className={`flex items-center justify-center gap-1 rounded-md px-1.5 py-1 transition-colors min-w-0 text-[11px] font-medium ${
                 sideTab === "participants"
                   ? "bg-slate-900 text-white"
                   : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              <Users className="h-3.5 w-3.5" />
-              Participants
+              <Users className="h-3 w-3 shrink-0" />
+              <span className="truncate">People</span>
             </button>
             <button
               type="button"
-              onClick={() => setSideTab("whiteboard")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 sm:py-1 transition-colors ${
+              onClick={() => {
+                closeMaterialViewer();
+                setSideTab("whiteboard");
+              }}
+              className={`flex items-center justify-center gap-1 rounded-md px-1.5 py-1 transition-colors min-w-0 text-[11px] font-medium ${
                 sideTab === "whiteboard"
                   ? "bg-slate-900 text-white"
                   : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              <PenTool className="h-3.5 w-3.5" />
-              Whiteboard
+              <PenTool className="h-3 w-3 shrink-0" />
+              <span className="truncate">Board</span>
             </button>
+            {isTutor && (
+              <button
+                type="button"
+                onClick={() => {
+                  closeMaterialViewer();
+                  setSideTab("materials");
+                }}
+                className={`flex items-center justify-center gap-1 rounded-md px-1.5 py-1 transition-colors min-w-0 text-[11px] font-medium ${
+                  sideTab === "materials"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                <BookOpen className="h-3 w-3 shrink-0" />
+                <span className="truncate">Materials</span>
+              </button>
+            )}
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
-            {isWhiteboardActive ? (
+            {sideTab === "materials" && isTutor ? (
+              <CallMaterials
+                studentId={studentId || ''}
+                onOpenInClass={async (pdfUrl, title) => {
+                  try {
+                    setOpeningMaterial(true);
+                    setOpenMaterialTitle(title || 'Class Material');
+                    closeMaterialViewer();
+                    const resp = await fetch(pdfUrl);
+                    if (!resp.ok) throw new Error('Failed to fetch PDF');
+                    const blob = await resp.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    setOpenMaterialUrl(blobUrl);
+                    setSideTab('materials');
+                  } catch (err) {
+                    console.error('Failed to open material in class:', err);
+                    showToastError('Failed to open material in class.');
+                  } finally {
+                    setOpeningMaterial(false);
+                  }
+                }}
+              />
+            ) : sideTab === "whiteboard" ? (
               /* Video + participants in sidebar when whiteboard is main */
               <div className="flex flex-col gap-3">
                 <div className="h-[180px] sm:h-[200px] rounded-lg overflow-hidden border">
@@ -416,6 +537,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
                 <ParticipantList />
               </div>
             ) : (
+              /* People tab – participant list */
               <ParticipantList />
             )}
           </div>
@@ -426,7 +548,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
       {hasBothJoined ? (
         <div className="shrink-0 flex items-center justify-between rounded-2xl border bg-white/95 px-2 py-1.5 sm:p-2 shadow-sm backdrop-blur gap-2 overflow-x-auto">
           <div className="flex-1 min-w-0 [&_.lk-control-bar]:flex [&_.lk-control-bar]:gap-1 [&_.lk-control-bar]:flex-wrap [&_.lk-button]:!px-2 [&_.lk-button]:!py-1.5 [&_.lk-button]:!text-xs sm:[&_.lk-button]:!px-3 sm:[&_.lk-button]:!py-2 sm:[&_.lk-button]:!text-sm">
-            <ControlBar />
+            <ControlBar controls={{ leave: false }} />
           </div>
           {isTutor && (
             <button
@@ -459,6 +581,7 @@ export default function CallPage() {
   const [isTutor, setIsTutor] = useState(false);
   const [counterpartName, setCounterpartName] = useState("");
   const [noShowTriggered, setNoShowTriggered] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   // Use auth context user which has student/tutor profile IDs
   // Fallback to JWT payload if auth context not available
@@ -511,27 +634,30 @@ export default function CallPage() {
     }
     
     // Try matching by profile IDs first (most reliable)
+    // Backend returns student.id / tutor.id (nested), NOT top-level studentId/tutorId
     const studentId = (me as any).studentId;
     const tutorId = (me as any).tutorId;
+    const bookingStudentId = data.student?.id || data.studentId;
+    const bookingTutorId = data.tutor?.id || data.tutorId;
     
     let perspective = null;
-    if (studentId && data.studentId === studentId) {
+    if (studentId && bookingStudentId === studentId) {
       // User is the student
       perspective = {
         isTutor: false,
         isStudent: true,
-        self: { id: data.studentId, name: data.student?.name || "Student", email: data.student?.email },
-        other: { id: data.tutorId, name: data.tutor?.name || "Tutor", email: data.tutor?.email },
+        self: { id: bookingStudentId, name: data.student?.name || "Student", email: data.student?.email },
+        other: { id: bookingTutorId, name: data.tutor?.name || "Tutor", email: data.tutor?.email },
       };
       setIsTutor(false);
       setCounterpartName(data.tutor?.name || "Tutor");
-    } else if (tutorId && data.tutorId === tutorId) {
+    } else if (tutorId && bookingTutorId === tutorId) {
       // User is the tutor
       perspective = {
         isTutor: true,
         isStudent: false,
-        self: { id: data.tutorId, name: data.tutor?.name || "Tutor", email: data.tutor?.email },
-        other: { id: data.studentId, name: data.student?.name || "Student", email: data.student?.email },
+        self: { id: bookingTutorId, name: data.tutor?.name || "Tutor", email: data.tutor?.email },
+        other: { id: bookingStudentId, name: data.student?.name || "Student", email: data.student?.email },
       };
       setIsTutor(true);
       setCounterpartName(data.student?.name || "Student");
@@ -762,11 +888,35 @@ export default function CallPage() {
         <div className="font-semibold text-sm sm:text-base text-slate-900">Live class</div>
         <button
           className="rounded-lg border px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-slate-700 hover:bg-slate-50"
-          onClick={() => navigate(`/class/${bookingId}`)}
+          onClick={() => setShowLeaveConfirm(true)}
         >
           Leave
         </button>
       </div>
+
+      {/* Leave confirmation modal */}
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl p-6 text-center space-y-4">
+            <h2 className="text-lg font-bold text-slate-900">Leave class?</h2>
+            <p className="text-sm text-slate-600">Are you sure you want to leave the class?</p>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                No, Stay
+              </button>
+              <button
+                onClick={() => navigate(`/class/${bookingId}`)}
+                className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 transition"
+              >
+                Yes, Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {disconnected ? (
         <div className="max-w-lg mx-auto mt-8 sm:mt-16 rounded-2xl border bg-white p-6 sm:p-8 shadow-sm text-center space-y-4 mx-3 sm:mx-auto">
@@ -779,7 +929,7 @@ export default function CallPage() {
             {isTutor && data && (
               <button
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
-                onClick={() => navigate(`/tutor/performance-tracking?bookingId=${bookingId}&studentId=${data.studentId}`)}
+                onClick={() => navigate(`/tutor/performance-tracking?bookingId=${bookingId}&studentId=${data.student?.id || data.studentId}`)}
               >
                 <FileText className="h-5 w-5" />
                 Create Performance Report
@@ -830,6 +980,7 @@ export default function CallPage() {
             counterpartName={counterpartName}
             classDate={data?.startTime || undefined}
             tutorAlreadyJoined={!!data?.attendance?.tutorJoinedAt}
+            studentId={data?.student?.id || data?.studentId}
             onNoShow={() => setNoShowTriggered(true)}
             onClassEnded={() => {
               // Trigger booking completion when class ends naturally

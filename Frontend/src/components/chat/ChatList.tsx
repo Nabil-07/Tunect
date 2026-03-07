@@ -1,7 +1,7 @@
 // Frontend/src/components/chat/ChatList.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Users, Lock, ShieldCheck } from 'lucide-react';
-import { listConversations, fetchMyAdminMessages } from '../../services/chatService';
+import { listConversations, fetchMyAdminMessages, markAllThreadsRead, markThreadRead } from '../../services/chatService';
 import type { Conversation, AdminMessage } from '../../services/chatService';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSocket } from '../../hooks/useSocket';
@@ -11,6 +11,7 @@ export default function ChatList() {
   const [adminMessages, setAdminMessages] = useState<AdminMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const markedOnOpenRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { on, off, isConnected } = useSocket();
@@ -23,6 +24,10 @@ export default function ChatList() {
   };
 
   useEffect(() => {
+    markAllThreadsRead()
+      .then(() => globalThis.dispatchEvent(new Event('messages:updated')))
+      .catch(() => {});
+
     loadConversations();
   }, []);
 
@@ -41,7 +46,17 @@ export default function ChatList() {
         listConversations(),
         fetchMyAdminMessages(),
       ]);
-      if (data.status === 'fulfilled') setConversations(data.value);
+      if (data.status === 'fulfilled') {
+        setConversations(data.value);
+
+        // Fallback for environments where read-all endpoint is unavailable/stale:
+        // mark each listed thread read once when inbox opens.
+        if (!markedOnOpenRef.current && data.value.length > 0) {
+          markedOnOpenRef.current = true;
+          await Promise.allSettled(data.value.map((conv) => markThreadRead(conv.id)));
+          globalThis.dispatchEvent(new Event('messages:updated'));
+        }
+      }
       else setError(data.reason?.response?.data?.message || 'Failed to load conversations');
       if (adminData.status === 'fulfilled') setAdminMessages(adminData.value);
     } finally {
