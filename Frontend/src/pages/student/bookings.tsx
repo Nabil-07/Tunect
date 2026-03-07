@@ -453,17 +453,6 @@ export default function MyBookings() {
         ))}
       </Section>
 
-      {/* Completed */}
-      <Section title="Completed Sessions" emptyNote="No completed sessions yet.">
-        {completed.map((b) => (
-          <BookingCard
-            key={b.id}
-            booking={b}
-            meetingLink={meetingLinks.get(b.id)}
-            actions={null}
-          />
-        ))}
-      </Section>
         </>
       )}
 
