@@ -83,7 +83,7 @@ function LivekitStage() {
   );
 }
 
-function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate, tutorAlreadyJoined, studentId, onNoShow, onClassEnded }: {
+function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDate, tutorAlreadyJoined, studentId, onNoShow, onClassEnded, isDemo }: {
   bookingId: string;
   endTime?: string | null;
   isTutor?: boolean;
@@ -93,6 +93,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   studentId?: string;
   onNoShow?: () => void;
   onClassEnded?: () => void;
+  isDemo?: boolean;
 }) {
   const participants = useParticipants() as Participant[];
   const room = useRoomContext();
@@ -268,6 +269,10 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   // Save whiteboard as notes
   const handleSaveWhiteboardNotes = useCallback(async () => {
     try {
+      if (isDemo) {
+        showToastError("Notes sharing is not available for demo classes");
+        return;
+      }
       setSavingNotes(true);
       // Flush the latest data to the backend first to ensure it's up to date
       await whiteboardRef.current?.flushSave();
@@ -311,7 +316,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
     } finally {
       setSavingNotes(false);
     }
-  }, [bookingId, counterpartName, classDate, showToastError, showToastSuccess]);
+  }, [bookingId, counterpartName, classDate, isDemo, showToastError, showToastSuccess]);
 
   const isWhiteboardActive = sideTab === "whiteboard";
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -345,7 +350,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   }
 
   return (
-    <div className="flex h-[calc(100dvh-44px)] sm:h-[calc(100dvh-52px)] flex-col p-2 sm:p-4 gap-2 sm:gap-4 overflow-hidden">
+    <div className="flex h-[calc(100dvh-44px)] sm:h-[calc(100dvh-52px)] flex-col p-1.5 sm:p-3 lg:p-4 gap-1.5 sm:gap-3 lg:gap-4 overflow-hidden">
       {/* ── Timer bar ── */}
       {timeLeft !== null && (
         <div className={`shrink-0 flex items-center justify-center gap-2 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold shadow-sm ${
@@ -368,7 +373,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
         </div>
       )}
 
-      <div className="flex-1 min-h-0 relative grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-2 sm:gap-4">
+      <div className="flex-1 min-h-0 relative grid grid-cols-1 lg:grid-cols-[1fr_240px] xl:grid-cols-[1fr_300px] 2xl:grid-cols-[1fr_320px] gap-1.5 sm:gap-3 lg:gap-4">
         {/* ── Main area ── */}
         <div className="relative min-h-0 h-full overflow-hidden">
           {!hasBothJoined && (
@@ -442,7 +447,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
           ${sidePanelOpen ? "translate-x-0" : "translate-x-full"}
           /* Desktop: static in grid */
           lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:transition-none
-          rounded-l-2xl lg:rounded-2xl border bg-white p-4 flex flex-col min-h-0 overflow-hidden shadow-xl lg:shadow-none
+          rounded-l-2xl lg:rounded-2xl border bg-white p-2.5 lg:p-3 xl:p-4 flex flex-col min-h-0 overflow-hidden shadow-xl lg:shadow-none
         `}>
           {/* Mobile panel header */}
           <div className="lg:hidden flex items-center justify-between mb-3 pb-2 border-b shrink-0">
@@ -509,6 +514,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
             {sideTab === "materials" && isTutor ? (
               <CallMaterials
                 studentId={studentId || ''}
+                isDemo={isDemo}
                 onOpenInClass={async (pdfUrl, title) => {
                   try {
                     setOpeningMaterial(true);
@@ -530,8 +536,8 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
               />
             ) : sideTab === "whiteboard" ? (
               /* Video + participants in sidebar when whiteboard is main */
-              <div className="flex flex-col gap-3">
-                <div className="h-[180px] sm:h-[200px] rounded-lg overflow-hidden border">
+              <div className="flex flex-col gap-2">
+                <div className="h-[140px] lg:h-[150px] xl:h-[180px] rounded-lg overflow-hidden border">
                   <LivekitStage />
                 </div>
                 <ParticipantList />
@@ -981,6 +987,7 @@ export default function CallPage() {
             classDate={data?.startTime || undefined}
             tutorAlreadyJoined={!!data?.attendance?.tutorJoinedAt}
             studentId={data?.student?.id || data?.studentId}
+            isDemo={!!data?.isDemo}
             onNoShow={() => setNoShowTriggered(true)}
             onClassEnded={() => {
               // Trigger booking completion when class ends naturally

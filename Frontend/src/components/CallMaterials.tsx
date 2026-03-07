@@ -14,9 +14,10 @@ interface Material {
 interface CallMaterialsProps {
   readonly studentId: string;
   readonly onOpenInClass?: (pdfUrl: string, title: string) => void;
+  readonly isDemo?: boolean;
 }
 
-export default function CallMaterials({ studentId, onOpenInClass }: CallMaterialsProps) {
+export default function CallMaterials({ studentId, onOpenInClass, isDemo }: CallMaterialsProps) {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharingId, setSharingId] = useState<string | null>(null);
@@ -50,6 +51,10 @@ export default function CallMaterials({ studentId, onOpenInClass }: CallMaterial
   };
 
   const handleShare = useCallback(async (materialId: string) => {
+    if (isDemo) {
+      setError('Sharing materials is not available for demo classes');
+      return;
+    }
     if (!studentId) {
       setError('No student in this session to share with');
       return;
@@ -66,7 +71,7 @@ export default function CallMaterials({ studentId, onOpenInClass }: CallMaterial
     } finally {
       setSharingId(null);
     }
-  }, [studentId]);
+  }, [studentId, isDemo]);
 
   const handleOpenInClass = useCallback(async (material: Material) => {
     if (!onOpenInClass) return;
