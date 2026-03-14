@@ -61,8 +61,146 @@ export default function StudentTokenBalance() {
 
   const totalTokens = balances.reduce((sum, b) => sum + Number(b.balance), 0);
 
+  function renderBalancesTab() {
+    if (loadingBalances) {
+      return (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+          <p className="mt-4 text-slate-600">Loading balances...</p>
+        </div>
+      );
+    }
+    if (balances.length === 0) {
+      return (
+        <div className="text-center py-12 bg-slate-50 rounded-lg">
+          <Coins className="mx-auto h-16 w-16 text-slate-400 mb-4" />
+          <p className="text-slate-600">No token balances yet</p>
+          <p className="text-sm text-slate-500 mt-2">
+            Purchase tokens to start learning with your favorite tutors
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="grid md:grid-cols-2 gap-6">
+        {balances.map((balance) => (
+          <div
+            key={balance.id}
+            className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-lg transition-shadow"
+          >
+            {/* Tutor Info */}
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-lg">
+                {balance.tutor.user.name?.charAt(0) || 'T'}
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-slate-800">{balance.tutor.user.name}</h3>
+              </div>
+            </div>
+
+            {/* Balance Details */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                <span className="text-sm text-slate-700">Available Tokens</span>
+                <span className="text-lg font-bold text-green-600 flex items-center gap-1">
+                  <Coins className="h-5 w-5" />
+                  {Number(balance.balance).toFixed(1)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                <span className="text-sm text-slate-700">Price per Token</span>
+                <span className="text-lg font-bold text-blue-600 flex items-center gap-1">
+                  <IndianRupee className="h-5 w-5" />
+                  {Number(balance.pricePerToken).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                <span className="text-sm text-slate-700">Current Value</span>
+                <span className="text-lg font-bold text-purple-600 flex items-center gap-1">
+                  <IndianRupee className="h-5 w-5" />
+                  {(Number(balance.balance) * Number(balance.pricePerToken)).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Action */}
+            <button
+              onClick={() => { globalThis.location.href = `/student/cart?tutorId=${balance.tutorId}`; }}
+              data-testid="student-token-balance-buy-tokens-btn"
+              className="mt-4 w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              Buy More Tokens
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function renderHistoryTab() {
+    if (loadingLedger) {
+      return (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+          <p className="mt-4 text-slate-600">Loading history...</p>
+        </div>
+      );
+    }
+    if (ledger.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <Clock className="mx-auto h-16 w-16 text-slate-400 mb-4" />
+          <p className="text-slate-600">No transaction history yet</p>
+        </div>
+      );
+    }
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase tracking-wider">Date</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase tracking-wider">Tutor</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase tracking-wider">Type</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-slate-700 uppercase tracking-wider">Tokens</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-slate-200">
+            {ledger.map((entry) => {
+              const isCredit = Number(entry.delta) > 0;
+              return (
+                <tr key={entry.id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
+                    {new Date(entry.createdAt).toLocaleDateString('en-IN', {
+                      year: 'numeric', month: 'short', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-800">{entry.tutor?.user.name || 'Unknown'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                      isCredit ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {isCredit ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                      {entry.reason.replaceAll('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold">
+                    <span className={isCredit ? 'text-green-600' : 'text-red-600'}>
+                      {isCredit ? '+' : ''}{Number(entry.delta).toFixed(1)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6" data-testid="student-token-balance-page">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-800 mb-2">My Token Balance</h1>
@@ -103,6 +241,7 @@ export default function StudentTokenBalance() {
         <div className="flex gap-6">
           <button
             onClick={() => setActiveTab('balances')}
+            data-testid="student-token-balance-balances-tab"
             className={`pb-3 px-1 border-b-2 font-medium transition-colors ${
               activeTab === 'balances'
                 ? 'border-blue-600 text-blue-600'
@@ -113,6 +252,7 @@ export default function StudentTokenBalance() {
           </button>
           <button
             onClick={() => setActiveTab('history')}
+            data-testid="student-token-balance-history-tab"
             className={`pb-3 px-1 border-b-2 font-medium transition-colors ${
               activeTab === 'history'
                 ? 'border-blue-600 text-blue-600'
@@ -126,160 +266,13 @@ export default function StudentTokenBalance() {
 
       {/* Balances Tab */}
       {activeTab === 'balances' && (
-        <div>
-          {loadingBalances ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-              <p className="mt-4 text-slate-600">Loading balances...</p>
-            </div>
-          ) : balances.length === 0 ? (
-            <div className="text-center py-12 bg-slate-50 rounded-lg">
-              <Coins className="mx-auto h-16 w-16 text-slate-400 mb-4" />
-              <p className="text-slate-600">No token balances yet</p>
-              <p className="text-sm text-slate-500 mt-2">
-                Purchase tokens to start learning with your favorite tutors
-              </p>
-            </div>
-          ) : (
-            <div className="grid md:grid-cols-2 gap-6">
-              {balances.map((balance) => (
-                <div
-                  key={balance.id}
-                  className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-lg transition-shadow"
-                >
-                  {/* Tutor Info */}
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-semibold text-lg">
-                      {balance.tutor.user.name?.charAt(0) || 'T'}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-slate-800">
-                        {balance.tutor.user.name}
-                      </h3>
-                    </div>
-                  </div>
-
-                  {/* Balance Details */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                      <span className="text-sm text-slate-700">Available Tokens</span>
-                      <span className="text-lg font-bold text-green-600 flex items-center gap-1">
-                        <Coins className="h-5 w-5" />
-                        {Number(balance.balance).toFixed(1)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                      <span className="text-sm text-slate-700">Price per Token</span>
-                      <span className="text-lg font-bold text-blue-600 flex items-center gap-1">
-                        <IndianRupee className="h-5 w-5" />
-                        {Number(balance.pricePerToken).toFixed(2)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-                      <span className="text-sm text-slate-700">Current Value</span>
-                      <span className="text-lg font-bold text-purple-600 flex items-center gap-1">
-                        <IndianRupee className="h-5 w-5" />
-                        {(Number(balance.balance) * Number(balance.pricePerToken)).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Action */}
-                  <button
-                    onClick={() =>
-                      (window.location.href = `/student/cart?tutorId=${balance.tutorId}`)
-                    }
-                    className="mt-4 w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                  >
-                    Buy More Tokens
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <div>{renderBalancesTab()}</div>
       )}
 
       {/* History Tab */}
       {activeTab === 'history' && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          {loadingLedger ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-              <p className="mt-4 text-slate-600">Loading history...</p>
-            </div>
-          ) : ledger.length === 0 ? (
-            <div className="text-center py-12">
-              <Clock className="mx-auto h-16 w-16 text-slate-400 mb-4" />
-              <p className="text-slate-600">No transaction history yet</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase tracking-wider">
-                      Tutor
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 uppercase tracking-wider">
-                      Type
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-700 uppercase tracking-wider">
-                      Tokens
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200">
-                  {ledger.map((entry) => {
-                    const isCredit = Number(entry.delta) > 0;
-                    return (
-                      <tr key={entry.id} className="hover:bg-slate-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                          {new Date(entry.createdAt).toLocaleDateString('en-IN', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-800">
-                          {entry.tutor?.user.name || 'Unknown'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                              isCredit
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-red-100 text-red-700'
-                            }`}
-                          >
-                            {isCredit ? (
-                              <TrendingUp className="h-3 w-3" />
-                            ) : (
-                              <TrendingDown className="h-3 w-3" />
-                            )}
-                            {entry.reason.replace(/_/g, ' ')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold">
-                          <span className={isCredit ? 'text-green-600' : 'text-red-600'}>
-                            {isCredit ? '+' : ''}
-                            {Number(entry.delta).toFixed(1)}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {renderHistoryTab()}
         </div>
       )}
     </div>

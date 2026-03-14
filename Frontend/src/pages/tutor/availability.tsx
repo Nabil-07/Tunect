@@ -589,7 +589,7 @@ export default function TutorAvailability() {
       {/* Toast Notification */}
       {toast && toastNotification(toast, setToast)}
 
-      <div className="container mx-auto px-4">
+      <div className="container mx-auto px-4" data-testid="tutor-availability-page">
         <div className="mx-auto w-full max-w-6xl rounded-2xl border bg-white p-4 sm:p-6 shadow-sm">
           {/* Header */}
           <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
@@ -601,6 +601,7 @@ export default function TutorAvailability() {
               <button
                 className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 hover:bg-slate-50"
                 onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+                data-testid="tutor-availability-prev-month-button"
               >
                 <ChevronLeft size={18} /> <span className="hidden sm:inline">Prev</span>
               </button>
@@ -610,6 +611,7 @@ export default function TutorAvailability() {
               <button
                 className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 hover:bg-slate-50"
                 onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+                data-testid="tutor-availability-next-month-button"
               >
                 <span className="hidden sm:inline">Next</span> <ChevronRight size={18} />
               </button>
@@ -926,6 +928,7 @@ export default function TutorAvailability() {
               disabled={loading || !dirty}
               onClick={persist}
               className={`rounded-lg px-4 py-2 text-white ${dirty ? 'bg-green-600 hover:bg-green-700' : 'bg-slate-400 cursor-not-allowed'}`}
+              data-testid="tutor-availability-save-button"
             >
               Save Availability
             </button>
@@ -962,6 +965,7 @@ export default function TutorAvailability() {
                     onChange={(e) => onStartChange(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2"
                     disabled={draftBooked || loading}
+                    data-testid="tutor-availability-slot-start-input"
                   />
                 </label>
                 <label className="text-sm">
@@ -972,6 +976,7 @@ export default function TutorAvailability() {
                     onChange={(e) => onEndChange(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2"
                     disabled={draftBooked || loading}
+                    data-testid="tutor-availability-slot-end-input"
                   />
                 </label>
               </div>
@@ -1012,6 +1017,7 @@ export default function TutorAvailability() {
                 className="rounded-lg border px-4 py-2 hover:bg-slate-50"
                 onClick={() => setEditorOpen(false)}
                 disabled={loading}
+                data-testid="tutor-availability-slot-cancel-button"
               >
                 Cancel
               </button>
@@ -1019,6 +1025,7 @@ export default function TutorAvailability() {
                 className="rounded-lg bg-blue-600 text-white px-4 py-2 hover:bg-blue-700"
                 onClick={saveDraft}
                 disabled={loading}
+                data-testid="tutor-availability-slot-save-button"
               >
                 {saveButtonLabel(loading, editingIndex)}
               </button>
@@ -1053,6 +1060,7 @@ export default function TutorAvailability() {
                     onChange={(e) => setTemplateStart(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2"
                     disabled={loading}
+                    data-testid="tutor-availability-template-start-input"
                   />
                 </label>
                 <label className="text-sm">
@@ -1063,6 +1071,7 @@ export default function TutorAvailability() {
                     onChange={(e) => setTemplateEnd(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2"
                     disabled={loading}
+                    data-testid="tutor-availability-template-end-input"
                   />
                 </label>
               </div>
@@ -1075,6 +1084,7 @@ export default function TutorAvailability() {
                   className="w-full border rounded-lg px-3 py-2"
                   placeholder="e.g., Weekly slots"
                   disabled={loading}
+                  data-testid="tutor-availability-template-title-input"
                 />
               </label>
 
@@ -1085,6 +1095,7 @@ export default function TutorAvailability() {
                   onChange={(e) => setTemplateActive(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-emerald-600"
                   disabled={loading}
+                  data-testid="tutor-availability-template-active-checkbox"
                 />
                 <span className="text-slate-700">Active template</span>
               </label>
@@ -1095,6 +1106,7 @@ export default function TutorAvailability() {
                 className="rounded-lg border px-4 py-2 hover:bg-slate-50"
                 onClick={() => setTemplateEditorOpen(false)}
                 disabled={loading}
+                data-testid="tutor-availability-template-cancel-button"
               >
                 Cancel
               </button>
@@ -1102,6 +1114,7 @@ export default function TutorAvailability() {
                 className="rounded-lg bg-emerald-600 text-white px-4 py-2 hover:bg-emerald-700"
                 onClick={saveTemplate}
                 disabled={loading}
+                data-testid="tutor-availability-template-save-button"
               >
                 {loading ? 'Saving...' : 'Save Template'}
               </button>

@@ -320,7 +320,7 @@ export default function MySessions() {
   const completedSessions = sessions.filter(isCompleted);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto" data-testid="student-sessions-page">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-slate-800 mb-2">📚 My Learning Sessions</h2>
         <p className="text-slate-600">
@@ -420,6 +420,7 @@ export default function MySessions() {
                       {joinUrl && (
                         <a
                           href={joinUrl}
+                          data-testid="student-sessions-join-active-btn"
                           className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
                         >
                           <Video className="h-4 w-4" />
@@ -513,6 +514,7 @@ export default function MySessions() {
 
                       <a
                         href={joinUrl}
+                        data-testid="student-sessions-join-upcoming-btn"
                         className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors font-medium ${
                           sessionIsNowActive
                             ? 'bg-green-600 text-white hover:bg-green-700'

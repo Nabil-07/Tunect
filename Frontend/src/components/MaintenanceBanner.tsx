@@ -55,7 +55,7 @@ export default function MaintenanceBanner() {
     d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 shadow-sm overflow-hidden">
+    <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 shadow-sm overflow-hidden" data-testid="maintenance-banner">
       <div className="flex items-start gap-3 px-4 py-3 sm:px-5 sm:py-3.5">
         {/* Icon */}
         <div className="shrink-0 mt-0.5">
@@ -107,6 +107,7 @@ export default function MaintenanceBanner() {
           onClick={handleDismiss}
           className="shrink-0 mt-0.5 p-1 rounded-lg text-amber-400 hover:text-amber-700 hover:bg-amber-100 transition"
           aria-label="Dismiss maintenance banner"
+          data-testid="maintenance-banner-dismiss-btn"
         >
           <X className="w-4 h-4" />
         </button>

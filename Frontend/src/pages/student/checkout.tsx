@@ -47,6 +47,32 @@ export default function CheckoutPage() {
     if (!tutorId || booked) return; // Prevent if already booked
     try {
       setConfirming(true);
+
+      // Check profile completion and approval before allowing booking
+      try {
+        const { data: profileStatus } = await api.get('/students/me/profile-status');
+        if (!profileStatus?.isComplete) {
+          setErrorModal({
+            title: 'Complete Your Profile',
+            message: `Please complete your profile first to continue learning.\n\nMissing: ${(profileStatus?.missingFields || []).join(', ')}\n\nYour profile is ${profileStatus?.completionPercentage ?? 0}% complete.`,
+          });
+          setTimeout(() => navigate('/student/profile'), 3000);
+          return;
+        }
+        if (profileStatus?.profileStatus !== 'APPROVED') {
+          setErrorModal({
+            title: 'Profile Not Approved',
+            message: profileStatus?.profileStatus === 'PENDING'
+              ? 'Your profile is pending admin approval. You can book sessions once approved.'
+              : 'Your profile needs updates. Please check your profile page.',
+          });
+          setTimeout(() => navigate('/student/profile'), 3000);
+          return;
+        }
+      } catch {
+        // If profile status check fails, allow booking to proceed
+      }
+
       await createDemoBooking({ tutorId });
       setBooked(true); // Mark as booked to prevent duplicate clicks
       
@@ -92,11 +118,11 @@ export default function CheckoutPage() {
   }
 
   return (
-    <main className="container mx-auto max-w-2xl px-4 py-8">
+    <main className="container mx-auto max-w-2xl px-4 py-8" data-testid="student-checkout-page">
       <h1 className="text-2xl font-bold mb-2">Free Demo Checkout</h1>
       <p className="text-sm text-slate-600 mb-6">You're booking a free demo with this tutor. No payment required.</p>
 
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
+      <div className="rounded-xl border bg-white p-4 shadow-sm" data-testid="student-checkout-order-card">
         <div className="flex items-center justify-between">
           <div>
             <div className="font-semibold">Free Demo</div>
@@ -106,11 +132,12 @@ export default function CheckoutPage() {
             onClick={confirmDemo} 
             disabled={confirming || booked} 
             className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            data-testid="student-checkout-confirm-btn"
           >
             {confirming ? 'Confirming...' : booked ? 'Booked' : 'Confirm Booking'}
           </button>
         </div>
-        {msg && <div className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700">{msg}</div>}
+        {msg && <div className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700" data-testid="student-checkout-success-alert">{msg}</div>}
       </div>
 
       <div className="mt-6 text-sm text-slate-600">
@@ -119,7 +146,7 @@ export default function CheckoutPage() {
 
       {/* Error Modal */}
       {errorModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-testid="student-checkout-error-modal">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900">{errorModal.title}</h3>
             <p className="mt-2 text-sm text-slate-600">{errorModal.message}</p>
@@ -127,6 +154,7 @@ export default function CheckoutPage() {
               <button
                 onClick={() => setErrorModal(null)}
                 className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                data-testid="student-checkout-error-close-btn"
               >
                 Close
               </button>

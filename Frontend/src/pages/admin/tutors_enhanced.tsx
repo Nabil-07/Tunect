@@ -12,6 +12,14 @@ import {
 type SortField = 'email' | 'status' | 'accountStatus' | 'hourlyRate' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
+interface SortIconProps { field: SortField; sortField: SortField; sortOrder: SortOrder; }
+function SortIcon({ field, sortField, sortOrder }: Readonly<SortIconProps>) {
+  if (sortField !== field) return <ChevronUp className="w-3 h-3 text-slate-300" />;
+  return sortOrder === 'asc' ?
+    <ChevronUp className="w-3 h-3 text-indigo-600" /> :
+    <ChevronDown className="w-3 h-3 text-indigo-600" />;
+}
+
 export default function AdminTutors() {
   const [tutors, setTutors] = useState<TutorSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,15 +160,8 @@ export default function AdminTutors() {
     }
   };
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ChevronUp className="w-3 h-3 text-slate-300" />;
-    return sortOrder === 'asc' ? 
-      <ChevronUp className="w-3 h-3 text-indigo-600" /> : 
-      <ChevronDown className="w-3 h-3 text-indigo-600" />;
-  };
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="admin-tutors-enhanced-page">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Tutors</h2>
@@ -171,6 +172,7 @@ export default function AdminTutors() {
             className="border rounded-lg px-3 py-2 text-sm"
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1); }}
+            data-testid="admin-tutors-enhanced-status-filter-select"
           >
             <option value="ALL">All statuses</option>
             <option value="PENDING">Pending</option>
@@ -180,46 +182,46 @@ export default function AdminTutors() {
         </div>
       </div>
 
-      {error && <div className="text-sm text-rose-600">{error}</div>}
+      {error && <div className="text-sm text-rose-600" data-testid="admin-tutors-enhanced-error-alert">{error}</div>}
 
       {loading ? (
         <div className="text-slate-600">Loading tutors...</div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-sm" data-testid="admin-tutors-enhanced-table">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3 text-left">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('email')}>
+                  <button type="button" className="flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-inherit font-inherit" onClick={() => handleSort('email')}>
                     <span>Tutor</span>
-                    <SortIcon field="email" />
-                  </div>
+                    <SortIcon field="email" sortField={sortField} sortOrder={sortOrder} />
+                  </button>
                 </th>
                 <th className="px-4 py-3 text-left">Bio</th>
                 <th className="px-4 py-3 text-left">Subjects</th>
                 <th className="px-4 py-3 text-left">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('status')}>
+                  <button type="button" className="flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-inherit font-inherit" onClick={() => handleSort('status')}>
                     <span>Status</span>
-                    <SortIcon field="status" />
-                  </div>
+                    <SortIcon field="status" sortField={sortField} sortOrder={sortOrder} />
+                  </button>
                 </th>
                 <th className="px-4 py-3 text-left">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('accountStatus')}>
+                  <button type="button" className="flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-inherit font-inherit" onClick={() => handleSort('accountStatus')}>
                     <span>Account Status</span>
-                    <SortIcon field="accountStatus" />
-                  </div>
+                    <SortIcon field="accountStatus" sortField={sortField} sortOrder={sortOrder} />
+                  </button>
                 </th>
                 <th className="px-4 py-3 text-left">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('hourlyRate')}>
+                  <button type="button" className="flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-inherit font-inherit" onClick={() => handleSort('hourlyRate')}>
                     <span>Hourly rate</span>
-                    <SortIcon field="hourlyRate" />
-                  </div>
+                    <SortIcon field="hourlyRate" sortField={sortField} sortOrder={sortOrder} />
+                  </button>
                 </th>
                 <th className="px-4 py-3 text-left">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('createdAt')}>
+                  <button type="button" className="flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-inherit font-inherit" onClick={() => handleSort('createdAt')}>
                     <span>Created</span>
-                    <SortIcon field="createdAt" />
-                  </div>
+                    <SortIcon field="createdAt" sortField={sortField} sortOrder={sortOrder} />
+                  </button>
                 </th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
@@ -232,6 +234,7 @@ export default function AdminTutors() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={emailFilter}
                     onChange={(e) => setEmailFilter(e.target.value)}
+                    data-testid="admin-tutors-enhanced-email-filter-input"
                   />
                 </th>
                 <th className="px-4 py-2">
@@ -241,6 +244,7 @@ export default function AdminTutors() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={bioFilter}
                     onChange={(e) => setBioFilter(e.target.value)}
+                    data-testid="admin-tutors-enhanced-bio-filter-input"
                   />
                 </th>
                 <th className="px-4 py-2">
@@ -250,6 +254,7 @@ export default function AdminTutors() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={subjectsFilter}
                     onChange={(e) => setSubjectsFilter(e.target.value)}
+                    data-testid="admin-tutors-enhanced-subjects-filter-input"
                   />
                 </th>
                 <th className="px-4 py-2"></th>
@@ -258,6 +263,7 @@ export default function AdminTutors() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={accountStatusFilter}
                     onChange={(e) => setAccountStatusFilter(e.target.value as any)}
+                    data-testid="admin-tutors-enhanced-account-status-select"
                   >
                     <option value="ALL">All</option>
                     <option value="ACTIVE">Active</option>
@@ -314,6 +320,7 @@ export default function AdminTutors() {
                       <button
                         className="text-indigo-600 text-sm font-semibold"
                         onClick={() => setSelected(t)}
+                        data-testid={`admin-tutors-enhanced-view-${t.id}`}
                       >
                         View
                       </button>
@@ -322,6 +329,7 @@ export default function AdminTutors() {
                           className="text-green-600 text-sm font-semibold disabled:text-green-400"
                           disabled={unbanningUserId === t.user.id}
                           onClick={() => handleUnban(t.user.id)}
+                          data-testid={`admin-tutors-enhanced-unblock-${t.id}`}
                         >
                           {unbanningUserId === t.user.id ? 'Unblocking...' : 'Unblock'}
                         </button>
@@ -336,17 +344,17 @@ export default function AdminTutors() {
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setSelected(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="admin-tutors-enhanced-detail-modal-backdrop">
+          <button type="button" aria-label="Close" className="absolute inset-0 w-full h-full bg-slate-900/60 backdrop-blur-sm cursor-default" onClick={() => setSelected(null)} />
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-6 p-6 border border-slate-200"
-            onClick={(e) => e.stopPropagation()}
+            className="relative bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-6 p-6 border border-slate-200"
           >
             <div className="flex items-center justify-between mb-4">
               <div>
                   <div className="text-lg font-semibold">{selected.user.email}</div>
                   <div className="text-sm text-slate-500">Tutor ID: {selected.id}</div>
               </div>
-              <button className="text-slate-500" onClick={() => setSelected(null)}>Close</button>
+              <button className="text-slate-500" onClick={() => setSelected(null)} data-testid="admin-tutors-enhanced-modal-close-button">Close</button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-700">
               <div><span className="font-semibold">Subjects: </span>{selected.subjects?.join(', ') || '—'}</div>

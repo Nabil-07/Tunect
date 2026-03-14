@@ -145,7 +145,7 @@ export default function Home() {
   };
 
   return (
-    <main>
+    <main data-testid="home-page">
       <SEO
         title="Online tutoring | Find a tutor online | Online tutors India | Tunect"
         description="Online tutoring with verified tutors for 1-on-1 learning. Find a tutor online for Mathematics, Physics, Chemistry, English, and more. Online tutors India and worldwide — book a free demo on Tunect."
@@ -182,8 +182,9 @@ export default function Home() {
                 className="flex-1 outline-none bg-transparent px-2 py-2 text-sm"
                 placeholder="Search subject, topic, or tutor name"
                 aria-label="Search tutors"
+                data-testid="home-search-input"
               />
-              <button onClick={onSearch} className="btn-primary">Search</button>
+              <button onClick={onSearch} className="btn-primary" data-testid="home-search-button">Search</button>
             </div>
 
             {/* Subjects quick chips */}

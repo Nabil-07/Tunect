@@ -103,8 +103,8 @@ export default function ImageCropModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
-      <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4" data-testid="image-crop-modal">
+      <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden" data-testid="image-crop-modal-container">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <h3 className="font-semibold text-slate-800">Edit Cover Image</h3>
@@ -112,6 +112,7 @@ export default function ImageCropModal({
             type="button"
             onClick={onCancel}
             className="p-1 rounded hover:bg-slate-100"
+            data-testid="image-crop-modal-header-close-btn"
           >
             <X size={18} />
           </button>
@@ -173,6 +174,7 @@ export default function ImageCropModal({
             onClick={onCancel}
             className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
             disabled={processing}
+            data-testid="image-crop-modal-cancel-btn"
           >
             Cancel
           </button>
@@ -181,6 +183,7 @@ export default function ImageCropModal({
             onClick={handleConfirm}
             disabled={processing}
             className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-1.5"
+            data-testid="image-crop-modal-apply-btn"
           >
             {processing ? 'Processing…' : (
               <>

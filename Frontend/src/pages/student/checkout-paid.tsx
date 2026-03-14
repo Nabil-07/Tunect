@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createOrder, verifyPayment } from '../../services/paymentsService';
 import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../lib/apiClient';
 
 declare global {
   interface Window {
@@ -50,6 +51,25 @@ export default function StudentCheckoutPaid() {
       try {
         setBusy(true);
         setErr(null);
+
+        // Check profile completion and approval before allowing purchase
+        try {
+          const { data: profileStatus } = await api.get('/students/me/profile-status');
+          if (!profileStatus?.isComplete) {
+            setErr(`Please complete your profile first. Missing: ${(profileStatus?.missingFields || []).join(', ')}`);
+            setTimeout(() => navigate('/student/profile'), 3000);
+            return;
+          }
+          if (profileStatus?.profileStatus !== 'APPROVED') {
+            setErr(profileStatus?.profileStatus === 'PENDING'
+              ? 'Your profile is pending admin approval. You can make purchases once approved.'
+              : 'Your profile needs updates. Please check your profile page.');
+            setTimeout(() => navigate('/student/profile'), 3000);
+            return;
+          }
+        } catch {
+          // If profile status check fails, allow purchase to proceed
+        }
 
         // Get user's preferred display currency from user profile
         const displayCurrency = user?.preferredCurrency || 'INR';
@@ -117,12 +137,12 @@ export default function StudentCheckoutPaid() {
   }, [canProceed, tutorId, tokens, navigate]);
 
   return (
-    <main className="container mx-auto px-4 py-12">
+    <main className="container mx-auto px-4 py-12" data-testid="student-checkout-paid-page">
       <h1 className="text-2xl font-semibold mb-2">Redirecting to payment…</h1>
       <p className="text-slate-600">Please wait while we open Razorpay.</p>
       {busy && <div className="mt-4 h-4 w-4 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />}
       {err && (
-        <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" data-testid="student-checkout-paid-error-alert">
           {err}
         </div>
       )}

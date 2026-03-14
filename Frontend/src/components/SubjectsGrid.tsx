@@ -17,7 +17,7 @@ const LANDING_PAGE_MAP: Record<string, string> = {
 const SubjectsGrid: React.FC<{ subjects: string[] }> = ({ subjects }) => {
   const nav = useNavigate();
   return (
-    <div className="mt-6 flex flex-wrap gap-2">
+    <div className="mt-6 flex flex-wrap gap-2" data-testid="subjects-grid">
       {subjects.map((s) => (
         <button
           key={s}
@@ -25,6 +25,7 @@ const SubjectsGrid: React.FC<{ subjects: string[] }> = ({ subjects }) => {
             nav(LANDING_PAGE_MAP[s] ?? `/find-tutors?subject=${encodeURIComponent(s)}`)
           }
           className="px-3 py-1.5 rounded-xl text-sm bg-ocean-50 text-ocean-800 hover:bg-ocean-100 transition"
+          data-testid={`subjects-grid-${s.toLowerCase().replace(/\s+/g, '-')}-btn`}
         >
           {s}
         </button>

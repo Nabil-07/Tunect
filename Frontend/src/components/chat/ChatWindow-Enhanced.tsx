@@ -11,7 +11,18 @@ interface ChatWindowProps {
   conversationId: string;
 }
 
-export function ChatWindow({ conversationId }: ChatWindowProps) {
+function buildStrikesLine(strikes: number, maxStrikes: number, remaining: number | undefined): string {
+  const remainingNote = remaining === undefined ? '' : `${remaining} attempt(s) left before messaging is blocked.`;
+  return `Strikes: ${strikes}/${maxStrikes}. ${remainingNote}`.trimEnd();
+}
+
+function mergeNewMessage(prev: ConversationDetail | null, message: Message, convId: string): ConversationDetail | null {
+  if (!prev || message.conversationId !== convId) return prev;
+  if (prev.messages.some((m) => m.id === message.id)) return prev;
+  return { ...prev, messages: [...prev.messages, message] };
+}
+
+export function ChatWindow({ conversationId }: Readonly<ChatWindowProps>) {
   const { user } = useAuth();
   const { isConnected, on, off, emit } = useSocket();
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
@@ -68,17 +79,7 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
   // WebSocket: Listen for new messages
   useEffect(() => {
     const handleNewMessage = (message: Message) => {
-      setConversation((prev) => {
-        if (!prev || message.conversationId !== conversationId) return prev;
-        
-        // Check if message already exists
-        if (prev.messages.some(m => m.id === message.id)) return prev;
-
-        return {
-          ...prev,
-          messages: [...prev.messages, message],
-        };
-      });
+      setConversation((prev) => mergeNewMessage(prev, message, conversationId));
     };
 
     on('newMessage', handleNewMessage);
@@ -117,50 +118,50 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
 
       // Rely on websocket for live updates; only append if socket not connected
       if (!isConnected) {
-        setConversation((prev) => {
-          if (!prev) return prev;
-          if (prev.messages.some((m) => m.id === newMessage.id)) return prev;
-          return { ...prev, messages: [...prev.messages, newMessage] };
-        });
+        setConversation((prev) => mergeNewMessage(prev, newMessage, conversationId));
       }
     } catch (err: any) {
       const data = err?.response?.data || {};
-      const apiMessage = (data?.message as string) || 'Message blocked.';
-      const strikes = data?.strikes as number | undefined;
-      const maxStrikes = data?.maxStrikes as number | undefined;
-      const remaining = data?.remaining as number | undefined;
-      const isPiiBlock = apiMessage?.toLowerCase().includes('personal contact') || data?.code?.toString().includes('PII');
-
-      if (isPiiBlock) {
-        const roleTone =
-          user?.role === 'TUTOR'
-            ? 'Please keep chats on-platform to protect students.'
-            : 'For your safety, keep your contact details private until the platform allows sharing.';
-
-        const strikesLine =
-          strikes !== undefined && maxStrikes !== undefined
-            ? `Strikes: ${strikes}/${maxStrikes}. ${remaining !== undefined ? `${remaining} attempt(s) left before messaging is blocked.` : ''}`
-            : '';
-
-        setGuardModal({
-          open: true,
-          title: strikes && maxStrikes && strikes >= maxStrikes ? 'Account blocked' : 'Message blocked for safety',
-          body: `${apiMessage}\n${strikesLine}\n\n${roleTone}`.trim(),
-        });
-
-        if (strikes && maxStrikes && strikes >= maxStrikes && user?.id) {
-          setHardBlocked(true);
-          localStorage.setItem(`piiBlock:${user.id}`, '1');
-        }
-      } else {
-        setGuardModal({
-          open: true,
-          title: 'Unable to send message',
-          body: apiMessage || 'Something went wrong while sending your message. Please try again.',
-        });
-      }
+      handleSendError(data);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleSendError = (data: any) => {
+    const apiMessage = (data?.message as string) || 'Message blocked.';
+    const strikes = data?.strikes as number | undefined;
+    const maxStrikes = data?.maxStrikes as number | undefined;
+    const remaining = data?.remaining as number | undefined;
+    const isPiiBlock = apiMessage?.toLowerCase().includes('personal contact') || data?.code?.toString().includes('PII');
+
+    if (isPiiBlock) {
+      const roleTone =
+        user?.role === 'TUTOR'
+          ? 'Please keep chats on-platform to protect students.'
+          : 'For your safety, keep your contact details private until the platform allows sharing.';
+
+      const strikesInfo =
+        strikes !== undefined && maxStrikes !== undefined
+          ? buildStrikesLine(strikes, maxStrikes, remaining)
+          : '';
+
+      setGuardModal({
+        open: true,
+        title: strikes && maxStrikes && strikes >= maxStrikes ? 'Account blocked' : 'Message blocked for safety',
+        body: `${apiMessage}\n${strikesInfo}\n\n${roleTone}`.trim(),
+      });
+
+      if (strikes && maxStrikes && strikes >= maxStrikes && user?.id) {
+        setHardBlocked(true);
+        localStorage.setItem(`piiBlock:${user.id}`, '1');
+      }
+    } else {
+      setGuardModal({
+        open: true,
+        title: 'Unable to send message',
+        body: apiMessage || 'Something went wrong while sending your message. Please try again.',
+      });
     }
   };
 
@@ -307,7 +308,7 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollBehavior: 'smooth' }}>
+      <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollBehavior: 'smooth' }} data-testid="chat-window-enhanced-messages">
         {conversation.messages.length === 0 ? (
           <div className="text-center text-gray-400 py-20">
             <Send className="w-16 h-16 mx-auto mb-4 opacity-50" />
@@ -338,8 +339,7 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
                     )}
                     {msg.isDeleted ? (
                       <div className="text-sm text-gray-400 italic flex items-center">
-                        <span className="mr-2">🚫</span>
-                        Message removed by admin
+                        <span className="mr-2">🚫</span>{' '}Message removed by admin
                       </div>
                     ) : (
                       <div className="text-sm leading-relaxed">{msg.content}</div>
@@ -378,11 +378,13 @@ export function ChatWindow({ conversationId }: ChatWindowProps) {
             disabled={!canSend || sending}
             className="flex-1 px-5 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500 transition-all text-sm placeholder-gray-400"
             maxLength={2000}
+            data-testid="chat-window-enhanced-message-input"
           />
           <button
             type="submit"
             disabled={!canSend || !messageText.trim() || sending}
             className="px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 font-semibold"
+            data-testid="chat-window-enhanced-send-btn"
           >
             <Send className={`w-5 h-5 ${sending ? 'animate-pulse' : ''}`} />
             <span>{sending ? 'Sending...' : 'Send'}</span>

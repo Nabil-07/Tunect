@@ -86,7 +86,7 @@ export default function Recon() {
   };
 
   return (
-    <div className="px-4 md:px-6 lg:px-8 py-6">
+    <div className="px-4 md:px-6 lg:px-8 py-6" data-testid="recon-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-xl md:text-2xl font-semibold">Finance → Reconciliation</h1>
         <div className="flex items-center gap-2">
@@ -96,11 +96,13 @@ export default function Recon() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              data-testid="recon-date-input"
               className="outline-none text-sm"
             />
           </div>
           <button
             onClick={() => fetchDaily(date)}
+            data-testid="recon-refresh-button"
             className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border hover:bg-slate-50"
             title="Refresh"
           >
@@ -108,6 +110,7 @@ export default function Recon() {
           </button>
           <button
             onClick={() => onOpenAdjust()}
+            data-testid="recon-adjustment-button"
             className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
             title="New Adjustment"
           >

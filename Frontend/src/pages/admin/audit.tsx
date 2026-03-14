@@ -52,7 +52,7 @@ export default function AdminAuditPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8" data-testid="audit-page">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">Admin Audit Log</h1>
 
       {/* Filters */}
@@ -63,6 +63,7 @@ export default function AdminAuditPage() {
             <select
               value={filters.entityType}
               onChange={(e) => setFilters({ ...filters, entityType: e.target.value })}
+              data-testid="audit-entity-type-select"
               className="w-full rounded-lg border px-3 py-2 text-sm"
             >
               <option value="">All</option>
@@ -80,6 +81,7 @@ export default function AdminAuditPage() {
               type="date"
               value={filters.from}
               onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+              data-testid="audit-from-date-input"
               className="w-full rounded-lg border px-3 py-2 text-sm"
             />
           </div>
@@ -89,12 +91,14 @@ export default function AdminAuditPage() {
               type="date"
               value={filters.to}
               onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+              data-testid="audit-to-date-input"
               className="w-full rounded-lg border px-3 py-2 text-sm"
             />
           </div>
           <div className="flex items-end">
             <button
               onClick={() => setFilters({ entityType: '', from: '', to: '' })}
+              data-testid="audit-clear-filters-button"
               className="w-full px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-300"
             >
               Clear Filters
@@ -111,7 +115,7 @@ export default function AdminAuditPage() {
       ) : (
         <>
           <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-            <table className="w-full">
+            <table className="w-full" data-testid="audit-table">
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700">Date</th>
@@ -177,6 +181,7 @@ export default function AdminAuditPage() {
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
+                data-testid="audit-prev-page-button"
                 className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-300 disabled:opacity-50"
               >
                 Previous
@@ -187,6 +192,7 @@ export default function AdminAuditPage() {
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
+                data-testid="audit-next-page-button"
                 className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-300 disabled:opacity-50"
               >
                 Next

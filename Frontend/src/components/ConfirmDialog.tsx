@@ -56,7 +56,7 @@ export default function ConfirmDialog({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="sm" showCloseButton={false}>
-      <div className="p-6">
+      <div className="p-6" data-testid="confirm-dialog">
         {/* Icon */}
         <div className={`flex justify-center mb-4 p-4 rounded-full ${config.bgClass} w-fit mx-auto`}>
           {config.icon}
@@ -74,6 +74,7 @@ export default function ConfirmDialog({
             onClick={onClose}
             disabled={isLoading}
             className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-medium hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="confirm-dialog-cancel-btn"
           >
             {cancelText}
           </button>
@@ -81,6 +82,7 @@ export default function ConfirmDialog({
             onClick={handleConfirm}
             disabled={isLoading}
             className={`flex-1 px-4 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${config.confirmClass}`}
+            data-testid="confirm-dialog-confirm-btn"
           >
             {isLoading ? (
               <span className="flex items-center justify-center gap-2">

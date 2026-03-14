@@ -113,7 +113,7 @@ export default function MyWaitlist() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto p-6" data-testid="student-waitlist-page">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-800 mb-2">My Waitlist</h1>
         <p className="text-slate-600">
@@ -218,6 +218,7 @@ export default function MyWaitlist() {
                     <button
                       onClick={() => handleBookFromWaitlist(entry.id)}
                       disabled={booking === entry.id}
+                      data-testid="student-waitlist-book-btn"
                       className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
                         booking === entry.id
                           ? "bg-green-400 text-white cursor-wait"
@@ -231,6 +232,7 @@ export default function MyWaitlist() {
                     <button
                       onClick={() => handleRemove(entry.id)}
                       disabled={removing === entry.id}
+                      data-testid="student-waitlist-remove-btn"
                       className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium transition-colors"
                     >
                       {removing === entry.id ? "Removing..." : "Remove"}

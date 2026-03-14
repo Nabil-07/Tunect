@@ -32,7 +32,7 @@ export default function UploadCard({
   };
 
   return (
-    <div className="rounded-2xl border p-4">
+    <div className="rounded-2xl border p-4" data-testid="upload-card">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-base font-semibold">{title}</div>
@@ -41,13 +41,14 @@ export default function UploadCard({
         {icon}
       </div>
       <div className="mt-4">
-        <label className={`inline-flex items-center gap-2 px-3 h-10 rounded-lg border cursor-pointer ${busy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-50'}`}>
+        <label className={`inline-flex items-center gap-2 px-3 h-10 rounded-lg border cursor-pointer ${busy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-50'}`} data-testid="upload-card-file-label">
           <input
             type="file"
             accept=".csv,.xlsx,.xls"
             className="hidden"
             disabled={busy}
             onChange={handleChange}
+            data-testid="upload-card-file-input"
           />
           {busy ? 'Uploading…' : 'Choose File'}
         </label>

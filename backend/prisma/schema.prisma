@@ -455,6 +455,7 @@ model Notification {
   message   String
   type      NotificationType
   bookingId String?
+  link      String?
   isRead    Boolean          @default(false)
   createdAt DateTime         @default(now())
   booking   Booking?         @relation(fields: [bookingId], references: [id])
@@ -770,6 +771,10 @@ model Student {
   bio                                   String?
   timezone                              String?
   preferredLanguage                     String?
+  marksheetUrl                          String?
+  profileStatus                         StudentProfileStatus      @default(PENDING)
+  adminProfileNotes                     String?
+  resubmissionFields                    String[]                  @default([])
   createdAt                             DateTime                  @default(now())
   updatedAt               DateTime                  @default(now()) @updatedAt
   student_sid                           String?                   @unique(map: "student_sid_unique") @map("student_sid")
@@ -1405,6 +1410,13 @@ enum AuditEntityType {
   TUTOR
   TOKEN
   KYC
+}
+
+enum StudentProfileStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RESUBMISSION_REQUESTED
 }
 
 enum TutorStatus {

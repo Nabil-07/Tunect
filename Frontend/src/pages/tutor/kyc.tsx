@@ -3,5 +3,5 @@
 import KycUpload from './kyc-upload';
 
 export default function TutorKycPage() {
-  return <KycUpload />;
+  return <div data-testid="tutor-kyc-page"><KycUpload /></div>;
 }

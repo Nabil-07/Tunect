@@ -511,7 +511,7 @@ export default function Profile() {
   })();
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
+    <div className="px-4 sm:px-6 lg:px-8" data-testid="tutor-profile-page">
       {/* Header Card */}
       <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md">
         <div className="p-6 sm:p-8 flex items-center gap-4 sm:gap-6">
@@ -529,6 +529,7 @@ export default function Profile() {
                 onClick={() => setAvatarModalOpen(true)}
                 disabled={uploadingAvatar}
                 className="rounded-md bg-white/20 px-3 py-1.5 text-sm font-medium hover:bg-white/30 disabled:opacity-60"
+                data-testid="tutor-profile-change-photo-button"
               >
                 {avatarButtonLabel}
               </button>
@@ -558,6 +559,7 @@ export default function Profile() {
                 onChange={(e) => setData((d) => ({ ...d, name: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="e.g., Priya Sharma"
+                data-testid="tutor-profile-name-input"
               />
             </div>
             <div>
@@ -567,6 +569,7 @@ export default function Profile() {
                 onChange={(e) => setData((d) => ({ ...d, bio: e.target.value }))}
                 className="mt-1 w-full min-h-28 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Tell students about your expertise, experience and teaching style."
+                data-testid="tutor-profile-bio-input"
               />
             </div>
             
@@ -580,6 +583,7 @@ export default function Profile() {
                 className="mt-1 w-full min-h-24 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="A detailed summary of your teaching philosophy and approach (required)."
                 required
+                data-testid="tutor-profile-summary-input"
               />
               <p className="mt-1 text-xs text-slate-500">
                 This summary will be prominently displayed on your public profile.
@@ -604,6 +608,7 @@ export default function Profile() {
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="e.g., 5"
                   required
+                  data-testid="tutor-profile-years-experience-input"
                 />
                 <p className="mt-1 text-xs text-slate-500">Total years of teaching experience (required).</p>
               </div>
@@ -618,6 +623,7 @@ export default function Profile() {
                   onChange={(e) => setData((d) => ({ ...d, qualifications: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="e.g., M.Ed, B.Sc Mathematics"
+                  data-testid="tutor-profile-qualifications-input"
                 />
                 <p className="mt-1 text-xs text-slate-500">Your educational qualifications.</p>
               </div>
@@ -672,6 +678,7 @@ export default function Profile() {
                     }}
                     className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="e.g., B.Sc in Mathematics, M.Ed"
+                    data-testid="tutor-profile-degree-input"
                   />
                   <button
                     type="button"
@@ -685,6 +692,7 @@ export default function Profile() {
                       }
                     }}
                     className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700"
+                    data-testid="tutor-profile-add-degree-button"
                   >
                     Add
                   </button>
@@ -764,11 +772,13 @@ export default function Profile() {
                     }}
                     className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="e.g., Grade 1-5, Grade 6-8, High School, College"
+                    data-testid="tutor-profile-class-input"
                   />
                   <button
                     type="button"
                     onClick={() => addClassTeach(classInput)}
                     className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700"
+                    data-testid="tutor-profile-add-class-button"
                   >
                     Add
                   </button>
@@ -937,6 +947,7 @@ export default function Profile() {
                       }}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="Type subject and press Enter"
+                      data-testid="tutor-profile-subject-input"
                     />
                     {subjectInputSuggestion && (
                       <p className="text-[11px] text-slate-500 mt-1">
@@ -995,6 +1006,7 @@ export default function Profile() {
                       }}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       placeholder="Start typing to search languages"
+                      data-testid="tutor-profile-language-input"
                     />
                     {showLanguageOptions && (
                       <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
@@ -1037,6 +1049,7 @@ export default function Profile() {
                   }}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="e.g., 1000"
+                  data-testid="tutor-profile-hourly-rate-input"
                 />
                 <p className="mt-1 text-xs text-slate-500">Stored and charged in INR. Display-only currency can be adjusted below.</p>
                 {preview !== undefined && displayCurrency !== 'INR' && (
@@ -1050,6 +1063,7 @@ export default function Profile() {
               onClick={handleSave}
               disabled={saving}
               className="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              data-testid="tutor-profile-save-button"
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
@@ -1068,6 +1082,7 @@ export default function Profile() {
                 value={data.country ?? ''}
                 onChange={(e) => setData((d) => ({ ...d, country: e.target.value || undefined }))}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                data-testid="tutor-profile-country-select"
               >
                 <option value="">Select country</option>
                 {countries.map((c) => (
@@ -1090,6 +1105,7 @@ export default function Profile() {
                   } catch {}
                 }}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                data-testid="tutor-profile-currency-select"
               >
                 {['INR','USD','AED','EUR','GBP','AUD','CAD','SGD','JPY'].map((c) => (
                   <option key={c} value={c}>{c}</option>

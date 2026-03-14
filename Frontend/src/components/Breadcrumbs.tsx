@@ -42,10 +42,11 @@ export default function Breadcrumbs() {
   }
 
   return (
-    <nav className="container mx-auto px-4 py-3 flex items-center gap-2 text-sm text-slate-600">
+    <nav className="container mx-auto px-4 py-3 flex items-center gap-2 text-sm text-slate-600" data-testid="breadcrumbs">
       <Link
         to="/"
         className="flex items-center gap-1 hover:text-ocean-700 transition-colors"
+        data-testid="breadcrumbs-home-link"
       >
         <Home className="h-4 w-4" />
         <span className="hidden sm:inline">Home</span>
@@ -66,6 +67,7 @@ export default function Breadcrumbs() {
               <Link
                 to={routeTo}
                 className="hover:text-ocean-700 transition-colors"
+                data-testid={`breadcrumbs-${name}-link`}
               >
                 {displayName}
               </Link>

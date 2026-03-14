@@ -71,7 +71,7 @@ export default function FavoritesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-slate-50 p-6" data-testid="student-favorites-page">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
@@ -95,6 +95,7 @@ export default function FavoritesPage() {
             <button
               onClick={() => navigate("/find-tutors")}
               className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition"
+              data-testid="student-favorites-browse-tutors-btn"
             >
               Browse Tutors
             </button>
@@ -128,6 +129,7 @@ export default function FavoritesPage() {
                       onClick={() => removeFavorite(tutor.id)}
                       className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur rounded-full hover:bg-red-50 transition group"
                       title="Remove from favorites"
+                      data-testid="student-favorites-remove-btn"
                     >
                       <Heart className="h-5 w-5 text-red-500 fill-red-500 group-hover:scale-110 transition" />
                     </button>
@@ -174,6 +176,7 @@ export default function FavoritesPage() {
                       <button
                         onClick={() => navigate(`/student/messages?to=${tutor.id}`)}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition text-sm font-medium"
+                        data-testid="student-favorites-message-btn"
                       >
                         <MessageSquare className="h-4 w-4" />
                         Message
@@ -181,6 +184,7 @@ export default function FavoritesPage() {
                       <button
                         onClick={() => navigate(`/student/cart?tutorId=${tutor.id}`)}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm font-medium"
+                        data-testid="student-favorites-book-btn"
                       >
                         <Calendar className="h-4 w-4" />
                         Book

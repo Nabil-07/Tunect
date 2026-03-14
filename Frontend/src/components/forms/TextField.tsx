@@ -34,6 +34,7 @@ export default function TextField({
         id={id}
         name={name}
         className={`rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-ocean-200 ${className}`}
+        data-testid={(rest as Record<string, unknown>)['data-testid'] as string || `text-field-${id}`}
         {...rest}
       />
     </div>

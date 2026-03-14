@@ -48,7 +48,7 @@ export default function TutorManageAccount() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="container mx-auto px-4 py-8 max-w-4xl" data-testid="tutor-manage-account-page">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
@@ -78,6 +78,7 @@ export default function TutorManageAccount() {
                 onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter your full name"
+                data-testid="tutor-manage-account-name-input"
               />
             </div>
 
@@ -91,6 +92,7 @@ export default function TutorManageAccount() {
                 value={user?.email || ''}
                 disabled
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-slate-500 cursor-not-allowed"
+                data-testid="tutor-manage-account-email-input"
               />
               <p className="text-xs text-slate-500 mt-1">Email cannot be changed</p>
             </div>
@@ -128,6 +130,7 @@ export default function TutorManageAccount() {
               value={preferredCurrency}
               onChange={(e) => setPreferredCurrency(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              data-testid="tutor-manage-account-currency-select"
             >
               {CURRENCIES.map((curr) => (
                 <option key={curr.code} value={curr.code}>
@@ -147,6 +150,7 @@ export default function TutorManageAccount() {
             onClick={handleSave}
             disabled={saving}
             className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            data-testid="tutor-manage-account-save-button"
           >
             {saving ? (
               <>
@@ -198,6 +202,7 @@ export default function TutorManageAccount() {
             <button
               onClick={() => setShowDeleteConfirm(true)}
               className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+              data-testid="tutor-manage-account-delete-button"
             >
               <Trash2 className="h-4 w-4" />
               Delete My Account
@@ -217,6 +222,7 @@ export default function TutorManageAccount() {
                   onChange={(e) => setDeletePassword(e.target.value)}
                   className="w-full rounded-lg border border-red-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Your current password"
+                  data-testid="tutor-manage-account-delete-password-input"
                 />
               </div>
               <div className="flex gap-3">
@@ -238,6 +244,7 @@ export default function TutorManageAccount() {
                   }}
                   disabled={deleting}
                   className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  data-testid="tutor-manage-account-confirm-delete-button"
                 >
                   {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   {deleting ? 'Deleting...' : 'Yes, Delete My Account'}
@@ -245,6 +252,7 @@ export default function TutorManageAccount() {
                 <button
                   onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}
                   className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
+                  data-testid="tutor-manage-account-cancel-delete-button"
                 >
                   Cancel
                 </button>

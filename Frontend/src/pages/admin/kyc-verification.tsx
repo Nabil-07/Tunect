@@ -59,6 +59,213 @@ function splitLatestAndOlderDocuments(docs: KycItem[]) {
   return { latest, older };
 }
 
+function getDocStatusClass(status: string): string {
+  if (status === 'APPROVED') return 'px-2 py-1 rounded text-xs font-semibold bg-emerald-100 text-emerald-700';
+  if (status === 'REJECTED') return 'px-2 py-1 rounded text-xs font-semibold bg-rose-100 text-rose-700';
+  return 'px-2 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-700';
+}
+
+type KycDetailMap = Record<string, { loading?: boolean; error?: string; data?: KycBundle | null }>;
+
+interface KycTutorGroupProps {
+  group: KycItem & { tutorId: string; email: string; docs: KycItem[] };
+  isOpen: boolean;
+  detail: KycDetailMap[string] | undefined;
+  focusedDocId: string | null;
+  expandedOlder: boolean;
+  older: KycItem[];
+  docsToRender: KycItem[];
+  notes: Record<string, string>;
+  correctionFields: Record<string, string[]>;
+  requestingResubmission: Record<string, boolean>;
+  onToggle: (tutorId: string) => void;
+  onReview: (docId: string, tutorId: string, status: string) => void;
+  onRequestResubmission: (tutorId: string) => void;
+  onToggleOlderDocs: (tutorId: string, next: boolean) => void;
+  onNoteChange: (tutorId: string, value: string) => void;
+  onSelectAllFields: (tutorId: string) => void;
+  onClearFields: (tutorId: string) => void;
+  onToggleCorrectionField: (tutorId: string, key: string) => void;
+}
+
+function KycTutorGroup({
+  group, isOpen, detail, focusedDocId, expandedOlder, older, docsToRender,
+  notes, correctionFields, requestingResubmission,
+  onToggle, onReview, onRequestResubmission, onToggleOlderDocs,
+  onNoteChange, onSelectAllFields, onClearFields, onToggleCorrectionField,
+}: Readonly<KycTutorGroupProps>) {
+  const docCount = detail?.data?.documents?.length ?? group.docs.length;
+  return (
+    <div key={group.tutorId} className="border border-slate-200 rounded-2xl bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="font-semibold text-slate-900">{group.email}</div>
+          <div className="text-xs text-slate-500">Pending documents: {docCount}</div>
+          <Link to={`/admin/tutors/${group.tutorId}`} className="text-xs text-blue-600 hover:underline" data-testid={`admin-kyc-tutor-profile-link-${group.tutorId}`}>
+            Open tutor profile
+          </Link>
+        </div>
+        <button
+          className="text-sm px-3 py-2 rounded-lg border bg-slate-50 hover:bg-slate-100"
+          onClick={() => onToggle(group.tutorId)}
+          data-testid={`admin-kyc-toggle-details-${group.tutorId}`}
+        >
+          {isOpen ? 'Hide details' : 'Review'}
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="mt-4 space-y-4">
+          {detail?.loading && <div className="text-sm text-slate-500">Loading details…</div>}
+          {detail?.error && <div className="text-sm text-rose-600" data-testid={`admin-kyc-detail-error-${group.tutorId}`}>{detail.error}</div>}
+
+          {detail?.data?.application && (
+            <div className="rounded-xl border p-3 bg-slate-50">
+              <div className="font-semibold text-sm mb-2">Submitted details</div>
+              {detail.data.application.correctionRequest?.fields?.length ? (
+                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                  <div className="font-semibold">Resubmission requested for:</div>
+                  <div>{detail.data.application.correctionRequest.fields.join(', ')}</div>
+                  {detail.data.application.correctionRequest.message && (
+                    <div className="mt-1">Message: {detail.data.application.correctionRequest.message}</div>
+                  )}
+                </div>
+              ) : null}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-slate-700">
+                {[
+                  ['Full name', detail.data.application.fullName],
+                  ['Phone', detail.data.application.phone],
+                  ['Country', detail.data.application.country],
+                  ['DOB', new Date(detail.data.application.dob).toLocaleDateString()],
+                  ['Address 1', detail.data.application.address1],
+                  ['Address 2', detail.data.application.address2 || '—'],
+                  ['City', detail.data.application.city],
+                  ['State', detail.data.application.state || '—'],
+                  ['Postal', detail.data.application.postalCode || '—'],
+                  ['Bank holder', detail.data.application.bankAccountHolder],
+                  ['Bank name', detail.data.application.bankName],
+                  ['Bank branch', detail.data.application.bankBranch || '—'],
+                  ['Account #', detail.data.application.accountNumber || '—'],
+                  ['IFSC', detail.data.application.ifsc || '—'],
+                  ['UPI', detail.data.application.upiId || '—'],
+                  ['IBAN', detail.data.application.iban || '—'],
+                  ['SWIFT', detail.data.application.swift || '—'],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="flex flex-col">
+                    <span className="text-[11px] text-slate-500">{label}</span>
+                    <span className="font-medium text-slate-900">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold text-sm">Documents</div>
+              <div className="flex items-center gap-3">
+                {older.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-1 rounded border bg-slate-50 hover:bg-slate-100 text-slate-700"
+                    onClick={() => onToggleOlderDocs(group.tutorId, !expandedOlder)}
+                  >
+                    {expandedOlder ? '▲ Minimise older records' : `▼ Expand older records (${older.length})`}
+                  </button>
+                )}
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />{' '}Pending
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />{' '}Approved
+                  <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />{' '}Rejected
+                </div>
+              </div>
+            </div>
+
+            {docsToRender.map((doc) => (
+              <div key={doc.id} className={`rounded-xl border p-3 flex flex-wrap items-center justify-between gap-3 ${doc.id === focusedDocId ? 'ring-2 ring-blue-300 border-blue-300' : ''}`}>
+                <div>
+                  <div className="font-medium text-slate-900">{doc.docType}</div>
+                  <div className="text-xs text-slate-500">Submitted: {new Date(doc.createdAt).toLocaleString()}</div>
+                  <div className="text-sm text-indigo-600">
+                    {doc.url ? <a href={resolveDocUrl(doc.url)} target="_blank" rel="noreferrer">View</a> : 'No file'}
+                  </div>
+                  {doc.notes && <div className="text-xs text-slate-600">Notes: {doc.notes}</div>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={getDocStatusClass(doc.status)}>{doc.status}</span>
+                  <button className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs" onClick={() => onReview(doc.id, group.tutorId, 'APPROVED')} data-testid={`admin-kyc-approve-${doc.id}`}>Approve</button>
+                  <button className="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-800 text-xs" onClick={() => onReview(doc.id, group.tutorId, 'PENDING')} data-testid={`admin-kyc-keep-pending-${doc.id}`}>Keep pending</button>
+                  <button className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs" onClick={() => onReview(doc.id, group.tutorId, 'REJECTED')} data-testid={`admin-kyc-reject-${doc.id}`}>Reject</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor={`admin-kyc-notes-${group.tutorId}`} className="text-xs font-medium text-slate-700">Admin comments (optional)</label>
+            <textarea
+              id={`admin-kyc-notes-${group.tutorId}`}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+              rows={3}
+              placeholder="Notes visible to tutor with the decision"
+              value={notes[group.tutorId] || ''}
+              onChange={(e) => onNoteChange(group.tutorId, e.target.value)}
+              data-testid={`admin-kyc-notes-${group.tutorId}`}
+            />
+          </div>
+
+          <div className="rounded-xl border p-3 space-y-3">
+            <div className="font-semibold text-sm">Request tutor resubmission (field-level)</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="px-2.5 py-1.5 rounded-lg border text-xs text-slate-700 bg-slate-50 hover:bg-slate-100"
+                onClick={() => onSelectAllFields(group.tutorId)}
+                data-testid={`admin-kyc-select-all-fields-${group.tutorId}`}
+              >
+                Select full KYC
+              </button>
+              <button
+                type="button"
+                className="px-2.5 py-1.5 rounded-lg border text-xs text-slate-700 bg-slate-50 hover:bg-slate-100"
+                onClick={() => onClearFields(group.tutorId)}
+                data-testid={`admin-kyc-clear-fields-${group.tutorId}`}
+              >
+                Clear selection
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {RESUBMISSION_FIELD_OPTIONS.map((field) => {
+                const checked = (correctionFields[group.tutorId] || []).includes(field.key);
+                return (
+                  <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleCorrectionField(group.tutorId, field.key)}
+                    />
+                    <span>{field.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="flex justify-end">
+              <button
+                className="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60"
+                onClick={() => onRequestResubmission(group.tutorId)}
+                disabled={requestingResubmission[group.tutorId]}
+                data-testid={`admin-kyc-request-resubmission-${group.tutorId}`}
+              >
+                {requestingResubmission[group.tutorId] ? 'Sending...' : 'Request resubmission'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminKYCVerification() {
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState<KycItem[]>([]);
@@ -228,8 +435,24 @@ export default function AdminKYCVerification() {
     }
   };
 
+  const handleToggleOlderDocs = useCallback((tutorId: string, next: boolean) => {
+    setShowOlderDocs((prev) => ({ ...prev, [tutorId]: next }));
+  }, []);
+
+  const handleNoteChange = useCallback((tutorId: string, value: string) => {
+    setNotes((prev) => ({ ...prev, [tutorId]: value }));
+  }, []);
+
+  const handleSelectAllFields = useCallback((tutorId: string) => {
+    setCorrectionFields((prev) => ({ ...prev, [tutorId]: RESUBMISSION_FIELD_OPTIONS.map((f) => f.key) }));
+  }, []);
+
+  const handleClearFields = useCallback((tutorId: string) => {
+    setCorrectionFields((prev) => ({ ...prev, [tutorId]: [] }));
+  }, []);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="admin-kyc-page">
       <div>
         <h2 className="text-2xl font-bold">KYC Verification</h2>
         <p className="text-slate-600 text-sm">Approve valid degree proof and payment info; keep tutor on Hold until approved.</p>
@@ -240,197 +463,40 @@ export default function AdminKYCVerification() {
         )}
       </div>
 
-      {error && <div className="text-sm text-rose-600">{error}</div>}
+      {error && <div className="text-sm text-rose-600" data-testid="admin-kyc-error-alert">{error}</div>}
 
-      {loading ? (
-        <div className="text-slate-600">Loading KYC queue...</div>
-      ) : displayGroups.length === 0 ? (
-        <div className="text-slate-600">No pending KYC submissions.</div>
-      ) : (
+      {loading && <div className="text-slate-600">Loading KYC queue...</div>}
+      {!loading && displayGroups.length === 0 && <div className="text-slate-600">No pending KYC submissions.</div>}
+      {!loading && displayGroups.length > 0 && (
         <div className="space-y-3">
           {displayGroups.map((group) => {
-            const isOpen = expandedTutorId === group.tutorId;
-            const detail = details[group.tutorId];
-            const docCount = detail?.data?.documents?.length ?? group.docs.length;
+            const allDocs = details[group.tutorId]?.data?.documents || group.docs;
+            const { latest, older } = splitLatestAndOlderDocuments(allDocs);
+            const forcedByFocus = !!focusedDocId && older.some((doc) => doc.id === focusedDocId);
+            const expandedOlder = forcedByFocus || !!showOlderDocs[group.tutorId];
+            const docsToRender = expandedOlder ? [...latest, ...older] : latest;
             return (
-              <div key={group.tutorId} className="border border-slate-200 rounded-2xl bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="font-semibold text-slate-900">{group.email}</div>
-                    <div className="text-xs text-slate-500">Pending documents: {docCount}</div>
-                    <Link to={`/admin/tutors/${group.tutorId}`} className="text-xs text-blue-600 hover:underline">
-                      Open tutor profile
-                    </Link>
-                  </div>
-                  <button
-                    className="text-sm px-3 py-2 rounded-lg border bg-slate-50 hover:bg-slate-100"
-                    onClick={() => toggleTutor(group.tutorId)}
-                  >
-                    {isOpen ? 'Hide details' : 'Review'}
-                  </button>
-                </div>
-
-                {isOpen && (
-                  <div className="mt-4 space-y-4">
-                    {detail?.loading && <div className="text-sm text-slate-500">Loading details…</div>}
-                    {detail?.error && <div className="text-sm text-rose-600">{detail.error}</div>}
-
-                    {detail?.data?.application && (
-                      <div className="rounded-xl border p-3 bg-slate-50">
-                        <div className="font-semibold text-sm mb-2">Submitted details</div>
-                        {detail.data.application.correctionRequest?.fields?.length ? (
-                          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-                            <div className="font-semibold">Resubmission requested for:</div>
-                            <div>{detail.data.application.correctionRequest.fields.join(', ')}</div>
-                            {detail.data.application.correctionRequest.message && (
-                              <div className="mt-1">Message: {detail.data.application.correctionRequest.message}</div>
-                            )}
-                          </div>
-                        ) : null}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-slate-700">
-                          {[
-                            ['Full name', detail.data.application.fullName],
-                            ['Phone', detail.data.application.phone],
-                            ['Country', detail.data.application.country],
-                            ['DOB', new Date(detail.data.application.dob).toLocaleDateString()],
-                            ['Address 1', detail.data.application.address1],
-                            ['Address 2', detail.data.application.address2 || '—'],
-                            ['City', detail.data.application.city],
-                            ['State', detail.data.application.state || '—'],
-                            ['Postal', detail.data.application.postalCode || '—'],
-                            ['Bank holder', detail.data.application.bankAccountHolder],
-                            ['Bank name', detail.data.application.bankName],
-                            ['Bank branch', detail.data.application.bankBranch || '—'],
-                            ['Account #', detail.data.application.accountNumber || '—'],
-                            ['IFSC', detail.data.application.ifsc || '—'],
-                            ['UPI', detail.data.application.upiId || '—'],
-                            ['IBAN', detail.data.application.iban || '—'],
-                            ['SWIFT', detail.data.application.swift || '—'],
-                          ].map(([label, value]) => (
-                            <div key={label as string} className="flex flex-col">
-                              <span className="text-[11px] text-slate-500">{label}</span>
-                              <span className="font-medium text-slate-900">{value as string}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-3">
-                      {(() => {
-                        const allDocs = detail?.data?.documents || group.docs;
-                        const { latest, older } = splitLatestAndOlderDocuments(allDocs);
-                        const forcedByFocus = !!focusedDocId && older.some((doc) => doc.id === focusedDocId);
-                        const expandedOlder = forcedByFocus || !!showOlderDocs[group.tutorId];
-                        const docsToRender = expandedOlder ? [...latest, ...older] : latest;
-
-                        return (
-                          <>
-                      <div className="flex items-center justify-between">
-                        <div className="font-semibold text-sm">Documents</div>
-                        <div className="flex items-center gap-3">
-                          {older.length > 0 && (
-                            <button
-                              type="button"
-                              className="text-xs px-2 py-1 rounded border bg-slate-50 hover:bg-slate-100 text-slate-700"
-                              onClick={() => setShowOlderDocs((prev) => ({ ...prev, [group.tutorId]: !expandedOlder }))}
-                            >
-                              {expandedOlder ? '▲ Minimise older records' : `▼ Expand older records (${older.length})`}
-                            </button>
-                          )}
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Pending
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Approved
-                            <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Rejected
-                          </div>
-                        </div>
-                      </div>
-
-                      {docsToRender.map((doc) => (
-                        <div key={doc.id} className={`rounded-xl border p-3 flex flex-wrap items-center justify-between gap-3 ${doc.id === focusedDocId ? 'ring-2 ring-blue-300 border-blue-300' : ''}`}>
-                          <div>
-                            <div className="font-medium text-slate-900">{doc.docType}</div>
-                            <div className="text-xs text-slate-500">Submitted: {new Date(doc.createdAt).toLocaleString()}</div>
-                            <div className="text-sm text-indigo-600">
-                              {doc.url ? <a href={resolveDocUrl(doc.url)} target="_blank" rel="noreferrer">View</a> : 'No file'}
-                            </div>
-                            {doc.notes && <div className="text-xs text-slate-600">Notes: {doc.notes}</div>}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-1 rounded text-xs font-semibold ${doc.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : doc.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
-                              {doc.status}
-                            </span>
-                            <button className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs" onClick={() => handleReview(doc.id, group.tutorId, 'APPROVED')}>Approve</button>
-                            <button className="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-800 text-xs" onClick={() => handleReview(doc.id, group.tutorId, 'PENDING')}>Keep pending</button>
-                            <button className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs" onClick={() => handleReview(doc.id, group.tutorId, 'REJECTED')}>Reject</button>
-                          </div>
-                        </div>
-                      ))}
-                          </>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-slate-700">Admin comments (optional)</label>
-                      <textarea
-                        className="w-full rounded-lg border px-3 py-2 text-sm"
-                        rows={3}
-                        placeholder="Notes visible to tutor with the decision"
-                        value={notes[group.tutorId] || ''}
-                        onChange={(e) => setNotes((prev) => ({ ...prev, [group.tutorId]: e.target.value }))}
-                      />
-                    </div>
-
-                    <div className="rounded-xl border p-3 space-y-3">
-                      <div className="font-semibold text-sm">Request tutor resubmission (field-level)</div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="px-2.5 py-1.5 rounded-lg border text-xs text-slate-700 bg-slate-50 hover:bg-slate-100"
-                          onClick={() => setCorrectionFields((prev) => ({
-                            ...prev,
-                            [group.tutorId]: RESUBMISSION_FIELD_OPTIONS.map((field) => field.key),
-                          }))}
-                        >
-                          Select full KYC
-                        </button>
-                        <button
-                          type="button"
-                          className="px-2.5 py-1.5 rounded-lg border text-xs text-slate-700 bg-slate-50 hover:bg-slate-100"
-                          onClick={() => setCorrectionFields((prev) => ({ ...prev, [group.tutorId]: [] }))}
-                        >
-                          Clear selection
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {RESUBMISSION_FIELD_OPTIONS.map((field) => {
-                          const checked = (correctionFields[group.tutorId] || []).includes(field.key);
-                          return (
-                            <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleCorrectionField(group.tutorId, field.key)}
-                              />
-                              <span>{field.label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                      <div className="flex justify-end">
-                        <button
-                          className="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60"
-                          onClick={() => handleRequestResubmission(group.tutorId)}
-                          disabled={requestingResubmission[group.tutorId]}
-                        >
-                          {requestingResubmission[group.tutorId] ? 'Sending...' : 'Request resubmission'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <KycTutorGroup
+                key={group.tutorId}
+                group={group}
+                isOpen={expandedTutorId === group.tutorId}
+                detail={details[group.tutorId]}
+                focusedDocId={focusedDocId}
+                expandedOlder={expandedOlder}
+                older={older}
+                docsToRender={docsToRender}
+                notes={notes}
+                correctionFields={correctionFields}
+                requestingResubmission={requestingResubmission}
+                onToggle={toggleTutor}
+                onReview={handleReview}
+                onRequestResubmission={handleRequestResubmission}
+                onToggleOlderDocs={handleToggleOlderDocs}
+                onNoteChange={handleNoteChange}
+                onSelectAllFields={handleSelectAllFields}
+                onClearFields={handleClearFields}
+                onToggleCorrectionField={toggleCorrectionField}
+              />
             );
           })}
         </div>

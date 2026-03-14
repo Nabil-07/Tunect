@@ -17,12 +17,14 @@ function ToolbarBtn({
   disabled,
   onClick,
   title,
+  'data-testid': testId,
   children,
 }: {
   active?: boolean;
   disabled?: boolean;
   onClick: () => void;
   title: string;
+  'data-testid'?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -31,6 +33,7 @@ function ToolbarBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      data-testid={testId}
       className={`p-1.5 rounded-lg transition-colors ${
         active
           ? 'bg-ocean-100 text-ocean-800'
@@ -55,6 +58,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         active={editor.isActive('bold')}
         onClick={() => editor.chain().focus().toggleBold().run()}
         title="Bold (Ctrl+B)"
+        data-testid="rich-text-editor-bold-btn"
       >
         <Bold className="h-4 w-4" />
       </ToolbarBtn>
@@ -63,6 +67,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         active={editor.isActive('italic')}
         onClick={() => editor.chain().focus().toggleItalic().run()}
         title="Italic (Ctrl+I)"
+        data-testid="rich-text-editor-italic-btn"
       >
         <Italic className="h-4 w-4" />
       </ToolbarBtn>
@@ -71,6 +76,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         active={editor.isActive('underline')}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
         title="Underline (Ctrl+U)"
+        data-testid="rich-text-editor-underline-btn"
       >
         <UnderlineIcon className="h-4 w-4" />
       </ToolbarBtn>
@@ -81,6 +87,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         active={editor.isActive('paragraph')}
         onClick={() => editor.chain().focus().setParagraph().run()}
         title="Paragraph"
+        data-testid="rich-text-editor-paragraph-btn"
       >
         <Pilcrow className="h-4 w-4" />
       </ToolbarBtn>
@@ -89,6 +96,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         active={editor.isActive('heading', { level: 2 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
         title="Heading 2"
+        data-testid="rich-text-editor-h2-btn"
       >
         <span className="text-xs font-bold">H2</span>
       </ToolbarBtn>
@@ -97,6 +105,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         active={editor.isActive('heading', { level: 3 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
         title="Heading 3"
+        data-testid="rich-text-editor-h3-btn"
       >
         <span className="text-xs font-bold">H3</span>
       </ToolbarBtn>
@@ -107,6 +116,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         active={editor.isActive('bulletList')}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         title="Bullet List"
+        data-testid="rich-text-editor-bullet-list-btn"
       >
         <List className="h-4 w-4" />
       </ToolbarBtn>
@@ -115,13 +125,14 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         active={editor.isActive('orderedList')}
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
         title="Numbered List"
+        data-testid="rich-text-editor-ordered-list-btn"
       >
         <ListOrdered className="h-4 w-4" />
       </ToolbarBtn>
 
       <div className="mx-1 h-5 w-px bg-slate-300" />
 
-      <ToolbarBtn onClick={onImageUpload} title="Insert Image">
+      <ToolbarBtn onClick={onImageUpload} title="Insert Image" data-testid="rich-text-editor-image-btn">
         <ImageIcon className="h-4 w-4" />
       </ToolbarBtn>
 
@@ -131,6 +142,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         onClick={() => editor.chain().focus().undo().run()}
         disabled={!editor.can().undo()}
         title="Undo (Ctrl+Z)"
+        data-testid="rich-text-editor-undo-btn"
       >
         <Undo className="h-4 w-4" />
       </ToolbarBtn>
@@ -139,6 +151,7 @@ function Toolbar({ editor, onImageUpload }: { editor: Editor | null; onImageUplo
         onClick={() => editor.chain().focus().redo().run()}
         disabled={!editor.can().redo()}
         title="Redo (Ctrl+Shift+Z)"
+        data-testid="rich-text-editor-redo-btn"
       >
         <Redo className="h-4 w-4" />
       </ToolbarBtn>
@@ -231,7 +244,7 @@ export default function RichTextEditor({
   );
 
   return (
-    <div className="rounded-lg border border-slate-300 overflow-hidden bg-white">
+    <div className="rounded-lg border border-slate-300 overflow-hidden bg-white" data-testid="rich-text-editor">
       <Toolbar editor={editor} onImageUpload={handleImageUpload} />
 
       {uploading && (
@@ -249,6 +262,7 @@ export default function RichTextEditor({
         accept="image/jpeg,image/png,image/webp,image/gif"
         className="hidden"
         onChange={handleFileChange}
+        data-testid="rich-text-editor-image-input"
       />
     </div>
   );

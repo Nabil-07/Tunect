@@ -18,7 +18,7 @@ export default function Modal({
   children,
   size = "md",
   showCloseButton = true,
-}: ModalProps) {
+}: Readonly<ModalProps>) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -36,8 +36,8 @@ export default function Modal({
         onClose();
       }
     };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
+    globalThis.addEventListener("keydown", handleEscape);
+    return () => globalThis.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -51,12 +51,18 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn"
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fadeIn"
+      data-testid="modal-overlay"
     >
+      <button
+        type="button"
+        aria-label="Close modal"
+        className="absolute inset-0 w-full h-full bg-black/50 backdrop-blur-sm cursor-default"
+        onClick={onClose}
+      />
       <div
-        className={`bg-white rounded-2xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden animate-scaleIn`}
-        onClick={(e) => e.stopPropagation()}
+        className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden animate-scaleIn`}
+        data-testid="modal-container"
       >
         {/* Header */}
         {(title || showCloseButton) && (
@@ -67,6 +73,7 @@ export default function Modal({
                 onClick={onClose}
                 className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
                 aria-label="Close"
+                data-testid="modal-close-btn"
               >
                 <X className="h-5 w-5 text-slate-500" />
               </button>

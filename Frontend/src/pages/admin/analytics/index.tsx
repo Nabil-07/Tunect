@@ -6,7 +6,7 @@ export default function AdminAnalytics() {
   const isAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="analytics-page">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Analytics</h2>
@@ -15,17 +15,17 @@ export default function AdminAnalytics() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link to="/admin/dashboard" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 hover:shadow">
+        <Link to="/admin/dashboard" data-testid="analytics-dashboard-link" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 hover:shadow">
           <div className="text-sm text-slate-500">Demo → Paid conversion</div>
           <div className="text-lg font-semibold text-slate-900">View on dashboard</div>
           <div className="text-xs text-slate-500 mt-1">Click to review funnel metrics.</div>
         </Link>
-        <Link to="/admin/finance" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 hover:shadow">
+        <Link to="/admin/finance" data-testid="analytics-finance-link" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 hover:shadow">
           <div className="text-sm text-slate-500">Balance Sheet</div>
           <div className="text-lg font-semibold text-slate-900">Director-only</div>
           <div className="text-xs text-slate-500 mt-1">Cash vs liabilities with ledger drilldown.</div>
         </Link>
-        <Link to="/admin/finance/payouts" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 hover:shadow">
+        <Link to="/admin/finance/payouts" data-testid="analytics-payouts-link" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 hover:shadow">
           <div className="text-sm text-slate-500">Money to disburse</div>
           <div className="text-lg font-semibold text-slate-900">Payout dashboard</div>
           <div className="text-xs text-slate-500 mt-1">See per-tutor payable amounts.</div>
@@ -38,7 +38,7 @@ export default function AdminAnalytics() {
             <div className="text-sm text-slate-500">Director balance sheet</div>
             <div className="text-lg font-semibold">Access control</div>
           </div>
-          <Link to="/admin/finance" className="text-indigo-600 text-sm font-semibold">Open</Link>
+          <Link to="/admin/finance" data-testid="analytics-open-finance-link" className="text-indigo-600 text-sm font-semibold">Open</Link>
         </div>
         {isAdmin ? (
           <p className="text-sm text-slate-700">

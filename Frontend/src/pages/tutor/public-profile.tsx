@@ -98,6 +98,7 @@ export default function TutorPublicProfile() { // NOSONAR
   const [expandedDaySlots, setExpandedDaySlots] = useState<{ date: Date; slots: BookableSlot[] } | null>(null);
   const [selectedMobileDay, setSelectedMobileDay] = useState<Date | null>(null);
   const [pendingSlot, setPendingSlot] = useState<BookableSlot | null>(null);
+  const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [showStudyModal, setShowStudyModal] = useState(false);
   const [studySubject, setStudySubject] = useState('');
   const [studyGrade, setStudyGrade] = useState('');
@@ -402,6 +403,33 @@ export default function TutorPublicProfile() { // NOSONAR
       return;
     }
 
+    // Check student profile completion and approval before allowing booking
+    if (user?.role === 'STUDENT') {
+      try {
+        const { data: profileStatus } = await api.get('/students/me/profile-status');
+        if (!profileStatus?.isComplete) {
+          setProfileIncomplete(true);
+          setErrorModal(
+            `Please complete your profile first to continue learning.\n\nMissing: ${(profileStatus?.missingFields || []).join(', ')}\n\nYour profile is ${profileStatus?.completionPercentage ?? 0}% complete.`
+          );
+          return;
+        }
+        if (profileStatus?.profileStatus !== 'APPROVED') {
+          setProfileIncomplete(true);
+          setErrorModal(
+            profileStatus?.profileStatus === 'PENDING'
+              ? 'Your profile is pending admin approval. You can book sessions once your profile is approved.'
+              : profileStatus?.profileStatus === 'RESUBMISSION_REQUESTED'
+              ? 'Admin has requested changes to your profile. Please update your profile and re-submit.'
+              : 'Your profile has been rejected. Please update your profile and re-submit for approval.'
+          );
+          return;
+        }
+      } catch {
+        // If profile status check fails, allow booking to proceed
+      }
+    }
+
     // For paid bookings, check token balance before proceeding
     if (!isDemoIntent && user?.role === 'STUDENT') {
       if (tokenBalanceLoading) {
@@ -634,7 +662,7 @@ export default function TutorPublicProfile() { // NOSONAR
     : null;
 
   return (
-    <main className="container mx-auto py-10 px-4 max-w-7xl">
+    <main className="container mx-auto py-10 px-4 max-w-7xl" data-testid="tutor-public-profile-page">
       {tutor && (
         <SEO
           title={seoTitle}
@@ -648,11 +676,17 @@ export default function TutorPublicProfile() { // NOSONAR
       {toast && <div className="mb-4 p-3 rounded bg-black text-white inline-block">{toast}</div>}
       <NotificationModal
         open={!!errorModal}
-        onClose={() => setErrorModal(null)}
-        title="Booking Error"
+        onClose={() => {
+          setErrorModal(null);
+          if (profileIncomplete) {
+            setProfileIncomplete(false);
+            navigate('/student/profile');
+          }
+        }}
+        title={profileIncomplete ? 'Complete Your Profile' : 'Booking Error'}
         message={errorModal || 'Could not book. Please try again.'}
         type="error"
-        confirmText="Close"
+        confirmText={profileIncomplete ? 'Go to Profile' : 'Close'}
       />
       <NotificationModal
         open={!!successModal}
@@ -686,6 +720,7 @@ export default function TutorPublicProfile() { // NOSONAR
                       value={studySubject}
                       onChange={e => setStudySubject(e.target.value)}
                       className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      data-testid="tutor-public-profile-study-subject-select"
                     >
                       <option value="">Select a subject…</option>
                       {allSubjects.map((s) => (
@@ -702,6 +737,7 @@ export default function TutorPublicProfile() { // NOSONAR
                     onChange={e => setStudySubject(e.target.value)}
                     placeholder="e.g. Mathematics, Physics, English…"
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    data-testid="tutor-public-profile-study-subject-input"
                   />
                 );
               })()}
@@ -737,6 +773,7 @@ export default function TutorPublicProfile() { // NOSONAR
                       value={studyGrade}
                       onChange={e => setStudyGrade(e.target.value)}
                       className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      data-testid="tutor-public-profile-study-grade-select"
                     >
                       <option value="">Select a grade…</option>
                       {allGrades.map((g) => (
@@ -753,6 +790,7 @@ export default function TutorPublicProfile() { // NOSONAR
                     onChange={e => setStudyGrade(e.target.value)}
                     placeholder="e.g. Grade 10, A-Level, University Year 1…"
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    data-testid="tutor-public-profile-study-grade-input"
                   />
                 );
               })()}
@@ -768,12 +806,14 @@ export default function TutorPublicProfile() { // NOSONAR
                 onChange={e => setStudyModule(e.target.value)}
                 placeholder="e.g. Algebra, Organic Chemistry, Essay Writing…"
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                data-testid="tutor-public-profile-study-module-input"
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowStudyModal(false)}
                 className="rounded-xl px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                data-testid="tutor-public-profile-study-cancel-button"
               >
                 Cancel
               </button>
@@ -781,6 +821,7 @@ export default function TutorPublicProfile() { // NOSONAR
                 onClick={handleStudyDetailsSubmit}
                 disabled={busy || !studySubject.trim() || !studyGrade.trim()}
                 className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                data-testid="tutor-public-profile-study-confirm-button"
               >
                 {busy ? 'Booking…' : 'Confirm Booking'}
               </button>
@@ -1084,6 +1125,7 @@ export default function TutorPublicProfile() { // NOSONAR
                   className="px-3 py-1 border rounded hover:bg-slate-50"
                   onClick={() => { setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1)); setSelectedMobileDay(null); }}
                   aria-label="Previous month"
+                  data-testid="tutor-public-profile-prev-month-button"
                 >
                   ‹
                 </button>
@@ -1094,6 +1136,7 @@ export default function TutorPublicProfile() { // NOSONAR
                   className="px-3 py-1 border rounded hover:bg-slate-50"
                   onClick={() => { setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1)); setSelectedMobileDay(null); }}
                   aria-label="Next month"
+                  data-testid="tutor-public-profile-next-month-button"
                 >
                   ›
                 </button>

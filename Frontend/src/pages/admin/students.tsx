@@ -5,7 +5,7 @@ import { ChevronUp, ChevronDown, ChevronDown as ChevronDownIcon } from 'lucide-r
 import { TableRowSkeleton } from '../../components/skeletons';
 import { fetchStudents, unbanUser, type StudentSummary } from '../../services/adminService';
 
-type SortField = 'name' | 'grade' | 'profileCompletion' | 'tokens' | 'accountStatus' | 'createdAt';
+type SortField = 'name' | 'grade' | 'profileCompletion' | 'tokens' | 'profileStatus' | 'accountStatus' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
 export default function AdminStudents() {
@@ -25,6 +25,7 @@ export default function AdminStudents() {
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const [gradeFilter, setGradeFilter] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BLOCKED'>('ALL');
+  const [profileStatusFilter, setProfileStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'RESUBMISSION_REQUESTED'>('ALL');
   const [allStudentsLoaded, setAllStudentsLoaded] = useState(false);
 
   // Sorting
@@ -147,6 +148,9 @@ export default function AdminStudents() {
       const isBanned = accountStatusFilter === 'BLOCKED';
       result = result.filter((s) => s.user.isBanned === isBanned);
     }
+    if (profileStatusFilter !== 'ALL') {
+      result = result.filter((s) => (s.profileStatus || 'PENDING') === profileStatusFilter);
+    }
 
     // Apply sorting
     result.sort((a, b) => {
@@ -169,6 +173,10 @@ export default function AdminStudents() {
           aVal = a.profileCompletion ?? -1;
           bVal = b.profileCompletion ?? -1;
           break;
+        case 'profileStatus':
+          aVal = a.profileStatus || 'PENDING';
+          bVal = b.profileStatus || 'PENDING';
+          break;
         case 'accountStatus':
           aVal = a.user.isBanned ? 1 : 0;
           bVal = b.user.isBanned ? 1 : 0;
@@ -187,7 +195,7 @@ export default function AdminStudents() {
     });
 
     return result;
-  }, [students, nameFilter, selectedNames, gradeFilter, accountStatusFilter, sortField, sortOrder, getDisplayName]);
+  }, [students, nameFilter, selectedNames, gradeFilter, accountStatusFilter, profileStatusFilter, sortField, sortOrder, getDisplayName]);
 
   // Paginate filtered results for display
   const totalFilteredCount = filtered.length;
@@ -285,7 +293,7 @@ export default function AdminStudents() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="admin-students-page">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Students</h2>
@@ -295,7 +303,7 @@ export default function AdminStudents() {
         </div>
       </div>
 
-      {error && <div className="text-sm text-rose-600">{error}</div>}
+      {error && <div className="text-sm text-rose-600" data-testid="admin-students-error-alert">{error}</div>}
 
       {loading ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -308,20 +316,21 @@ export default function AdminStudents() {
                 <th className="px-3 py-3 text-left w-[80px]">Tokens</th>
                 <th className="px-3 py-3 text-left w-[100px]">Terms</th>
                 <th className="px-3 py-3 text-left w-[100px]">Account</th>
+                <th className="px-3 py-3 text-left w-[110px]">Profile Status</th>
                 <th className="px-3 py-3 text-left w-[100px]">Created</th>
                 <th className="px-3 py-3 text-left w-[80px]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {Array.from({ length: 10 }).map((_, i) => (
-                <TableRowSkeleton key={i} columns={8} />
+                <TableRowSkeleton key={i} columns={9} />
               ))}
             </tbody>
           </table>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-sm table-fixed" style={{ minWidth: '900px' }}>
+          <table className="w-full text-sm table-fixed" style={{ minWidth: '900px' }} data-testid="admin-students-table">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-3 py-3 text-left w-[160px]">
@@ -357,6 +366,12 @@ export default function AdminStudents() {
                     <SortIcon field="accountStatus" />
                   </div>
                 </th>
+                <th className="px-3 py-3 text-left w-[110px]">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('profileStatus')}>
+                    <span>Profile Status</span>
+                    <SortIcon field="profileStatus" />
+                  </div>
+                </th>
                 <th className="px-3 py-3 text-left w-[100px]">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('createdAt')}>
                     <span>Created</span>
@@ -376,11 +391,13 @@ export default function AdminStudents() {
                         className="flex-1 text-xs border rounded px-2 py-1 pr-6"
                         value={nameFilter}
                         onChange={(e) => setNameFilter(e.target.value)}
+                        data-testid="admin-students-name-filter-input"
                       />
                       <button
                         type="button"
                         onClick={handleDropdownToggle}
                         className="text-slate-500 hover:text-slate-700 p-1"
+                        data-testid="admin-students-name-dropdown-button"
                       >
                         <ChevronDownIcon className="w-4 h-4" />
                       </button>
@@ -441,6 +458,7 @@ export default function AdminStudents() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={gradeFilter}
                     onChange={(e) => setGradeFilter(e.target.value)}
+                    data-testid="admin-students-grade-filter-input"
                   />
                 </th>
                 <th className="px-3 py-2"></th>
@@ -451,10 +469,25 @@ export default function AdminStudents() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={accountStatusFilter}
                     onChange={(e) => setAccountStatusFilter(e.target.value as any)}
+                    data-testid="admin-students-account-status-select"
                   >
                     <option value="ALL">All</option>
                     <option value="ACTIVE">Active</option>
                     <option value="BLOCKED">Blocked</option>
+                  </select>
+                </th>
+                <th className="px-3 py-2">
+                  <select
+                    className="w-full text-xs border rounded px-2 py-1"
+                    value={profileStatusFilter}
+                    onChange={(e) => setProfileStatusFilter(e.target.value as any)}
+                    data-testid="admin-students-profile-status-select"
+                  >
+                    <option value="ALL">All</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="RESUBMISSION_REQUESTED">Resubmission</option>
                   </select>
                 </th>
                 <th className="px-3 py-2"></th>
@@ -522,6 +555,28 @@ export default function AdminStudents() {
                       </span>
                     </div>
                   </td>
+                  <td className="px-3 py-3">
+                    {(() => {
+                      const status = s.profileStatus || 'PENDING';
+                      const styles: Record<string, string> = {
+                        APPROVED: 'bg-green-100 text-green-800',
+                        PENDING: 'bg-blue-100 text-blue-800',
+                        REJECTED: 'bg-red-100 text-red-800',
+                        RESUBMISSION_REQUESTED: 'bg-amber-100 text-amber-800',
+                      };
+                      const labels: Record<string, string> = {
+                        APPROVED: '✓ Approved',
+                        PENDING: '⏳ Pending',
+                        REJECTED: '✗ Rejected',
+                        RESUBMISSION_REQUESTED: '↻ Resubmission',
+                      };
+                      return (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-slate-100 text-slate-800'}`}>
+                          {labels[status] || status}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-3 py-3 text-xs text-slate-700">{new Date(s.createdAt).toLocaleDateString()}</td>
                   <td className="px-3 py-3">
                     {(s.user.isBanned || s.user.piiStrikes >= s.user.piiMaxStrikes) && (
@@ -529,6 +584,7 @@ export default function AdminStudents() {
                         className="text-green-600 text-xs font-semibold hover:text-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => handleUnban(s.user.id)}
                         disabled={unbanningUserId === s.user.id}
+                        data-testid={`admin-students-unblock-${s.id}`}
                       >
                         {unbanningUserId === s.user.id ? 'Unblocking...' : 'Unblock'}
                       </button>
@@ -558,6 +614,7 @@ export default function AdminStudents() {
                 setPage(1);
               }}
               className="px-2 py-1 rounded border border-slate-200 text-slate-700"
+              data-testid="admin-students-page-size-select"
             >
               <option value={10}>10</option>
               <option value={50}>50</option>
@@ -571,6 +628,7 @@ export default function AdminStudents() {
             onClick={() => setPage(1)}
             disabled={page === 1 || loading}
             title="First page"
+            data-testid="admin-students-first-page-button"
           >
             First
           </button>
@@ -579,6 +637,7 @@ export default function AdminStudents() {
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1 || loading}
             title="Previous page"
+            data-testid="admin-students-prev-page-button"
           >
             Previous
           </button>
@@ -587,6 +646,7 @@ export default function AdminStudents() {
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages || loading}
             title="Next page"
+            data-testid="admin-students-next-page-button"
           >
             Next
           </button>
@@ -595,6 +655,7 @@ export default function AdminStudents() {
             onClick={() => setPage(totalPages)}
             disabled={page === totalPages || loading}
             title="Last page"
+            data-testid="admin-students-last-page-button"
           >
             Last
           </button>

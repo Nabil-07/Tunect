@@ -70,6 +70,7 @@ export interface StudentSummary {
 	tokens: number;
 	createdAt: string;
 	profileCompletion?: number;
+	profileStatus?: string;
 	user: {
 		id: string;
 		email: string;

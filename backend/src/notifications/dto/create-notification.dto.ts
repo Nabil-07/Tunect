@@ -33,4 +33,9 @@ export class CreateNotificationDto {
   @IsString()
   @IsOptional()
   bookingId?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  link?: string;
 }

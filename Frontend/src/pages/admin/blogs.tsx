@@ -146,24 +146,25 @@ export default function AdminBlogs() {
   };
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-6 space-y-8" data-testid="blogs-page">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Blog Posts</h1>
         <p className="text-sm text-slate-600">Create and publish updates for the landing page.</p>
       </div>
 
-      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-      {success && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>}
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" data-testid="blogs-error-alert">{error}</div>}
+      {success && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700" data-testid="blogs-success-alert">{success}</div>}
 
       <div className="rounded-2xl border bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">{editingId ? "Edit Post" : "New Post"}</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" data-testid="blogs-form">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">Title</span>
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
+                data-testid="blogs-title-input"
                 className="w-full rounded-lg border px-3 py-2"
               />
             </label>
@@ -172,6 +173,7 @@ export default function AdminBlogs() {
               <input
                 value={form.slug}
                 onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                data-testid="blogs-slug-input"
                 className="w-full rounded-lg border px-3 py-2"
               />
             </label>
@@ -183,6 +185,7 @@ export default function AdminBlogs() {
               value={form.summary}
               onChange={(e) => setForm({ ...form, summary: e.target.value })}
               rows={3}
+              data-testid="blogs-summary-input"
               className="w-full rounded-lg border px-3 py-2"
             />
           </label>
@@ -195,6 +198,7 @@ export default function AdminBlogs() {
                   type="checkbox"
                   checked={form.isPillar}
                   onChange={(e) => setForm({ ...form, isPillar: e.target.checked, pillarId: "" })}
+                  data-testid="blogs-is-pillar-checkbox"
                   className="sr-only peer"
                 />
                 <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600" />
@@ -216,6 +220,7 @@ export default function AdminBlogs() {
                 <select
                   value={form.pillarId}
                   onChange={(e) => setForm({ ...form, pillarId: e.target.value })}
+                  data-testid="blogs-pillar-select"
                   className="w-full rounded-lg border px-3 py-2 bg-white"
                 >
                   <option value="">— None (standalone blog) —</option>
@@ -236,6 +241,7 @@ export default function AdminBlogs() {
               <input
                 value={form.seoTitle}
                 onChange={(e) => setForm({ ...form, seoTitle: e.target.value })}
+                data-testid="blogs-seo-title-input"
                 className="w-full rounded-lg border px-3 py-2"
                 placeholder="Custom title for search engines"
                 maxLength={70}
@@ -247,6 +253,7 @@ export default function AdminBlogs() {
               <input
                 value={form.seoDescription}
                 onChange={(e) => setForm({ ...form, seoDescription: e.target.value })}
+                data-testid="blogs-seo-description-input"
                 className="w-full rounded-lg border px-3 py-2"
                 placeholder="Meta description for search engines"
                 maxLength={160}
@@ -279,6 +286,7 @@ export default function AdminBlogs() {
                   <button
                     type="button"
                     onClick={() => setForm({ ...form, coverImageUrl: "" })}
+                    data-testid="blogs-remove-cover-button"
                     className="absolute top-1 right-1 rounded-full bg-white/90 p-1 shadow hover:bg-white"
                     title="Remove cover image"
                   >
@@ -290,6 +298,7 @@ export default function AdminBlogs() {
                   type="button"
                   onClick={() => coverInputRef.current?.click()}
                   disabled={uploadingCover}
+                  data-testid="blogs-upload-cover-button"
                   className="w-full h-32 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-ocean-400 hover:text-ocean-600 transition-colors disabled:opacity-60"
                 >
                   {uploadingCover ? (
@@ -345,6 +354,7 @@ export default function AdminBlogs() {
               <input
                 value={form.coverImageUrl}
                 onChange={(e) => setForm({ ...form, coverImageUrl: e.target.value })}
+                data-testid="blogs-cover-url-input"
                 className="w-full rounded-lg border px-3 py-1.5 mt-2 text-xs"
                 placeholder="…or paste image URL"
               />
@@ -354,6 +364,7 @@ export default function AdminBlogs() {
               <input
                 value={form.authorName}
                 onChange={(e) => setForm({ ...form, authorName: e.target.value })}
+                data-testid="blogs-author-input"
                 className="w-full rounded-lg border px-3 py-2"
               />
             </label>
@@ -362,6 +373,7 @@ export default function AdminBlogs() {
               <select
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value as "DRAFT" | "PUBLISHED" })}
+                data-testid="blogs-status-select"
                 className="w-full rounded-lg border px-3 py-2"
               >
                 <option value="DRAFT">Draft</option>
@@ -375,6 +387,7 @@ export default function AdminBlogs() {
               type="submit"
               className="rounded-lg bg-ocean-700 px-4 py-2 text-white hover:bg-ocean-800 disabled:opacity-60"
               disabled={submitting}
+              data-testid="blogs-submit-button"
             >
               {(() => {
                 if (submitting) return "Saving...";
@@ -386,6 +399,7 @@ export default function AdminBlogs() {
               onClick={resetForm}
               className="rounded-lg border px-4 py-2 hover:bg-slate-50"
               disabled={submitting}
+              data-testid="blogs-cancel-button"
             >
               Cancel
             </button>
@@ -433,12 +447,14 @@ export default function AdminBlogs() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => startEdit(post)}
+                    data-testid={`blogs-edit-${post.id}`}
                     className="rounded-lg border px-3 py-1 text-sm hover:bg-slate-50"
                   >
                     Edit
                   </button>
                   <button
                     onClick={() => removePost(post.id)}
+                    data-testid={`blogs-delete-${post.id}`}
                     className="rounded-lg border border-red-200 px-3 py-1 text-sm text-red-600 hover:bg-red-50"
                   >
                     Delete

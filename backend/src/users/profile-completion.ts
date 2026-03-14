@@ -15,7 +15,7 @@ export interface TutorProfileStatus {
 export function checkStudentProfileCompletion(student: any): StudentProfileStatus {
   const studentData = student?.student ?? student ?? {};
   const userData = student?.user ?? studentData?.user ?? {};
-  const totalFields = 5;
+  const totalFields = 9;
   let completedFields = 0;
   const missingFields: string[] = [];
 
@@ -32,10 +32,28 @@ export function checkStudentProfileCompletion(student: any): StudentProfileStatu
     missingFields.push('Email');
   }
 
+  if (userData?.phone && String(userData.phone).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Phone Number');
+  }
+
+  if (userData?.avatarUrl && String(userData.avatarUrl).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Profile Photo');
+  }
+
   if (studentData?.grade && String(studentData.grade).trim()) {
     completedFields++;
   } else {
     missingFields.push('Grade/Class');
+  }
+
+  if (studentData?.board && String(studentData.board).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Board');
   }
 
   if (studentData?.timezone && String(studentData.timezone).trim()) {
@@ -48,6 +66,12 @@ export function checkStudentProfileCompletion(student: any): StudentProfileStatu
     completedFields++;
   } else {
     missingFields.push('Preferred Language');
+  }
+
+  if (studentData?.marksheetUrl && String(studentData.marksheetUrl).trim()) {
+    completedFields++;
+  } else {
+    missingFields.push('Latest Class Marksheet');
   }
 
   return {

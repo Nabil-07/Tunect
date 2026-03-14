@@ -61,7 +61,7 @@ export default function GroupSessions() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6" data-testid="student-group-sessions-page">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-800 mb-2">Group Sessions</h1>
         <p className="text-slate-600">
@@ -77,10 +77,12 @@ export default function GroupSessions() {
           value={subjectFilter}
           onChange={(e) => setSubjectFilter(e.target.value)}
           className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          data-testid="student-group-sessions-search-input"
         />
         <button
           onClick={() => setSubjectFilter("")}
           className="px-4 py-2 text-slate-600 hover:text-slate-800"
+          data-testid="student-group-sessions-clear-filter-btn"
         >
           Clear
         </button>
@@ -183,6 +185,7 @@ export default function GroupSessions() {
                       ? "bg-blue-400 text-white cursor-wait"
                       : "bg-blue-600 text-white hover:bg-blue-700"
                   }`}
+                  data-testid="student-group-sessions-join-btn"
                 >
                   {joining === session.id
                     ? "Joining..."

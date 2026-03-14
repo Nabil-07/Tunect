@@ -150,10 +150,10 @@ export default function ChooseRole() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-ocean-50 px-4 py-12">
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-ocean-50 px-4 py-12" data-testid="choose-role-page">
       <div className="w-full max-w-3xl animate-fadeInUp">
         {/* Header */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-10" data-testid="choose-role-header">
           <div className="inline-flex items-center gap-2 bg-ocean-50 text-ocean-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-4 tracking-wide uppercase">
             <Sparkles className="w-3.5 h-3.5" />
             Welcome to Tunect
@@ -168,7 +168,7 @@ export default function ChooseRole() {
 
         {/* Error */}
         {err && (
-          <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm max-w-lg mx-auto">
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm max-w-lg mx-auto" data-testid="choose-role-error">
             <div className="shrink-0 h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
               <span className="text-red-500 text-lg font-bold">!</span>
             </div>
@@ -185,6 +185,7 @@ export default function ChooseRole() {
             onMouseEnter={() => studentEnabled && setHovered('STUDENT')}
             onMouseLeave={() => setHovered(null)}
             disabled={anyLoading || !studentEnabled}
+            data-testid="choose-role-student-btn"
             className={`group relative rounded-2xl border-2 p-6 text-left transition-all duration-300 overflow-hidden ${
               studentEnabled
                 ? 'bg-white border-slate-200 hover:border-ocean-400 hover:shadow-lg cursor-pointer'
@@ -263,6 +264,7 @@ export default function ChooseRole() {
             onMouseEnter={() => tutorEnabled && setHovered('TUTOR')}
             onMouseLeave={() => setHovered(null)}
             disabled={anyLoading || !tutorEnabled}
+            data-testid="choose-role-tutor-btn"
             className={`group relative rounded-2xl border-2 p-6 text-left transition-all duration-300 overflow-hidden ${
               tutorEnabled
                 ? 'bg-white border-slate-200 hover:border-emerald-400 hover:shadow-lg cursor-pointer'
@@ -340,7 +342,7 @@ export default function ChooseRole() {
         {/* Footer note */}
         <p className="text-center text-xs text-slate-400 mt-8">
           This choice sets up your initial profile. Need help?{' '}
-          <a href="mailto:support@tunectnow.com" className="text-ocean-600 hover:text-ocean-700 underline underline-offset-2">
+          <a href="mailto:support@tunectnow.com" className="text-ocean-600 hover:text-ocean-700 underline underline-offset-2" data-testid="choose-role-support-link">
             Contact support
           </a>
         </p>

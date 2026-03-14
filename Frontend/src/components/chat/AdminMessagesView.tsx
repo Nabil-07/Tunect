@@ -40,12 +40,13 @@ export default function AdminMessagesView() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-testid="admin-messages-view">
       {/* Header */}
       <div className="flex items-center gap-3 pb-4 border-b mb-4">
         <button
           onClick={() => navigate(getBackPath())}
           className="p-1 rounded hover:bg-gray-100 transition-colors"
+          data-testid="admin-messages-view-back-btn"
         >
           <ArrowLeft className="h-5 w-5 text-gray-600" />
         </button>
@@ -75,7 +76,7 @@ export default function AdminMessagesView() {
       )}
 
       {!loading && !error && messages.length > 0 && (
-        <div className="flex-1 overflow-y-auto space-y-3">
+        <div className="flex-1 overflow-y-auto space-y-3" data-testid="admin-messages-view-list">
           {messages.map((msg) => (
             <div key={msg.id} className="bg-white border rounded-xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-2">

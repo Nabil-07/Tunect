@@ -65,6 +65,7 @@ export default function PaymentsPage() {
       <div className="flex gap-1 border-b border-slate-200">
         <button
           onClick={() => setTab('received')}
+          data-testid="payments-received-tab"
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             tab === 'received'
               ? 'text-indigo-600 border-indigo-600'
@@ -78,6 +79,7 @@ export default function PaymentsPage() {
         </button>
         <button
           onClick={() => setTab('due')}
+          data-testid="payments-due-tab"
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             tab === 'due'
               ? 'text-indigo-600 border-indigo-600'
@@ -92,7 +94,7 @@ export default function PaymentsPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 flex gap-3">
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 flex gap-3" data-testid="payments-error-alert">
           <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-rose-700">{error}</p>
         </div>
@@ -166,6 +168,7 @@ function StudentPaymentsTab({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
+              data-testid="payments-sort-select"
               className="text-sm border border-slate-200 rounded-lg px-3 py-2"
             >
               <option value="date">Sort by Date</option>

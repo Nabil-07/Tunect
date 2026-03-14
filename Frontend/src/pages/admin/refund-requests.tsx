@@ -127,12 +127,13 @@ export default function AdminRefundRequests() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8" data-testid="refund-requests-page">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">Refund & Transfer Requests</h1>
 
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setActiveTab('refunds')}
+          data-testid="refund-requests-refunds-tab"
           className={`px-4 py-2 rounded-lg font-medium ${
             activeTab === 'refunds'
               ? 'bg-blue-600 text-white'
@@ -143,6 +144,7 @@ export default function AdminRefundRequests() {
         </button>
         <button
           onClick={() => setActiveTab('transfers')}
+          data-testid="refund-requests-transfers-tab"
           className={`px-4 py-2 rounded-lg font-medium ${
             activeTab === 'transfers'
               ? 'bg-blue-600 text-white'
@@ -195,6 +197,7 @@ export default function AdminRefundRequests() {
                   <textarea
                     value={adminNotes[req.id] || ''}
                     onChange={(e) => setAdminNotes({ ...adminNotes, [req.id]: e.target.value })}
+                    data-testid={`refund-notes-${req.id}`}
                     className="w-full rounded-lg border px-3 py-2 text-sm mb-3"
                     placeholder="Add notes for this decision..."
                     rows={2}
@@ -203,6 +206,7 @@ export default function AdminRefundRequests() {
                     <button
                       onClick={() => processRefund(req.id, true)}
                       disabled={processingId === req.id}
+                      data-testid={`refund-approve-${req.id}`}
                       className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
                     >
                       <CheckCircle className="w-4 h-4" />
@@ -211,6 +215,7 @@ export default function AdminRefundRequests() {
                     <button
                       onClick={() => processRefund(req.id, false)}
                       disabled={processingId === req.id}
+                      data-testid={`refund-reject-${req.id}`}
                       className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
                     >
                       <XCircle className="w-4 h-4" />
@@ -267,6 +272,7 @@ export default function AdminRefundRequests() {
                   <textarea
                     value={adminNotes[req.id] || ''}
                     onChange={(e) => setAdminNotes({ ...adminNotes, [req.id]: e.target.value })}
+                    data-testid={`transfer-notes-${req.id}`}
                     className="w-full rounded-lg border px-3 py-2 text-sm mb-3"
                     placeholder="Add notes for this decision..."
                     rows={2}
@@ -275,6 +281,7 @@ export default function AdminRefundRequests() {
                     <button
                       onClick={() => processTransfer(req.id, true)}
                       disabled={processingId === req.id}
+                      data-testid={`transfer-approve-${req.id}`}
                       className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
                     >
                       <CheckCircle className="w-4 h-4" />
@@ -283,6 +290,7 @@ export default function AdminRefundRequests() {
                     <button
                       onClick={() => processTransfer(req.id, false)}
                       disabled={processingId === req.id}
+                      data-testid={`transfer-reject-${req.id}`}
                       className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
                     >
                       <XCircle className="w-4 h-4" />

@@ -3,7 +3,7 @@ import { Scale, UserCheck, CreditCard, Shield, MessageSquare, AlertTriangle, Awa
 
 export default function Terms() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50" data-testid="terms-page">
       {/* Header */}
       <section className="bg-gradient-to-r from-ocean-700 to-green-500 text-white py-16">
         <div className="container mx-auto px-4">

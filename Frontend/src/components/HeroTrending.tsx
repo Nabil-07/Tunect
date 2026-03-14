@@ -115,7 +115,7 @@ const Card: FC<{ tutor: TrendingTutor; onBookDemo: (tutor: TrendingTutor) => voi
           </div>
         ) : null}
 
-        <button className="btn-primary mt-4 w-full" onClick={handleBookDemo}>
+        <button className="btn-primary mt-4 w-full" onClick={handleBookDemo} data-testid="hero-trending-book-demo-btn">
           Book a demo
         </button>
       </div>
@@ -207,6 +207,7 @@ const HeroTrending: FC = () => {
         <button
           onClick={() => navigate('/find-tutors')}
           className="mt-5 inline-flex items-center gap-2 rounded-xl bg-ocean-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-ocean-700 transition"
+          data-testid="hero-trending-browse-tutors-btn"
         >
           <Search className="h-4 w-4" /> Browse all tutors
         </button>
@@ -222,10 +223,10 @@ const HeroTrending: FC = () => {
         <Card tutor={activeItem} onBookDemo={(t) => navigate(`/student/demo-checkout?tutorId=${t.id}`)} />
       </Wrap>
 
-      <button aria-label="Previous" onClick={goPrev} disabled={!canSlide} className={`absolute -left-3 top-1/2 -translate-y-[50%] rounded-full border bg-white p-2 shadow disabled:opacity-40`}>
+      <button aria-label="Previous" onClick={goPrev} disabled={!canSlide} className={`absolute -left-3 top-1/2 -translate-y-[50%] rounded-full border bg-white p-2 shadow disabled:opacity-40`} data-testid="hero-trending-prev-btn">
         <ChevronLeft className="h-5 w-5" />
       </button>
-      <button aria-label="Next" onClick={goNext} disabled={!canSlide} className={`absolute -right-3 top-1/2 -translate-y-[50%] rounded-full border bg-white p-2 shadow disabled:opacity-40`}>
+      <button aria-label="Next" onClick={goNext} disabled={!canSlide} className={`absolute -right-3 top-1/2 -translate-y-[50%] rounded-full border bg-white p-2 shadow disabled:opacity-40`} data-testid="hero-trending-next-btn">
         <ChevronRight className="h-5 w-5" />
       </button>
 
@@ -237,6 +238,7 @@ const HeroTrending: FC = () => {
           <button
             onClick={() => navigate('/trending-tutors')}
             className="inline-flex items-center gap-2 text-sm font-semibold text-ocean-600 hover:text-ocean-700 transition"
+            data-testid="hero-trending-view-all-btn"
           >
             View all {totalCount} trending tutors
             <ChevronRight className="h-4 w-4" />

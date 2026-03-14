@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
 import { UploadsService } from '../uploads/uploads.service';
 import { EncryptionService } from '../common/services/encryption.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
@@ -38,12 +39,44 @@ function hasStudentAttendanceDb(attendanceRow: any): boolean {
   );
 }
 
+function buildUserUpdates(
+  data: { name?: string; phone?: string },
+  canEdit: (field: string) => boolean,
+): { name?: string; phone?: string | null } {
+  const updates: { name?: string; phone?: string | null } = {};
+  if (typeof data.name === 'string' && canEdit('name')) updates.name = data.name;
+  if (data.phone !== undefined && canEdit('phone')) updates.phone = data.phone || null;
+  return updates;
+}
+
+function buildStudentUpdates(
+  data: { grade?: string; board?: string; bio?: string; timezone?: string; preferredLanguage?: string; marksheetUrl?: string },
+  canEdit: (field: string) => boolean,
+): {
+  grade?: string; board?: string; bio?: string;
+  timezone?: string | null; preferredLanguage?: string | null; marksheetUrl?: string | null;
+} {
+  const updates: ReturnType<typeof buildStudentUpdates> = {};
+  if (data.grade !== undefined && canEdit('grade')) updates.grade = data.grade;
+  if (data.board !== undefined && canEdit('board')) updates.board = data.board;
+  if (typeof data.bio === 'string' && canEdit('bio')) updates.bio = data.bio;
+  if (data.timezone !== undefined && canEdit('timezone')) updates.timezone = data.timezone || null;
+  if (data.preferredLanguage !== undefined && canEdit('preferredLanguage'))
+    updates.preferredLanguage = data.preferredLanguage || null;
+  if (data.marksheetUrl !== undefined && canEdit('marksheet'))
+    updates.marksheetUrl = data.marksheetUrl || null;
+  return updates;
+}
+
 @Injectable()
 export class StudentsService {
+  private readonly logger = new Logger(StudentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploadsService: UploadsService,
     private readonly encryptionService: EncryptionService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -100,6 +133,10 @@ export class StudentsService {
             bio: true,
             timezone: true,
             preferredLanguage: true,
+            marksheetUrl: true,
+            profileStatus: true,
+            adminProfileNotes: true,
+            resubmissionFields: true,
             createdAt: true,
             updatedAt: true,
           } as any,
@@ -127,6 +164,10 @@ export class StudentsService {
         bio: true,
         timezone: true,
         preferredLanguage: true,
+        marksheetUrl: true,
+        profileStatus: true,
+        adminProfileNotes: true,
+        resubmissionFields: true,
         createdAt: true,
         updatedAt: true,
       } as any,
@@ -218,12 +259,27 @@ export class StudentsService {
       }
     }
 
+    // Resolve marksheet URL for readability
+    const marksheetUrl = (student as any).marksheetUrl ?? null;
+    let readableMarksheetUrl = marksheetUrl;
+    if (marksheetUrl) {
+      try {
+        readableMarksheetUrl = await this.uploadsService.toReadableReference(marksheetUrl, user.id, user.role ?? undefined);
+      } catch {
+        // keep original if resolution fails
+      }
+    }
+
     return {
       id: student.id,
       userId: user.id,
       bio: student.bio ?? null,
       timezone: student.timezone ?? null,
       preferredLanguage: student.preferredLanguage ?? null,
+      marksheetUrl: readableMarksheetUrl,
+      profileStatus: (student as any).profileStatus ?? 'PENDING',
+      adminProfileNotes: (student as any).adminProfileNotes ?? null,
+      resubmissionFields: (student as any).resubmissionFields ?? [],
       user: {
         id: user.id,
         name: user.name ?? null,
@@ -250,42 +306,92 @@ export class StudentsService {
   ) {
     const studentId = await this.ensureStudentProfile(userId);
 
-    const userUpdates: { name?: string; phone?: string | null } = {};
-    if (typeof data.name === 'string') userUpdates.name = data.name;
-    if (data.phone !== undefined) userUpdates.phone = data.phone || null;
+    // Check if profile is locked (APPROVED status)
+    const currentStudent = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { profileStatus: true, resubmissionFields: true } as any,
+    });
+    const currentStatus = (currentStudent as any)?.profileStatus;
+    const allowedFields: string[] = (currentStudent as any)?.resubmissionFields ?? [];
+    if (currentStatus === 'APPROVED') {
+      throw new ForbiddenException('Profile is approved and locked. Request resubmission from admin to make changes.');
+    }
 
-    const studentUpdates: {
-      grade?: string;
-      board?: string;
-      bio?: string;
-      timezone?: string | null;
-      preferredLanguage?: string | null;
-    } = {};
-    if (data.grade !== undefined) studentUpdates.grade = data.grade;
-    if (data.board !== undefined) studentUpdates.board = data.board;
-    if (typeof data.bio === 'string') studentUpdates.bio = data.bio;
-    if (data.timezone !== undefined) studentUpdates.timezone = data.timezone || null;
-    if (data.preferredLanguage !== undefined)
-      studentUpdates.preferredLanguage = data.preferredLanguage || null;
+    // When RESUBMISSION_REQUESTED with specific fields, only allow those fields
+    const canEdit = (field: string) =>
+      currentStatus !== 'RESUBMISSION_REQUESTED' || allowedFields.length === 0 || allowedFields.includes(field);
+
+    const userUpdates = buildUserUpdates(data as any, canEdit);
+    const studentUpdates = buildStudentUpdates(data as any, canEdit);
 
     if (Object.keys(userUpdates).length > 0) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: userUpdates,
-      });
+      await this.prisma.user.update({ where: { id: userId }, data: userUpdates });
     }
     if (Object.keys(studentUpdates).length > 0) {
-      await this.prisma.student.update({
-        where: { id: studentId },
-        data: studentUpdates,
-      });
+      await this.prisma.student.update({ where: { id: studentId }, data: studentUpdates });
     }
+
+    await this.handlePostPatchStatus(studentId, userId, currentStatus);
 
     const updated = await this.prisma.student.findUnique({
       where: { id: studentId },
       select: { id: true, grade: true, board: true, tokens: true, updatedAt: true },
     });
     return { ...updated, tokens: toNum(updated!.tokens) };
+  }
+
+  private async handlePostPatchStatus(studentId: string, userId: string, currentStatus: string | null) {
+    if (currentStatus === 'RESUBMISSION_REQUESTED') {
+      await this.prisma.student.update({
+        where: { id: studentId },
+        data: { profileStatus: 'PENDING', adminProfileNotes: null, resubmissionFields: [] } as any,
+      });
+    }
+    if (currentStatus === 'RESUBMISSION_REQUESTED' || currentStatus === 'PENDING' || !currentStatus) {
+      this.notifyAdminsProfilePending(studentId, userId).catch((err) =>
+        this.logger.warn('Failed to notify admins about profile submission', err),
+      );
+    }
+  }
+
+  async requestResubmission(userId: string) {
+    const studentId = await this.ensureStudentProfile(userId);
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { profileStatus: true } as any,
+    });
+    const status = (student as any)?.profileStatus;
+    if (status !== 'APPROVED') {
+      throw new ForbiddenException('You can only request resubmission when your profile is approved.');
+    }
+    await this.prisma.student.update({
+      where: { id: studentId },
+      data: { profileStatus: 'PENDING', adminProfileNotes: 'Student requested profile edit.' } as any,
+    });
+    return { ok: true, message: 'Resubmission request sent. Your profile is now pending review.' };
+  }
+
+  private async notifyAdminsProfilePending(studentId: string, userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+    const studentName = user?.name || user?.email || 'A student';
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', deletedAt: null },
+      select: { id: true },
+    });
+    const link = `/admin/students/${studentId}`;
+    await Promise.allSettled(
+      admins.map((admin) =>
+        this.notificationsService.createSystemNotification(
+          admin.id,
+          'Student Profile Pending Review',
+          `${studentName} has submitted their profile for approval.`,
+          link,
+        ),
+      ),
+    );
   }
 
   // -------- Bookings with payment enrichment + unscheduled grouping --------

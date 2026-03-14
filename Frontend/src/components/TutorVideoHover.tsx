@@ -84,6 +84,7 @@ export default function TutorVideoHover({ videoUrl, thumbnail, duration }: Tutor
       className="relative w-full h-full"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      data-testid="tutor-video-hover"
     >
       {/* Video Container */}
       <div className="relative w-full h-full overflow-hidden rounded-lg">
@@ -118,6 +119,7 @@ export default function TutorVideoHover({ videoUrl, thumbnail, duration }: Tutor
                 }}
                 className="p-2 bg-white/90 hover:bg-white rounded-full shadow-lg transition-colors"
                 title="Maximize video"
+                data-testid="tutor-video-hover-maximize-btn"
               >
                 <Maximize2 className="w-4 h-4 text-gray-700" />
               </button>
@@ -130,6 +132,7 @@ export default function TutorVideoHover({ videoUrl, thumbnail, duration }: Tutor
                 }}
                 className="p-2 bg-white/90 hover:bg-white rounded-full shadow-lg transition-colors"
                 title="Minimize video"
+                data-testid="tutor-video-hover-minimize-btn"
               >
                 <Minimize2 className="w-4 h-4 text-gray-700" />
               </button>
@@ -142,6 +145,7 @@ export default function TutorVideoHover({ videoUrl, thumbnail, duration }: Tutor
               }}
               className="p-2 bg-white/90 hover:bg-white rounded-full shadow-lg transition-colors"
               title="Close video"
+              data-testid="tutor-video-hover-close-btn"
             >
               <X className="w-4 h-4 text-gray-700" />
             </button>

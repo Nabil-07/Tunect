@@ -89,6 +89,19 @@ function getAttendanceLabel(booking: BookingItem) {
   return { label: 'Neither Attended', style: 'text-slate-700 bg-slate-50' };
 }
 
+function getNoShowRefundNote(booking: BookingItem, isTutorNoShowStatus: boolean): { note: string; style: string } {
+  if (booking.refundProcessed) {
+    const note = isTutorNoShowStatus
+      ? 'Token refunded to student (tutor no-show).'
+      : 'Token refunded to student.';
+    return { note, style: 'text-green-700' };
+  }
+  const note = isTutorNoShowStatus
+    ? 'Pending refund — tutor no-show.'
+    : 'Refund pending for student (tutor absent).';
+  return { note, style: 'text-amber-700' };
+}
+
 function getRefundNote(booking: BookingItem) {
   const studentJoined = !!booking.attendance?.studentJoinedAt;
   const tutorJoined = !!booking.attendance?.tutorJoinedAt;
@@ -99,25 +112,20 @@ function getRefundNote(booking: BookingItem) {
   }
 
   if (status === 'AUTO_CANCELLED_TUTOR_NO_SHOW') {
-    if (booking.refundProcessed) {
-      return { note: 'Token refunded to student (tutor no-show).', style: 'text-green-700' };
-    }
-    return { note: 'Pending refund — tutor no-show.', style: 'text-amber-700' };
+    return getNoShowRefundNote(booking, true);
   }
 
   if (status === 'AUTO_CANCELLED_STUDENT_NO_SHOW') {
     return { note: 'Tutor gets paid. Student forfeits token (student no-show).', style: 'text-orange-700' };
   }
 
-  if (!studentJoined && !tutorJoined && ['CANCELED', 'AUTO_CANCELLED_TUTOR_NO_SHOW', 'AUTO_CANCELLED_STUDENT_NO_SHOW'].includes(status)) {
+  const neitherStatuses = new Set(['CANCELED', 'AUTO_CANCELLED_TUTOR_NO_SHOW', 'AUTO_CANCELLED_STUDENT_NO_SHOW']);
+  if (!studentJoined && !tutorJoined && neitherStatuses.has(status)) {
     return { note: 'Neither attended — company keeps tokens (company profit).', style: 'text-purple-700' };
   }
 
   if (studentJoined && !tutorJoined) {
-    if (booking.refundProcessed) {
-      return { note: 'Token refunded to student.', style: 'text-green-700' };
-    }
-    return { note: 'Refund pending for student (tutor absent).', style: 'text-amber-700' };
+    return getNoShowRefundNote(booking, false);
   }
 
   if (!studentJoined && tutorJoined) {
@@ -125,13 +133,18 @@ function getRefundNote(booking: BookingItem) {
   }
 
   if (status === 'CANCELED') {
-    if (booking.refundProcessed) {
-      return { note: 'Booking cancelled. Refund processed.', style: 'text-slate-600' };
-    }
-    return { note: 'Booking cancelled.', style: 'text-slate-600' };
+    const note = booking.refundProcessed ? 'Booking cancelled. Refund processed.' : 'Booking cancelled.';
+    return { note, style: 'text-slate-600' };
   }
 
   return { note: '', style: '' };
+}
+
+function SortIcon({ field, sortBy, sortDir }: Readonly<{ field: string; sortBy: string; sortDir: 'asc' | 'desc' }>) {
+  if (sortBy !== field) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40" />;
+  return sortDir === 'asc'
+    ? <ChevronUp className="w-3 h-3 ml-1 text-indigo-600" />
+    : <ChevronDown className="w-3 h-3 ml-1 text-indigo-600" />;
 }
 
 export default function AdminBookings() {
@@ -186,13 +199,6 @@ export default function AdminBookings() {
     setPage(1);
   }
 
-  function SortIcon({ field }: { field: string }) {
-    if (sortBy !== field) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40" />;
-    return sortDir === 'asc'
-      ? <ChevronUp className="w-3 h-3 ml-1 text-indigo-600" />
-      : <ChevronDown className="w-3 h-3 ml-1 text-indigo-600" />;
-  }
-
   const formatDate = (d: string | null) => {
     if (!d) return '—';
     return new Date(d).toLocaleString('en-IN', {
@@ -201,8 +207,106 @@ export default function AdminBookings() {
     });
   };
 
+  function renderBookingsContent() {
+    if (loading) {
+      return <div className="text-center py-16 text-slate-500">Loading bookings...</div>;
+    }
+    if (bookings.length === 0) {
+      return (
+        <div className="text-center py-16 text-slate-500">
+          <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No bookings found</p>
+        </div>
+      );
+    }
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm" data-testid="bookings-table">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th
+                className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
+                onClick={() => handleSort('id')}
+              >
+                <span className="inline-flex items-center">Booking ID <SortIcon field="id" sortBy={sortBy} sortDir={sortDir} /></span>
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Student</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Tutor</th>
+              <th
+                className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
+                onClick={() => handleSort('startTime')}
+              >
+                <span className="inline-flex items-center">Date & Time <SortIcon field="startTime" sortBy={sortBy} sortDir={sortDir} /></span>
+              </th>
+              <th
+                className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
+                onClick={() => handleSort('status')}
+              >
+                <span className="inline-flex items-center">Status <SortIcon field="status" sortBy={sortBy} sortDir={sortDir} /></span>
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Attendance</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-700">Refund / Outcome</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {bookings.map((booking) => {
+              const attendance = getAttendanceLabel(booking);
+              const refund = getRefundNote(booking);
+              return (
+                <tr key={booking.id} className="hover:bg-slate-50 transition">
+                  <td className="px-4 py-3">
+                    <span
+                      className="font-mono text-xs text-indigo-700 bg-indigo-50 px-2 py-1 rounded cursor-default"
+                      title={booking.id}
+                    >
+                      {booking.id.slice(-8).toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-900">{booking.student?.user?.name || 'Unknown'}</div>
+                    <div className="text-xs text-slate-500">{booking.student?.user?.email || '—'}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-900">{booking.tutor?.user?.name || 'Unknown'}</div>
+                    <div className="text-xs text-slate-500">{booking.tutor?.user?.email || '—'}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-slate-900">{formatDate(booking.startTime)}</div>
+                    <div className="text-xs text-slate-500">to {formatDate(booking.endTime)}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusStyle(booking.status)}`}>
+                      {booking.status.replaceAll('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-medium ${booking.isDemo ? 'text-emerald-600' : 'text-slate-700'}`}>
+                      {booking.isDemo ? 'Demo' : 'Paid'}
+                    </span>
+                    {!booking.isDemo && booking.tokensCharged && (
+                      <div className="text-xs text-slate-400">{Number(booking.tokensCharged)} token(s)</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-block px-2 py-1 rounded-lg text-xs font-medium ${attendance.style}`}>
+                      {attendance.label}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {refund.note && <span className={`text-xs ${refund.style}`}>{refund.note}</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="bookings-page">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
@@ -221,6 +325,7 @@ export default function AdminBookings() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
+              data-testid="bookings-search-input"
               className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
               placeholder="Search by student or tutor email..."
               value={search}
@@ -233,6 +338,7 @@ export default function AdminBookings() {
             <select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              data-testid="bookings-status-select"
               className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
             >
               {STATUS_OPTIONS.map((opt) => (
@@ -242,6 +348,7 @@ export default function AdminBookings() {
             <select
               value={typeFilter}
               onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+              data-testid="bookings-type-select"
               className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
             >
               <option value="">All Types</option>
@@ -250,6 +357,7 @@ export default function AdminBookings() {
             </select>
             <button
               onClick={handleSearch}
+              data-testid="bookings-search-button"
               className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition"
             >
               Search
@@ -262,6 +370,7 @@ export default function AdminBookings() {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
+            data-testid="bookings-date-from-input"
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
           />
           <span className="text-sm text-slate-400">to</span>
@@ -269,16 +378,19 @@ export default function AdminBookings() {
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
+            data-testid="bookings-date-to-input"
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
           />
           <button
             onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); loadBookings(); }}
+            data-testid="bookings-clear-dates-button"
             className="text-sm text-slate-500 hover:text-slate-700 underline"
           >
             Clear dates
           </button>
           <button
             onClick={handleSearch}
+            data-testid="bookings-apply-button"
             className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition"
           >
             Apply
@@ -293,109 +405,7 @@ export default function AdminBookings() {
 
       {/* Bookings Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="text-center py-16 text-slate-500">Loading bookings...</div>
-        ) : bookings.length === 0 ? (
-          <div className="text-center py-16 text-slate-500">
-            <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm">No bookings found</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th
-                    className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
-                    onClick={() => handleSort('id')}
-                  >
-                    <span className="inline-flex items-center">Booking ID <SortIcon field="id" /></span>
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Student</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Tutor</th>
-                  <th
-                    className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
-                    onClick={() => handleSort('startTime')}
-                  >
-                    <span className="inline-flex items-center">Date & Time <SortIcon field="startTime" /></span>
-                  </th>
-                  <th
-                    className="px-4 py-3 text-left font-semibold text-slate-700 cursor-pointer select-none hover:text-indigo-600"
-                    onClick={() => handleSort('status')}
-                  >
-                    <span className="inline-flex items-center">Status <SortIcon field="status" /></span>
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Attendance</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Refund / Outcome</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {bookings.map((booking) => {
-                  const attendance = getAttendanceLabel(booking);
-                  const refund = getRefundNote(booking);
-                  return (
-                    <tr key={booking.id} className="hover:bg-slate-50 transition">
-                      <td className="px-4 py-3">
-                        <span
-                          className="font-mono text-xs text-indigo-700 bg-indigo-50 px-2 py-1 rounded cursor-default"
-                          title={booking.id}
-                        >
-                          {booking.id.slice(-8).toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-slate-900">
-                          {booking.student?.user?.name || 'Unknown'}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {booking.student?.user?.email || '—'}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-slate-900">
-                          {booking.tutor?.user?.name || 'Unknown'}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {booking.tutor?.user?.email || '—'}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-slate-900">{formatDate(booking.startTime)}</div>
-                        <div className="text-xs text-slate-500">
-                          to {formatDate(booking.endTime)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusStyle(booking.status)}`}>
-                          {booking.status.replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs font-medium ${booking.isDemo ? 'text-emerald-600' : 'text-slate-700'}`}>
-                          {booking.isDemo ? 'Demo' : 'Paid'}
-                        </span>
-                        {!booking.isDemo && booking.tokensCharged && (
-                          <div className="text-xs text-slate-400">{Number(booking.tokensCharged)} token(s)</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block px-2 py-1 rounded-lg text-xs font-medium ${attendance.style}`}>
-                          {attendance.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {refund.note && (
-                          <span className={`text-xs ${refund.style}`}>{refund.note}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {renderBookingsContent()}
 
         {/* Pagination */}
         {meta.totalPages > 1 && (
@@ -403,6 +413,7 @@ export default function AdminBookings() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
+              data-testid="bookings-prev-page-button"
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -414,6 +425,7 @@ export default function AdminBookings() {
             <button
               onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
               disabled={page >= meta.totalPages}
+              data-testid="bookings-next-page-button"
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               Next

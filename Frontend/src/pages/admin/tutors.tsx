@@ -305,7 +305,7 @@ export default function AdminTutors() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="admin-tutors-page">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Tutors</h2>
@@ -316,6 +316,7 @@ export default function AdminTutors() {
             className="border rounded-lg px-3 py-2 text-sm"
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value as any); setPage(1); }}
+            data-testid="admin-tutors-status-filter-select"
           >
             <option value="ALL">All statuses</option>
             <option value="PENDING">Pending</option>
@@ -325,13 +326,13 @@ export default function AdminTutors() {
         </div>
       </div>
 
-      {error && <div className="text-sm text-rose-600">{error}</div>}
+      {error && <div className="text-sm text-rose-600" data-testid="admin-tutors-error-alert">{error}</div>}
 
       {loading ? (
         <div className="text-slate-600">Loading tutors...</div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-sm table-fixed" style={{ minWidth: '1100px' }}>
+          <table className="w-full text-sm table-fixed" style={{ minWidth: '1100px' }} data-testid="admin-tutors-table">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="w-[140px] px-3 py-3 text-left">
@@ -387,11 +388,13 @@ export default function AdminTutors() {
                         className="min-w-0 flex-1 text-xs border rounded px-2 py-1"
                         value={nameFilter}
                         onChange={(e) => setNameFilter(e.target.value)}
+                        data-testid="admin-tutors-name-filter-input"
                       />
                       <button
                         type="button"
                         onClick={handleDropdownToggle}
                         className="text-slate-500 hover:text-slate-700 p-1"
+                        data-testid="admin-tutors-name-dropdown-button"
                       >
                         <ChevronDownIcon className="w-4 h-4" />
                       </button>
@@ -442,6 +445,7 @@ export default function AdminTutors() {
                     className="w-full min-w-0 text-xs border rounded px-2 py-1"
                     value={subjectsFilter}
                     onChange={(e) => setSubjectsFilter(e.target.value)}
+                    data-testid="admin-tutors-subjects-filter-input"
                   />
                 </th>
                 <th className="px-3 py-2"></th>
@@ -451,6 +455,7 @@ export default function AdminTutors() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={accountStatusFilter}
                     onChange={(e) => setAccountStatusFilter(e.target.value as any)}
+                    data-testid="admin-tutors-account-status-select"
                   >
                     <option value="ALL">All</option>
                     <option value="ACTIVE">Active</option>
@@ -490,6 +495,7 @@ export default function AdminTutors() {
                       className="border rounded px-2 py-1 text-xs"
                       value={t.status}
                       onChange={(e) => handleStatusChange(t.id, e.target.value as TutorStatus)}
+                      data-testid={`admin-tutors-status-select-${t.id}`}
                     >
                       <option value="PENDING">Pending</option>
                       <option value="APPROVED">Approved</option>
@@ -556,6 +562,7 @@ export default function AdminTutors() {
                       role="switch"
                       aria-checked={!!t.isTrending}
                       title={t.isTrending ? 'Remove from trending' : 'Add to trending'}
+                      data-testid={`admin-tutors-trending-toggle-${t.id}`}
                     >
                       <span
                         className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
@@ -569,6 +576,7 @@ export default function AdminTutors() {
                       <Link
                         to={`/admin/tutors/${t.id}`}
                         className="text-indigo-600 text-xs font-semibold hover:underline"
+                        data-testid={`admin-tutors-view-link-${t.id}`}
                       >
                         View Details
                       </Link>
@@ -577,6 +585,7 @@ export default function AdminTutors() {
                           className="text-green-600 text-xs font-semibold disabled:text-green-400"
                           disabled={unbanningUserId === t.user.id}
                           onClick={() => handleUnban(t.user.id)}
+                          data-testid={`admin-tutors-unblock-${t.id}`}
                         >
                           {unbanningUserId === t.user.id ? 'Unblocking...' : 'Unblock'}
                         </button>
@@ -607,6 +616,7 @@ export default function AdminTutors() {
                 setPage(1);
               }}
               className="px-2 py-1 rounded border border-slate-200 text-slate-700"
+              data-testid="admin-tutors-page-size-select"
             >
               <option value={10}>10</option>
               <option value={50}>50</option>
@@ -620,6 +630,7 @@ export default function AdminTutors() {
             onClick={() => setPage(1)}
             disabled={page === 1 || loading}
             title="First page"
+            data-testid="admin-tutors-first-page-button"
           >
             First
           </button>
@@ -628,6 +639,7 @@ export default function AdminTutors() {
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1 || loading}
             title="Previous page"
+            data-testid="admin-tutors-prev-page-button"
           >
             Previous
           </button>
@@ -636,6 +648,7 @@ export default function AdminTutors() {
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages || loading}
             title="Next page"
+            data-testid="admin-tutors-next-page-button"
           >
             Next
           </button>
@@ -644,6 +657,7 @@ export default function AdminTutors() {
             onClick={() => setPage(totalPages)}
             disabled={page === totalPages || loading}
             title="Last page"
+            data-testid="admin-tutors-last-page-button"
           >
             Last
           </button>

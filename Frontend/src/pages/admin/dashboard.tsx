@@ -87,7 +87,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-testid="dashboard-page">
       {/* Header */}
       <div>
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">Admin Dashboard</h1>
@@ -98,19 +98,19 @@ export default function AdminDashboard() {
       <div>
         <h2 className="text-lg font-semibold text-slate-900 mb-4">Key Metrics</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4" data-testid="dashboard-total-users-card">
             <div className="text-3xl font-bold text-slate-900">{stats.totals.users}</div>
             <div className="text-sm text-slate-600 mt-1">Total Users</div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4" data-testid="dashboard-revenue-card">
             <div className="text-3xl font-bold text-slate-900">{formatMoney(stats.totals.revenueInMinor)}</div>
             <div className="text-sm text-slate-600 mt-1">Revenue</div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4" data-testid="dashboard-kyc-pending-card">
             <div className="text-3xl font-bold text-indigo-600">{stats.pendingKyc}</div>
             <div className="text-sm text-slate-600 mt-1">KYC Pending</div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4" data-testid="dashboard-recent-signups-card">
             <div className="text-3xl font-bold text-slate-900">{stats.latestSignups.length}</div>
             <div className="text-sm text-slate-600 mt-1">Recent Signups</div>
           </div>
@@ -128,6 +128,7 @@ export default function AdminDashboard() {
               <Link
                 key={action.label}
                 to={action.to}
+                data-testid={`dashboard-quick-${action.label.toLowerCase()}-link`}
                 className={`${colors.bg} ${colors.border} border rounded-2xl p-6 hover:shadow-md transition-all group`}
               >
                 <div className="flex items-start justify-between mb-3">
@@ -154,6 +155,7 @@ export default function AdminDashboard() {
               <Link
                 key={tool.label}
                 to={tool.to}
+                data-testid={`dashboard-tool-${tool.label.toLowerCase().replace(/\s+/g, '-')}-link`}
                 className={`${colors.bg} ${colors.border} border rounded-xl p-4 hover:shadow-md transition-all group`}
               >
                 <div className="flex items-start justify-between mb-2">
@@ -176,7 +178,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Latest Signups Section */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm" data-testid="dashboard-recent-signups-section">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Clock className="w-5 h-5 text-slate-600" />

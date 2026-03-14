@@ -53,7 +53,7 @@ export default function RoleTermsFirstLoginModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" data-testid="role-terms-modal">
       <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="border-b border-slate-200 px-6 py-4">
           <h2 className="text-xl font-bold text-slate-900">Terms & Conditions</h2>
@@ -69,7 +69,7 @@ export default function RoleTermsFirstLoginModal({
           {role === 'STUDENT' ? <StudentTerms /> : <TutorTerms />}
 
           <p className="mt-4 text-xs text-slate-500">
-            Please also review the full policies: <a href="/terms" className="text-ocean-700 hover:underline">Terms of Use</a> and <a href="/privacy" className="text-ocean-700 hover:underline">Privacy Policy</a>.
+            Please also review the full policies: <a href="/terms" className="text-ocean-700 hover:underline" data-testid="role-terms-modal-terms-link">Terms of Use</a> and <a href="/privacy" className="text-ocean-700 hover:underline" data-testid="role-terms-modal-privacy-link">Privacy Policy</a>.
           </p>
         </div>
 
@@ -79,6 +79,7 @@ export default function RoleTermsFirstLoginModal({
             onClick={onDecline}
             disabled={submitting}
             className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            data-testid="role-terms-modal-decline-btn"
           >
             Decline & Logout
           </button>
@@ -87,6 +88,7 @@ export default function RoleTermsFirstLoginModal({
             onClick={onAccept}
             disabled={submitting}
             className="px-4 py-2 rounded-lg bg-ocean-700 text-white hover:bg-ocean-800 disabled:opacity-50"
+            data-testid="role-terms-modal-agree-btn"
           >
             {submitting ? 'Saving...' : 'I Agree'}
           </button>

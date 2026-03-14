@@ -94,6 +94,7 @@ const Testimonials: React.FC = () => {
           onClick={prev}
           disabled={!canSlide}
           className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white p-2 shadow hover:bg-slate-50 disabled:opacity-40"
+          data-testid="testimonials-prev-btn"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -102,6 +103,7 @@ const Testimonials: React.FC = () => {
           onClick={next}
           disabled={!canSlide}
           className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white p-2 shadow hover:bg-slate-50 disabled:opacity-40"
+          data-testid="testimonials-next-btn"
         >
           <ChevronRight className="h-5 w-5" />
         </button>
@@ -131,7 +133,7 @@ const Testimonials: React.FC = () => {
           We encourage all users to leave a review after their session. This feedback is invaluable for helping other students find a tutor online who is perfectly suited to their needs and learning style.
         </p>
 
-        <div className="relative mx-auto mt-10 max-w-3xl rounded-2xl bg-white p-8 shadow-md">
+        <div className="relative mx-auto mt-10 max-w-3xl rounded-2xl bg-white p-8 shadow-md" data-testid="testimonials-card">
           {content}
         </div>
       </div>

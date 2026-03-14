@@ -1,5 +1,5 @@
 // src/notifications/notifications.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import nodemailer, { Transporter } from 'nodemailer';
 import { CreateNotificationDto } from './dto/create-notification.dto';
@@ -23,7 +23,7 @@ type BookingReminderPayload = {
 };
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name);
   private readonly enabled: boolean;
   private readonly transporter?: Transporter;
@@ -44,7 +44,7 @@ export class NotificationsService {
     );
   }
 
-  constructor(private prisma: PrismaService) {
+  constructor(private readonly prisma: PrismaService) {
     this.graph = GraphEmailSender.fromEnv(this.logger) ?? undefined;
 
     this.disableNotificationEmails =
@@ -73,13 +73,7 @@ export class NotificationsService {
         auth: { user, pass },
       });
 
-      this.transporter
-        .verify()
-        .then(() => this.logger.log('SMTP transporter verified.'))
-        .catch((e: unknown) => {
-          const msg = e instanceof Error ? e.message : String(e);
-          this.logger.warn(`SMTP verify failed (continuing): ${msg}`);
-        });
+      // transporter.verify() runs in onModuleInit to avoid async in constructor
     }
 
     // ---------- SMS (Twilio) ----------
@@ -94,12 +88,25 @@ export class NotificationsService {
         const Twilio = require('twilio');
         this.twilioClient = Twilio(sid, token);
         this.logger.log('Twilio SMS is enabled.');
-      } catch (e) {
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
         this.smsEnabled = false as any;
-        this.logger.warn('Twilio module not installed; SMS disabled.');
+        this.logger.warn(`Twilio init failed: ${msg}. SMS disabled.`);
       }
     } else {
       this.logger.warn('Twilio not fully configured. SMS will be skipped.');
+    }
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (this.transporter) {
+      try {
+        await this.transporter.verify();
+        this.logger.log('SMTP transporter verified.');
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`SMTP verify failed (continuing): ${msg}`);
+      }
     }
   }
 
@@ -271,6 +278,7 @@ export class NotificationsService {
         message: dto.message,
         type: dto.type,
         bookingId: dto.bookingId,
+        link: dto.link,
       },
     });
   }
@@ -354,12 +362,14 @@ export class NotificationsService {
     userId: string,
     title: string,
     message: string,
+    link?: string,
   ) {
     return this.create({
       userId,
       title,
       message,
       type: 'SYSTEM' as any,
+      link,
     });
   }
 }

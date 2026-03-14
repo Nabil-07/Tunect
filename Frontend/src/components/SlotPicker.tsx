@@ -339,6 +339,7 @@ export default function SlotPicker({
               <button
                 key={key}
                 onClick={() => setSelectedKey(key)}
+                data-testid={`slot-picker-slot-btn-${s.id || key}`}
                 className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2 text-sm transition ${
                   active
                     ? 'border-ocean-600 bg-ocean-50 text-ocean-900'
@@ -363,8 +364,8 @@ export default function SlotPicker({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" data-testid="slot-picker">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl" data-testid="slot-picker-container">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-2">
@@ -380,6 +381,7 @@ export default function SlotPicker({
               className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
               title="Refresh availability"
               aria-label="Refresh availability"
+              data-testid="slot-picker-refresh-btn"
             >
               <RotateCw size={18} />
             </button>
@@ -387,6 +389,7 @@ export default function SlotPicker({
               onClick={onClose}
               className="rounded-lg p-2 hover:bg-slate-100"
               aria-label="Close"
+              data-testid="slot-picker-close-btn"
             >
               <X size={18} />
             </button>
@@ -410,6 +413,7 @@ export default function SlotPicker({
                     value={studySubject}
                     onChange={e => setStudySubject(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                    data-testid="slot-picker-subject-select"
                   >
                     <option value="">Select a subject…</option>
                     {tutorSubjects.map((s) => (
@@ -424,6 +428,7 @@ export default function SlotPicker({
                     onChange={e => setStudySubject(e.target.value)}
                     placeholder="e.g. Mathematics, Physics, English…"
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                    data-testid="slot-picker-subject-input"
                   />
                 )}
               </div>
@@ -437,6 +442,7 @@ export default function SlotPicker({
                     value={studyGrade}
                     onChange={e => setStudyGrade(e.target.value)}
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                    data-testid="slot-picker-grade-select"
                   >
                     <option value="">Select a grade…</option>
                     {tutorGrades.map((g) => (
@@ -451,6 +457,7 @@ export default function SlotPicker({
                     onChange={e => setStudyGrade(e.target.value)}
                     placeholder="e.g. Grade 10, A-Level, University Year 1…"
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                    data-testid="slot-picker-grade-input"
                   />
                 )}
               </div>
@@ -465,6 +472,7 @@ export default function SlotPicker({
                   onChange={e => setStudyModule(e.target.value)}
                   placeholder="e.g. Algebra, Organic Chemistry, Essay Writing…"
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                  data-testid="slot-picker-module-input"
                 />
               </div>
               {error && (
@@ -481,6 +489,7 @@ export default function SlotPicker({
           <button
             onClick={step === 'details' ? () => setStep('slots') : onClose}
             className="rounded-xl px-4 py-2 text-slate-700 hover:bg-slate-100"
+            data-testid="slot-picker-cancel-btn"
           >
             {step === 'details' ? '← Back' : 'Cancel'}
           </button>
@@ -490,6 +499,7 @@ export default function SlotPicker({
               disabled={submitting || !studySubject.trim() || !studyGrade.trim()}
               onClick={handleAssign}
               className="rounded-xl bg-ocean-700 px-4 py-2 font-medium text-white disabled:opacity-60"
+              data-testid="slot-picker-confirm-btn"
             >
               {submitting ? (
                 <span className="inline-flex items-center gap-2">
@@ -504,6 +514,7 @@ export default function SlotPicker({
               disabled={joiningWaitlist}
               onClick={handleNotifyMe}
               className="rounded-xl bg-purple-600 px-4 py-2 font-medium text-white disabled:opacity-60 flex items-center gap-2"
+              data-testid="slot-picker-notify-btn"
             >
               {joiningWaitlist ? (
                 <>
@@ -520,6 +531,7 @@ export default function SlotPicker({
               disabled={!selectedKey || submitting}
               onClick={() => setStep('details')}
               className="rounded-xl bg-ocean-700 px-4 py-2 font-medium text-white disabled:opacity-60"
+              data-testid="slot-picker-next-btn"
             >
               Next →
             </button>

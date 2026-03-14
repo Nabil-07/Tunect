@@ -456,6 +456,91 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearInterval(interval);
   }, []);
 
+  // Revalidate auth when the tab becomes active again after long inactivity.
+  useEffect(() => {
+    let alive = true;
+    let revalidating = false;
+
+    const clearSessionAndRedirect = () => {
+      hasNavigated.current = false;
+      setAuthHeader(null);
+      setToken(null);
+      setUser(null);
+      writeToken(null);
+      writeRefreshToken(null);
+      localStorage.removeItem('role');
+      nav('/login', { replace: true });
+    };
+
+    const resolveUser = (value: unknown): User => {
+      if (!value || typeof value !== 'object') return null;
+      const obj = value as Record<string, unknown>;
+      return 'user' in obj ? (obj.user as User) ?? null : (value as User);
+    };
+
+    const revalidateSession = async () => {
+      if (revalidating || loading) return;
+
+      const currentToken = readToken();
+      if (!currentToken) return;
+
+      const secondsLeft = getTimeLeftSec(currentToken);
+      const needsRefresh = secondsLeft === null || secondsLeft <= 0 || secondsLeft <= 300;
+
+      revalidating = true;
+      try {
+        if (needsRefresh) {
+          const refreshed = await refreshAccessToken();
+          if (!refreshed) {
+            if (alive) clearSessionAndRedirect();
+            return;
+          }
+          if (alive) {
+            setToken(refreshed);
+            setAuthHeader(refreshed);
+          }
+        }
+
+        const freshUser = await fetchMe();
+        const resolved = resolveUser(freshUser);
+        if (!resolved) {
+          if (alive) clearSessionAndRedirect();
+          return;
+        }
+
+        if (alive) {
+          setUser(resolved);
+          hasNavigated.current = false;
+        }
+      } catch {
+        if (alive) clearSessionAndRedirect();
+      } finally {
+        revalidating = false;
+      }
+    };
+
+    const onFocus = () => {
+      void revalidateSession();
+    };
+
+    const onVisibility = () => {
+      if (!document.hidden) {
+        void revalidateSession();
+      }
+    };
+
+    globalThis.addEventListener('focus', onFocus);
+    globalThis.addEventListener('pageshow', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      alive = false;
+      globalThis.removeEventListener('focus', onFocus);
+      globalThis.removeEventListener('pageshow', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [loading, nav]);
+
   // TODO: Next Release - Multi-account switching
   // Multi-account state
   // const [accounts, setAccounts] = useState<StoredAccount[]>([]);

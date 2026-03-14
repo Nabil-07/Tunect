@@ -45,8 +45,8 @@ export default function RescheduleModal({ bookingId, tutorId, onClose, onResched
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-      <div className="bg-white rounded-lg shadow-lg w-96 p-6">
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50" data-testid="reschedule-modal">
+      <div className="bg-white rounded-lg shadow-lg w-96 p-6" data-testid="reschedule-modal-container">
         <h2 className="text-lg font-semibold mb-4">Reschedule Booking</h2>
         {slots.length === 0 ? (
           <p className="text-gray-500">No available slots</p>
@@ -69,6 +69,7 @@ export default function RescheduleModal({ bookingId, tutorId, onClose, onResched
                   onClick={() => reschedule(s.id)}
                   disabled={loading}
                   className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                  data-testid={`reschedule-modal-slot-btn-${s.id}`}
                 >
                   Reschedule
                 </button>
@@ -80,6 +81,7 @@ export default function RescheduleModal({ bookingId, tutorId, onClose, onResched
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300"
+            data-testid="reschedule-modal-cancel-btn"
           >
             Cancel
           </button>

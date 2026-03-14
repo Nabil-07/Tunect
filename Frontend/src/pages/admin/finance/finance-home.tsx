@@ -26,7 +26,7 @@ export default function FinanceHome() {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-testid="finance-home-page">
       <div>
         <h1 className="text-3xl font-bold">Finance & Payments</h1>
         <p className="text-slate-600 mt-2">Manage platform finances, payments, and balance sheets</p>
@@ -42,6 +42,7 @@ export default function FinanceHome() {
               key={option.path}
               onClick={() => !isDisabled && navigate(option.path)}
               disabled={isDisabled}
+              data-testid={`finance-home-nav-${option.path.replace(/\//g, '-').replace(/^-/, '')}`}
               className={`group rounded-2xl border-2 p-6 transition-all text-left ${
                 isDisabled
                   ? 'border-slate-100 bg-slate-50 cursor-not-allowed opacity-60'

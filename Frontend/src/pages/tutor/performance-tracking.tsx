@@ -372,6 +372,7 @@ export default function PerformanceTracking() {
                     type="button"
                     onClick={() => handleEdit(report)}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    data-testid="tutor-performance-tracking-edit-button"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     Edit
@@ -381,6 +382,7 @@ export default function PerformanceTracking() {
                     onClick={() => handleDelete(report.id)}
                     disabled={deletingId === report.id}
                     className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                    data-testid="tutor-performance-tracking-delete-button"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     {deletingId === report.id ? 'Deleting...' : 'Delete'}
@@ -395,7 +397,7 @@ export default function PerformanceTracking() {
   }
 
   return (
-    <main className="container-px mx-auto py-8">
+    <main className="container-px mx-auto py-8" data-testid="tutor-performance-tracking-page">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Performance Tracking</h1>
@@ -406,6 +408,7 @@ export default function PerformanceTracking() {
         <button
           onClick={() => setShowForm(!showForm)}
           className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          data-testid="tutor-performance-tracking-create-report-button"
         >
           <Plus className="h-4 w-4" />
           Create Report
@@ -414,12 +417,12 @@ export default function PerformanceTracking() {
 
       {/* Alerts */}
       {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" data-testid="tutor-performance-tracking-error-alert">
           {error}
         </div>
       )}
       {success && (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700" data-testid="tutor-performance-tracking-success-alert">
           {success}
         </div>
       )}
@@ -430,7 +433,7 @@ export default function PerformanceTracking() {
           <h2 className="text-lg font-semibold mb-4">
             {editingReportId ? 'Edit Performance Report' : 'Create Performance Report'}
           </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" data-testid="tutor-performance-tracking-form">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="block text-sm font-medium text-slate-700 mb-1">
@@ -443,6 +446,7 @@ export default function PerformanceTracking() {
                   onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
                   disabled={!!editingReportId}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  data-testid="tutor-performance-tracking-student-select"
                 >
                   <option value="">Select a student</option>
                   {students.map((student) => (
@@ -464,6 +468,7 @@ export default function PerformanceTracking() {
                   value={formData.period}
                   onChange={(e) => setFormData({ ...formData, period: e.target.value })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  data-testid="tutor-performance-tracking-period-input"
                 />
               </div>
             </div>
@@ -481,6 +486,7 @@ export default function PerformanceTracking() {
                   value={formData.totalSessions}
                   onChange={(e) => setFormData({ ...formData, totalSessions: Number(e.target.value) })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  data-testid="tutor-performance-tracking-total-sessions-input"
                 />
               </div>
 
@@ -497,6 +503,7 @@ export default function PerformanceTracking() {
                   value={formData.totalHours}
                   onChange={(e) => setFormData({ ...formData, totalHours: Number(e.target.value) })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  data-testid="tutor-performance-tracking-total-hours-input"
                 />
               </div>
 
@@ -513,6 +520,7 @@ export default function PerformanceTracking() {
                   value={formData.averageRating}
                   onChange={(e) => setFormData({ ...formData, averageRating: Number(e.target.value) })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  data-testid="tutor-performance-tracking-average-rating-input"
                 />
               </div>
 
@@ -528,6 +536,7 @@ export default function PerformanceTracking() {
                   value={formData.completionRate}
                   onChange={(e) => setFormData({ ...formData, completionRate: Number(e.target.value) })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  data-testid="tutor-performance-tracking-completion-rate-input"
                 />
               </div>
             </div>
@@ -543,6 +552,7 @@ export default function PerformanceTracking() {
                 onChange={(e) => setFormData({ ...formData, strengths: e.target.value })}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 placeholder="e.g., Problem solving, Quick learner, Consistent practice"
+                data-testid="tutor-performance-tracking-strengths-input"
               />
             </div>
 
@@ -557,6 +567,7 @@ export default function PerformanceTracking() {
                 onChange={(e) => setFormData({ ...formData, areasForImprovement: e.target.value })}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 placeholder="e.g., Time management, Advanced concepts, Test preparation"
+                data-testid="tutor-performance-tracking-areas-input"
               />
             </div>
 
@@ -571,6 +582,7 @@ export default function PerformanceTracking() {
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 placeholder="General observations and recommendations"
                 rows={3}
+                data-testid="tutor-performance-tracking-notes-input"
               />
             </div>
 
@@ -579,6 +591,7 @@ export default function PerformanceTracking() {
                 type="submit"
                 disabled={saving}
                 className="rounded-xl bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                data-testid="tutor-performance-tracking-submit-button"
               >
                 {submitButtonLabel}
               </button>
@@ -586,6 +599,7 @@ export default function PerformanceTracking() {
                 type="button"
                 onClick={resetForm}
                 className="rounded-xl border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                data-testid="tutor-performance-tracking-cancel-button"
               >
                 Cancel
               </button>
@@ -605,6 +619,7 @@ export default function PerformanceTracking() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by student or period..."
               className="w-full rounded-xl border border-slate-300 pl-10 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+              data-testid="tutor-performance-tracking-search-input"
             />
           </div>
         </div>
@@ -613,6 +628,7 @@ export default function PerformanceTracking() {
           value={selectedStudent}
           onChange={(e) => setSelectedStudent(e.target.value)}
           className="rounded-xl border border-slate-300 px-3 py-2 text-sm min-w-[200px]"
+          data-testid="tutor-performance-tracking-student-filter-select"
         >
           <option value="">All students</option>
           {students.map((student) => (

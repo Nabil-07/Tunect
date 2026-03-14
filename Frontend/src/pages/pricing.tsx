@@ -134,7 +134,7 @@ const faqSchema = {
 /* ── component ──────────────────────────────────────────────────── */
 export default function Pricing() {
   return (
-    <main className="bg-white">
+    <main className="bg-white" data-testid="pricing-page">
       <SEO
         title="Pricing & Tokens | Affordable Online Tutoring | Tunect"
         description="Affordable online tutoring pricing. First session free! Buy tokens to book 1-on-1 sessions with verified tutors. No subscriptions, no hidden fees. Pay per hour."
@@ -158,12 +158,14 @@ export default function Pricing() {
             <Link
               to="/find-tutors"
               className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-base font-semibold"
+              data-testid="pricing-find-tutor-link"
             >
               Find a tutor <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               to="/how-it-works"
               className="btn-ghost inline-flex items-center gap-2 px-6 py-3 text-base font-semibold"
+              data-testid="pricing-how-it-works-link"
             >
               How it works
             </Link>
@@ -260,7 +262,7 @@ export default function Pricing() {
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" data-testid="pricing-comparison-table">
               <thead>
                 <tr className="bg-slate-100">
                   <th className="px-6 py-3 text-left font-semibold text-slate-700">Feature</th>
@@ -351,12 +353,14 @@ export default function Pricing() {
             <Link
               to="/find-tutors"
               className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-base font-semibold text-ocean-700 shadow hover:bg-ocean-50 transition"
+              data-testid="pricing-cta-find-tutor-link"
             >
               Find a tutor <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               to="/signup"
               className="inline-flex items-center gap-2 rounded-xl border-2 border-white/30 px-6 py-3 text-base font-semibold text-white hover:bg-white/10 transition"
+              data-testid="pricing-cta-signup-link"
             >
               Sign up free
             </Link>

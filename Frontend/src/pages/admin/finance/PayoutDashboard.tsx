@@ -140,7 +140,7 @@ export default function PayoutDashboard() {
   const totalPayout = entries.reduce((sum, entry) => sum + Number(entry.delta), 0);
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6" data-testid="payout-dashboard-page">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-800 mb-2">Tutor Payout Dashboard</h1>
         <p className="text-slate-600">
@@ -182,6 +182,7 @@ export default function PayoutDashboard() {
       <div className="mb-6 flex items-center justify-between">
         <button
           onClick={() => setFilterOpen(!filterOpen)}
+          data-testid="payout-dashboard-filters-button"
           className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
         >
           <Filter className="h-4 w-4" />
@@ -189,6 +190,7 @@ export default function PayoutDashboard() {
         </button>
         <button
           onClick={exportToCSV}
+          data-testid="payout-dashboard-export-button"
           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
         >
           <Download className="h-4 w-4" />
@@ -198,7 +200,7 @@ export default function PayoutDashboard() {
 
       {/* Filter Panel */}
       {filterOpen && (
-        <div className="mb-6 bg-white border border-slate-200 rounded-lg p-6">
+        <div className="mb-6 bg-white border border-slate-200 rounded-lg p-6" data-testid="payout-dashboard-filter-panel">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Filter Payouts</h3>
             <button onClick={() => setFilterOpen(false)}>
@@ -214,6 +216,7 @@ export default function PayoutDashboard() {
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                data-testid="payout-dashboard-start-date-input"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -225,6 +228,7 @@ export default function PayoutDashboard() {
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                data-testid="payout-dashboard-end-date-input"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -235,6 +239,7 @@ export default function PayoutDashboard() {
               <select
                 value={filters.reason}
                 onChange={(e) => setFilters({ ...filters, reason: e.target.value })}
+                data-testid="payout-dashboard-reason-select"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">All</option>
@@ -252,12 +257,14 @@ export default function PayoutDashboard() {
                 endDate: formatDate(getEndOfWeek(new Date()), 'yyyy-MM-dd'),
                 reason: '',
               })}
+              data-testid="payout-dashboard-reset-button"
               className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
             >
               Reset
             </button>
             <button
               onClick={applyFilters}
+              data-testid="payout-dashboard-apply-button"
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               Apply Filters

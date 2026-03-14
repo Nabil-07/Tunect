@@ -86,7 +86,7 @@ export default function TutorNotifications() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto" data-testid="tutor-notifications-page">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Bell className="h-7 w-7 text-indigo-600" />
@@ -96,6 +96,7 @@ export default function TutorNotifications() {
           <button
             onClick={markAllAsRead}
             className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            data-testid="tutor-notifications-mark-all-read-button"
           >
             Mark all as read
           </button>
@@ -126,6 +127,7 @@ export default function TutorNotifications() {
                       to={`/tutor/sessions?focus=${notification.bookingId}`}
                       className="text-slate-900 hover:text-indigo-600"
                       onClick={() => !notification.isRead && markAsRead(notification.id)}
+                      data-testid="tutor-notifications-booking-link"
                     >
                       <p className="text-sm leading-relaxed">
                         {notification.message}
@@ -147,6 +149,7 @@ export default function TutorNotifications() {
                       onClick={() => markAsRead(notification.id)}
                       className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-600 transition"
                       title="Mark as read"
+                      data-testid="tutor-notifications-mark-read-button"
                     >
                       <Check className="h-4 w-4" />
                     </button>
@@ -155,6 +158,7 @@ export default function TutorNotifications() {
                     onClick={() => deleteNotification(notification.id)}
                     className="p-1.5 rounded-lg hover:bg-red-100 text-red-600 transition"
                     title="Delete"
+                    data-testid="tutor-notifications-delete-button"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

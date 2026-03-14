@@ -171,10 +171,10 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload, 
 
   return (
     <div className="fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-xl rounded-xl bg-white shadow-xl border border-slate-200">
+      <div className="w-full max-w-xl rounded-xl bg-white shadow-xl border border-slate-200" data-testid="avatar-upload-modal">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-900">{repositionMode ? 'Adjust Position' : 'Change Photo'}</h3>
-          <button type="button" onClick={close} className="text-slate-500 hover:text-slate-700">✕</button>
+          <button type="button" onClick={close} className="text-slate-500 hover:text-slate-700" data-testid="avatar-upload-modal-close-btn">✕</button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -184,6 +184,7 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload, 
                 type="button"
                 onClick={startCamera}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-left font-medium hover:bg-slate-50"
+                data-testid="avatar-upload-modal-camera-btn"
               >
                 Use Camera
               </button>
@@ -191,6 +192,7 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload, 
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-left font-medium hover:bg-slate-50"
+                data-testid="avatar-upload-modal-choose-file-btn"
               >
                 Choose from Device
               </button>
@@ -200,6 +202,7 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload, 
                 accept="image/*"
                 className="hidden"
                 onChange={onSelectDeviceFile}
+                data-testid="avatar-upload-modal-file-input"
               />
             </div>
           )}
@@ -224,6 +227,7 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload, 
                   type="button"
                   onClick={captureFromCamera}
                   className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                  data-testid="avatar-upload-modal-capture-btn"
                 >
                   Capture
                 </button>
@@ -277,6 +281,7 @@ export default function AvatarUploadModal({ open, uploading, onClose, onUpload, 
                   onClick={submitCrop}
                   disabled={uploading}
                   className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  data-testid="avatar-upload-modal-upload-btn"
                 >
                   {submitLabel}
                 </button>

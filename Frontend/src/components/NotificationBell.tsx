@@ -7,9 +7,11 @@ import { useAuth } from "../contexts/AuthContext";
 
 type Notification = {
   id: string;
+  title?: string;
   message: string;
   createdAt: string;
   bookingId?: string;
+  link?: string;
   isRead?: boolean;
 };
 
@@ -67,11 +69,59 @@ export default function NotificationBell() {
 
   const unreadCount = items.filter(n => !n.isRead).length;
 
+  function getViewAllPath(): string {
+    if (user?.role === 'ADMIN') return '/admin/notifications';
+    if (user?.role === 'TUTOR') return '/tutor/notifications';
+    return '/student/notifications';
+  }
+
+  function renderNotificationContent(n: Notification) {
+    const unreadDot = !n.isRead && (
+      <span className="inline-block ml-2 w-2 h-2 bg-blue-500 rounded-full" />
+    );
+    if (n.link) {
+      return (
+        <Link
+          to={n.link}
+          onClick={() => { handleNotificationClick(n); setOpen(false); }}
+          className="block"
+        >
+          {n.message}
+          {unreadDot}
+        </Link>
+      );
+    }
+    if (n.bookingId) {
+      return (
+        <Link
+          to={`/student/bookings?focus=${n.bookingId}`}
+          onClick={() => { handleNotificationClick(n); setOpen(false); }}
+          className="block"
+          data-testid={`notification-bell-item-link-${n.id}`}
+        >
+          {n.message}
+          {unreadDot}
+        </Link>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="w-full text-left"
+        onClick={() => handleNotificationClick(n)}
+      >
+        {n.message}
+        {unreadDot}
+      </button>
+    );
+  }
+
   return (
-    <div className="relative">
+    <div className="relative" data-testid="notification-bell">
       <button
         className="relative p-2"
         onClick={() => setOpen((prev) => !prev)}
+        data-testid="notification-bell-btn"
       >
         <Bell className="w-6 h-6" />
         {unreadCount > 0 && (
@@ -82,7 +132,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-72 bg-white shadow-lg rounded-lg border z-50">
+        <div className="absolute right-0 mt-2 w-72 bg-white shadow-lg rounded-lg border z-50" data-testid="notification-bell-dropdown">
           {items.length === 0 ? (
             <p className="p-3 text-sm text-gray-500">No notifications</p>
           ) : (
@@ -94,38 +144,17 @@ export default function NotificationBell() {
                     n.isRead ? '' : 'bg-blue-50 font-medium'
                   }`}
                 >
-                  {n.bookingId ? (
-                    <Link
-                      to={`/student/bookings?focus=${n.bookingId}`}
-                      onClick={() => { handleNotificationClick(n); setOpen(false); }}
-                      className="block"
-                    >
-                      {n.message}
-                      {!n.isRead && (
-                        <span className="inline-block ml-2 w-2 h-2 bg-blue-500 rounded-full" />
-                      )}
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      className="w-full text-left"
-                      onClick={() => handleNotificationClick(n)}
-                    >
-                      {n.message}
-                      {!n.isRead && (
-                        <span className="inline-block ml-2 w-2 h-2 bg-blue-500 rounded-full" />
-                      )}
-                    </button>
-                  )}
+                  {renderNotificationContent(n)}
                 </li>
               ))}
             </ul>
           )}
           <div className="p-2 text-center">
             <Link
-              to={user?.role === 'TUTOR' ? "/tutor/notifications" : "/student/notifications"}
+              to={getViewAllPath()}
               className="text-blue-600 text-sm hover:underline"
               onClick={() => setOpen(false)}
+              data-testid="notification-bell-view-all-link"
             >
               View all
             </Link>

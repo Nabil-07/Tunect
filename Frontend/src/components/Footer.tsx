@@ -43,6 +43,7 @@ export default function Footer() {
     <footer
       className="bg-[#0b1120] text-slate-200"
       aria-labelledby="footer-heading"
+      data-testid="footer"
     >
       <h2 id="footer-heading" className="sr-only">Footer</h2>
 
@@ -76,6 +77,7 @@ export default function Footer() {
                   rel="noopener noreferrer"
                   aria-label={s.label}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
+                  data-testid={`footer-social-${s.label.toLowerCase()}-link`}
                 >
                   {s.icon === "youtube" ? (
                     <svg
@@ -122,14 +124,14 @@ export default function Footer() {
           <nav aria-label="Navigation">
             <h3 className="text-lg font-semibold text-white">Navigation</h3>
             <ul className="mt-4 space-y-3 text-[15px]">
-              <li><Link to="/" className="text-slate-300 hover:text-white transition-colors">Home</Link></li>
-              <li><Link to="/about" className="text-slate-300 hover:text-white transition-colors">About</Link></li>
-              <li><Link to="/find-tutors" className="text-slate-300 hover:text-white transition-colors">Find Tutors</Link></li>
-              <li><Link to="/trending-tutors" className="text-slate-300 hover:text-white transition-colors">Trending Tutors</Link></li>
-              <li><Link to="/become-tutor" className="text-slate-300 hover:text-white transition-colors">Become a Tutor</Link></li>
-              <li><Link to="/how-it-works" className="text-slate-300 hover:text-white transition-colors">How It Works</Link></li>
-              <li><Link to="/pricing" className="text-slate-300 hover:text-white transition-colors">Pricing</Link></li>
-              <li><Link to="/blogs" className="text-slate-300 hover:text-white transition-colors">Blogs</Link></li>
+              <li><Link to="/" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-home-link">Home</Link></li>
+              <li><Link to="/about" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-about-link">About</Link></li>
+              <li><Link to="/find-tutors" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-find-tutors-link">Find Tutors</Link></li>
+              <li><Link to="/trending-tutors" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-trending-tutors-link">Trending Tutors</Link></li>
+              <li><Link to="/become-tutor" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-become-tutor-link">Become a Tutor</Link></li>
+              <li><Link to="/how-it-works" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-how-it-works-link">How It Works</Link></li>
+              <li><Link to="/pricing" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-pricing-link">Pricing</Link></li>
+              <li><Link to="/blogs" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-blogs-link">Blogs</Link></li>
             </ul>
           </nav>
 
@@ -137,11 +139,11 @@ export default function Footer() {
           <nav aria-label="Popular Subjects">
             <h3 className="text-lg font-semibold text-white">Popular Subjects</h3>
             <ul className="mt-4 space-y-3 text-[15px]">
-              <li><Link to="/online-maths-tutor" className="text-slate-300 hover:text-white transition-colors">Online Maths Tutor</Link></li>
-              <li><Link to="/online-physics-tutor" className="text-slate-300 hover:text-white transition-colors">Online Physics Tutor</Link></li>
-              <li><Link to="/online-chemistry-tutor" className="text-slate-300 hover:text-white transition-colors">Online Chemistry Tutor</Link></li>
-              <li><Link to="/online-biology-tutor" className="text-slate-300 hover:text-white transition-colors">Online Biology Tutor</Link></li>
-              <li><Link to="/online-english-tutor" className="text-slate-300 hover:text-white transition-colors">Online English Tutor</Link></li>
+              <li><Link to="/online-maths-tutor" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-maths-tutor-link">Online Maths Tutor</Link></li>
+              <li><Link to="/online-physics-tutor" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-physics-tutor-link">Online Physics Tutor</Link></li>
+              <li><Link to="/online-chemistry-tutor" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-chemistry-tutor-link">Online Chemistry Tutor</Link></li>
+              <li><Link to="/online-biology-tutor" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-biology-tutor-link">Online Biology Tutor</Link></li>
+              <li><Link to="/online-english-tutor" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-english-tutor-link">Online English Tutor</Link></li>
             </ul>
           </nav>
 
@@ -149,14 +151,14 @@ export default function Footer() {
           <nav aria-label="Platform">
             <h3 className="text-lg font-semibold text-white">Platform</h3>
             <ul className="mt-4 space-y-3 text-[15px]">
-              <li><Link to="/student/dashboard" className="text-slate-300 hover:text-white transition-colors">Student Dashboard</Link></li>
-              <li><Link to="/tutor/dashboard" className="text-slate-300 hover:text-white transition-colors">Tutor Dashboard</Link></li>
-              <li><Link to="/support" className="text-slate-300 hover:text-white transition-colors">Help &amp; Support</Link></li>
+              <li><Link to="/student/dashboard" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-student-dashboard-link">Student Dashboard</Link></li>
+              <li><Link to="/tutor/dashboard" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-tutor-dashboard-link">Tutor Dashboard</Link></li>
+              <li><Link to="/support" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-support-link">Help &amp; Support</Link></li>
 
               <li className="my-2 border-t border-white/10 pt-4" />
 
-              <li><Link to="/privacy" className="text-slate-300 hover:text-white transition-colors">Privacy Policy</Link></li>
-              <li><Link to="/terms" className="text-slate-300 hover:text-white transition-colors">Terms of Use</Link></li>
+              <li><Link to="/privacy" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-privacy-link">Privacy Policy</Link></li>
+              <li><Link to="/terms" className="text-slate-300 hover:text-white transition-colors" data-testid="footer-terms-link">Terms of Use</Link></li>
             </ul>
           </nav>
 
@@ -198,7 +200,7 @@ export default function Footer() {
         <div className="pt-6 text-sm text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>© {year} Tunect. All rights reserved.</p>
           <div className="flex items-center gap-4">
-            <Link to="/blogs" className="hover:text-white transition-colors">
+            <Link to="/blogs" className="hover:text-white transition-colors" data-testid="footer-bottom-blogs-link">
               Blogs
             </Link>
             <p>Made with <span className="mx-1 text-rose-400">♥</span> for global education.</p>

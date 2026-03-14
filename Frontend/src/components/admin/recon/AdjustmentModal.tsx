@@ -33,14 +33,14 @@ export default function AdjustmentModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg border shadow-lg">
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" data-testid="adjustment-modal">
+      <div className="bg-white rounded-2xl w-full max-w-lg border shadow-lg" data-testid="adjustment-modal-container">
         <div className="px-5 py-4 border-b flex items-center justify-between">
           <div className="font-semibold">New Adjustment</div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-800">✕</button>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-800" data-testid="adjustment-modal-close-btn">✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3" data-testid="adjustment-modal-form">
           <div className="text-sm text-slate-600">Date: <span className="font-medium">{date}</span></div>
 
           <div>
@@ -50,6 +50,7 @@ export default function AdjustmentModal({
               value={ref}
               onChange={(e) => setRef(e.target.value)}
               placeholder="Txn ref to attach (optional)"
+              data-testid="adjustment-modal-ref-input"
             />
           </div>
 
@@ -61,6 +62,7 @@ export default function AdjustmentModal({
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g., Bank charges, TDS, gateway fee variance"
               required
+              data-testid="adjustment-modal-reason-input"
             />
           </div>
 
@@ -74,6 +76,7 @@ export default function AdjustmentModal({
                 value={amount}
                 onChange={(e) => setAmount(Number(e.target.value))}
                 required
+                data-testid="adjustment-modal-amount-input"
               />
             </div>
             <div>
@@ -82,6 +85,7 @@ export default function AdjustmentModal({
                 className="w-full h-10 px-3 rounded-lg border"
                 value={side}
                 onChange={(e) => setSide(e.target.value as any)}
+                data-testid="adjustment-modal-side-select"
               >
                 <option value="BANK">Bank</option>
                 <option value="GATEWAY">Gateway</option>
@@ -92,11 +96,12 @@ export default function AdjustmentModal({
           {err && <div className="text-sm text-rose-600">{err}</div>}
 
           <div className="pt-3 flex items-center justify-end gap-2">
-            <button type="button" onClick={onClose} className="h-10 px-3 rounded-lg border">Cancel</button>
+            <button type="button" onClick={onClose} className="h-10 px-3 rounded-lg border" data-testid="adjustment-modal-cancel-btn">Cancel</button>
             <button
               type="submit"
               disabled={busy}
               className="h-10 px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+              data-testid="adjustment-modal-submit-btn"
             >
               {busy ? 'Saving…' : 'Create Adjustment'}
             </button>

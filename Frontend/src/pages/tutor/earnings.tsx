@@ -105,38 +105,38 @@ ${r.paidAt ? `<div class="row"><span class="label">Paid On</span><span class="va
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-4">
+    <div className="p-4 sm:p-6 space-y-4" data-testid="tutor-earnings-page">
       <div>
         <h2 className="text-xl sm:text-2xl font-bold">Earnings</h2>
         <p className="text-slate-600 text-sm sm:text-base">Your wallet balance, recent earnings and payouts.</p>
       </div>
 
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="rounded-2xl border bg-white shadow-sm p-4">
+        <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-total-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Total earnings</div>
           <div className="text-xl font-bold mt-2">
             {loadingWallet || loadingPayouts ? '—' : formatCurrency(totalEarnings)}
           </div>
         </div>
-        <div className="rounded-2xl border bg-white shadow-sm p-4">
+        <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-unpaid-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Unpaid amount</div>
           <div className="text-xl font-bold mt-2">
             {loadingWallet ? '—' : formatCurrency(unpaidAmount)}
           </div>
         </div>
-        <div className="rounded-2xl border bg-white shadow-sm p-4">
+        <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-next-payout-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Next payout date</div>
           <div className="text-base font-semibold mt-2">
             {nextPayoutDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
           </div>
         </div>
-        <div className="rounded-2xl border bg-white shadow-sm p-4">
+        <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-total-payout-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Total payout</div>
           <div className="text-xl font-bold mt-2">
             {loadingPayouts ? '—' : formatCurrency(totalPayout)}
           </div>
         </div>
-        <div className="rounded-2xl border bg-white shadow-sm p-4">
+        <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-recent-transfer-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Recent transfer</div>
           <div className="text-sm font-semibold mt-2">
             {loadingPayouts || !recentTransfer ? '—' : formatCurrency(Number(recentTransfer.amount))}
@@ -147,7 +147,7 @@ ${r.paidAt ? `<div class="row"><span class="label">Paid On</span><span class="va
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-white shadow-sm p-4">
+      <section className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-wallet-section">
         <div className="text-sm text-slate-600">Wallet balance</div>
         {loadingWallet ? (
           <div className="h-12 mt-1 rounded animate-pulse bg-slate-100" />
@@ -160,7 +160,7 @@ ${r.paidAt ? `<div class="row"><span class="label">Paid On</span><span class="va
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <section className="rounded-2xl border bg-white shadow-sm">
+        <section className="rounded-2xl border bg-white shadow-sm" data-testid="tutor-earnings-recent-earnings-section">
           <div className="border-b px-4 py-3 font-semibold">Recent earnings</div>
           <div className="p-4">
             {loadingLedger ? (
@@ -183,7 +183,7 @@ ${r.paidAt ? `<div class="row"><span class="label">Paid On</span><span class="va
           </div>
         </section>
 
-        <section className="rounded-2xl border bg-white shadow-sm">
+        <section className="rounded-2xl border bg-white shadow-sm" data-testid="tutor-earnings-payouts-section">
           <div className="border-b px-4 py-3 font-semibold">Payouts</div>
           <div className="p-4">
             {loadingPayouts ? (
@@ -218,6 +218,7 @@ ${r.paidAt ? `<div class="row"><span class="label">Paid On</span><span class="va
                         <button
                           onClick={() => downloadReceipt(p.id)}
                           className="text-xs text-indigo-600 hover:text-indigo-800 font-medium mt-1 inline-flex items-center gap-1"
+                          data-testid="tutor-earnings-download-receipt-button"
                         >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                           Receipt

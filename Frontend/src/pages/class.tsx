@@ -229,7 +229,7 @@ export default function ClassPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10">
+    <div className="max-w-4xl mx-auto px-4 py-10" data-testid="class-page">
       <div className="flex items-center justify-between mb-6">
         <div>
           <p className="text-sm text-slate-500">Booking</p>
@@ -239,6 +239,7 @@ export default function ClassPage() {
         <button
           onClick={refresh}
           className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          data-testid="class-refresh-button"
         >
           <RefreshCcw className="h-4 w-4" /> Refresh
         </button>
@@ -303,6 +304,7 @@ export default function ClassPage() {
               onClick={handleOpenClassroom}
               disabled={!meetingUrl}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-white font-medium hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-600"
+              data-testid="class-join-button"
             >
               <Video className="h-5 w-5" />
               {meetingUrl ? (isLivekit ? "Open Classroom" : "Join Class") : "No meeting link"}
@@ -324,6 +326,7 @@ export default function ClassPage() {
                   showSuccess("Copied meeting link");
                 }}
                 className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100"
+                data-testid="class-copy-link-button"
               >
                 <Copy className="h-4 w-4" /> Copy
               </button>
@@ -347,6 +350,7 @@ export default function ClassPage() {
                   onClick={downloadNotes}
                   disabled={downloadingPdf}
                   className="inline-flex items-center gap-1 shrink-0 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500"
+                  data-testid="class-download-notes-button"
                 >
                   <Download className="h-4 w-4" /> {downloadingPdf ? "Generating…" : "Download"}
                 </button>
@@ -368,6 +372,7 @@ export default function ClassPage() {
                 <button
                   onClick={() => navigate(`/tutor/performance-tracking?bookingId=${bookingId}&studentId=${data.studentId}`)}
                   className="inline-flex items-center gap-1 shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                  data-testid="class-create-report-button"
                 >
                   <FileText className="h-4 w-4" /> Create Report
                 </button>
@@ -379,7 +384,7 @@ export default function ClassPage() {
 
       {showJoinModal && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" data-testid="class-join-modal">
             <h3 className="text-lg font-semibold text-slate-900">Classroom not open yet</h3>
             <p className="mt-2 text-sm text-slate-600">{joinMessage || "Please wait until the scheduled time."}</p>
             <div className="mt-4 flex justify-end">
@@ -387,6 +392,7 @@ export default function ClassPage() {
                 type="button"
                 onClick={() => setShowJoinModal(false)}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+                data-testid="class-join-modal-ok-button"
               >
                 Ok
               </button>

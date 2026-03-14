@@ -69,6 +69,14 @@ function writeSearchHistory(entry: TutorSearchHistoryEntry) {
   }
 }
 
+function applyDemoStatuses(items: TutorWithDemo[], map: Record<string, boolean>): TutorWithDemo[] {
+  return items.map((t) => ({ ...t, demoUsed: !!map[t.id] }));
+}
+
+function applyDemoStatusForOne(items: TutorWithDemo[], tutorId: string, used: boolean): TutorWithDemo[] {
+  return items.map((t) => (t.id === tutorId ? { ...t, demoUsed: used } : t));
+}
+
 export default function FindTutors() {
   const [sp, setSp] = useSearchParams();
   const { currency: displayCurrency, rates } = useDisplayCurrency();
@@ -88,8 +96,8 @@ export default function FindTutors() {
   // controlled price inputs (in display currency)
   const [priceMinStr, setPriceMinStr] = useState(sp.get('priceMin') ?? '');
   const [priceMaxStr, setPriceMaxStr] = useState(sp.get('priceMax') ?? '');
-  const priceMinDisplay = priceMinStr !== '' ? Number(priceMinStr) : undefined;
-  const priceMaxDisplay = priceMaxStr !== '' ? Number(priceMaxStr) : undefined;
+  const priceMinDisplay = priceMinStr === '' ? undefined : Number(priceMinStr);
+  const priceMaxDisplay = priceMaxStr === '' ? undefined : Number(priceMaxStr);
 
   const r = (code: string) => rates[code] ?? 1; // USD->code
   const toInr = (amt?: number) =>
@@ -186,7 +194,7 @@ export default function FindTutors() {
           const map = await getDemoStatusesForTutors(ids);
           if (!mounted) return;
 
-          setItems((prev) => prev.map((t) => ({ ...t, demoUsed: !!map[t.id] })));
+          setItems((prev) => applyDemoStatuses(prev, map));
         }
       } catch {
         if (mounted) setErr('Could not load tutors.');
@@ -224,23 +232,21 @@ export default function FindTutors() {
       // Refresh demo status for the specific tutor
       try {
         const used = await getDemoStatusForTutor(tutorId);
-        setItems((prev) => prev.map((t) => 
-          t.id === tutorId ? { ...t, demoUsed: used } : t
-        ));
+        setItems((prev) => applyDemoStatusForOne(prev, tutorId, used));
       } catch (e) {
         console.error('Failed to refresh demo status:', e);
       }
     };
 
-    window.addEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
+    globalThis.addEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
     return () => {
-      window.removeEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
+      globalThis.removeEventListener('demo-status-changed', handleDemoStatusChange as unknown as EventListener);
     };
   }, [isLoggedIn]);
 
   const setParam = (k: string, v?: string) => {
     const nxt = new URLSearchParams(sp);
-    if (v && v.length) nxt.set(k, v);
+    if (v?.length) nxt.set(k, v);
     else nxt.delete(k);
     if (k !== 'page') nxt.set('page', '1');
     setSp(nxt);
@@ -276,17 +282,48 @@ export default function FindTutors() {
   }, [subject, q]);
 
   // count active filters (excluding search text)
-  const activeFilterCount = [subject, classTeach, board, language, minRating > 0 ? '1' : '', priceMinStr, priceMaxStr, sort !== 'rating_desc' ? '1' : ''].filter(Boolean).length;
+  const activeFilterCount = [subject, classTeach, board, language, minRating > 0 ? '1' : '', priceMinStr, priceMaxStr, sort === 'rating_desc' ? '' : '1'].filter(Boolean).length;
 
   // mobile filter toggle
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  const findTutorsPath = sp.toString() ? `/find-tutors?${sp.toString()}` : '/find-tutors';
+
+  const renderTutorGrid = () => {
+    if (loading) {
+      const skeletonCount = Math.min(pageSize, 12);
+      const skeletonKeys = Array.from({ length: skeletonCount }, (_, i) => `skeleton-slot-${i}`);
+      return skeletonKeys.map((key) => (
+        <div key={key} className="space-y-2">
+          <TutorCardSkeleton />
+        </div>
+      ));
+    }
+    if (items.length > 0) {
+      return items.map((t) => (
+        <div key={t.id}>
+          <TutorCard tutor={t} searchSubject={subject || undefined} />
+        </div>
+      ));
+    }
+    return (
+      <div className="col-span-full text-center py-8">
+        <div className="text-sm text-slate-600 mb-2">No tutors found.</div>
+        {(q || subject || classTeach || language) && (
+          <div className="text-xs text-slate-500">
+            Try adjusting your search filters or clearing them to see more results.
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <main className="container-px mx-auto py-8">
+    <main className="container-px mx-auto py-8" data-testid="find-tutors-page">
       <SEO
         title={seoTitle}
         description={seoDescription}
-        url={`/find-tutors${sp.toString() ? `?${sp.toString()}` : ''}`}
+        url={findTutorsPath}
       />
       <h1 className="text-2xl font-bold">Find Tutors</h1>
 
@@ -297,11 +334,13 @@ export default function FindTutors() {
           onChange={(e) => setParam('q', e.target.value)}
           placeholder="Search subject, topic, or tutor name"
           className="flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-300"
+          data-testid="find-tutors-search-input"
         />
         {/* Mobile-only filter toggle */}
         <button
           onClick={() => setFiltersOpen((v) => !v)}
           className="sm:hidden inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 relative"
+          data-testid="find-tutors-mobile-filter-toggle"
         >
           <SlidersHorizontal className="h-4 w-4" />
           Filters
@@ -332,6 +371,7 @@ export default function FindTutors() {
             value={subject}
             onChange={(e) => setParam('subject', e.target.value)}
             className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+            data-testid="find-tutors-subject-select"
           >
             <option value="">All subjects</option>
             {availableSubjects.map((s) => (
@@ -345,6 +385,7 @@ export default function FindTutors() {
             value={classTeach}
             onChange={(e) => setParam('class', e.target.value)}
             className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+            data-testid="find-tutors-class-select"
           >
             <option value="">All classes</option>
             {availableClassesTeach.map((cls) => (
@@ -358,6 +399,7 @@ export default function FindTutors() {
             value={board}
             onChange={(e) => setParam('board', e.target.value)}
             className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+            data-testid="find-tutors-board-select"
           >
             <option value="">All boards</option>
             {availableBoards.map((b) => (
@@ -371,6 +413,7 @@ export default function FindTutors() {
             value={language}
             onChange={(e) => setParam('language', e.target.value)}
             className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+            data-testid="find-tutors-language-select"
           >
             <option value="">All languages</option>
             {availableLanguages.map((lang) => (
@@ -384,6 +427,7 @@ export default function FindTutors() {
             value={String(minRating)}
             onChange={(e) => setParam('minRating', e.target.value)}
             className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+            data-testid="find-tutors-rating-select"
           >
             {availableRatingOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -396,6 +440,7 @@ export default function FindTutors() {
             value={sort}
             onChange={(e) => setParam('sort', e.target.value)}
             className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+            data-testid="find-tutors-sort-select"
           >
             <option value="rating_desc">Top rated</option>
             <option value="price_asc">Price: Low → High</option>
@@ -412,6 +457,7 @@ export default function FindTutors() {
             onChange={(e) => setPriceMinStr(e.target.value)}
             onBlur={(e) => setParam('priceMin', e.currentTarget.value)}
             className="w-[calc(50%-6px)] sm:w-36 rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+            data-testid="find-tutors-price-min-input"
           />
           <input
             type="number"
@@ -420,10 +466,12 @@ export default function FindTutors() {
             onChange={(e) => setPriceMaxStr(e.target.value)}
             onBlur={(e) => setParam('priceMax', e.currentTarget.value)}
             className="w-[calc(50%-6px)] sm:w-36 rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+            data-testid="find-tutors-price-max-input"
           />
           <button
             onClick={() => { clearFilters(); setFiltersOpen(false); }}
             className="rounded-xl border border-slate-300 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            data-testid="find-tutors-clear-filters-button"
           >
             Clear filters
           </button>
@@ -437,7 +485,7 @@ export default function FindTutors() {
       {/* Results */}
       <div className="mt-6">
         {err && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" data-testid="find-tutors-error-alert">
             {err}
           </div>
         )}
@@ -485,28 +533,7 @@ export default function FindTutors() {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {loading
-            ? Array.from({ length: Math.min(pageSize, 12) }).map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <TutorCardSkeleton />
-                </div>
-              ))
-            : items.length > 0
-            ? items.map((t) => (
-                <div key={t.id}>
-                  <TutorCard tutor={t} searchSubject={subject || undefined} />
-                </div>
-              ))
-            : (
-              <div className="col-span-full text-center py-8">
-                <div className="text-sm text-slate-600 mb-2">No tutors found.</div>
-                {(q || subject || classTeach || language) && (
-                  <div className="text-xs text-slate-500">
-                    Try adjusting your search filters or clearing them to see more results.
-                  </div>
-                )}
-              </div>
-            )}
+          {renderTutorGrid()}
         </div>
 
         {/* Pagination */}
@@ -516,6 +543,7 @@ export default function FindTutors() {
               className="px-3 py-1.5 rounded-xl border border-slate-200 text-sm disabled:opacity-50"
               disabled={page <= 1}
               onClick={() => setParam('page', String(page - 1))}
+              data-testid="find-tutors-prev-page-button"
             >
               Prev
             </button>
@@ -526,6 +554,7 @@ export default function FindTutors() {
               className="px-3 py-1.5 rounded-xl border border-slate-200 text-sm disabled:opacity-50"
               disabled={page >= totalPages}
               onClick={() => setParam('page', String(page + 1))}
+              data-testid="find-tutors-next-page-button"
             >
               Next
             </button>

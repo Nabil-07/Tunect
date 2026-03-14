@@ -400,7 +400,7 @@ export default function StudentDashboard() {
       onAccept={handleAcceptTerms}
       onDecline={handleDeclineTerms}
     />
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50" data-testid="student-dashboard-page">
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-6 sm:space-y-8 lg:space-y-10 max-w-7xl">
         {/* Hero - Responsive */}
         <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-r from-ocean-700 to-green-500 p-6 sm:p-8 lg:p-10 text-white shadow-md">
@@ -423,6 +423,7 @@ export default function StudentDashboard() {
               </div>
               <Link
                 to="/student/profile"
+                data-testid="student-dashboard-complete-profile-link"
                 className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
               >
                 Complete profile
@@ -465,6 +466,7 @@ export default function StudentDashboard() {
               <>
                 <button
                   onClick={() => setShowSubjects((v) => !v)}
+                  data-testid="student-dashboard-subject-toggle-btn"
                   className="w-full flex items-center justify-between"
                 >
                   <span className="text-base sm:text-lg font-semibold text-slate-800">Subject progress</span>
@@ -508,12 +510,14 @@ export default function StudentDashboard() {
                 <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <Link
                     to="/student/token-balance"
+                    data-testid="student-dashboard-token-details-link"
                     className="text-xs sm:text-sm font-medium text-ocean-700 hover:underline text-center sm:text-left"
                   >
                     View Details
                   </Link>
                   <button
                     className="text-xs sm:text-sm font-medium text-ocean-700 hover:underline inline-flex items-center justify-center sm:justify-start gap-1"
+                    data-testid="student-dashboard-buy-tokens-btn"
                     onClick={() => nav('/student/cart')}
                   >
                     <Plus className="h-3 w-3 sm:h-4 sm:w-4" /> Buy Tokens
@@ -533,7 +537,7 @@ export default function StudentDashboard() {
               icon={<CalendarClock className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />}
               action={
                 nextStartText && (
-                  <Link to="/student/bookings" className="mt-2 text-xs sm:text-sm text-ocean-700 hover:underline block">
+                  <Link to="/student/bookings" data-testid="student-dashboard-bookings-link" className="mt-2 text-xs sm:text-sm text-ocean-700 hover:underline block">
                     View all bookings
                   </Link>
                 )
@@ -550,7 +554,7 @@ export default function StudentDashboard() {
               value={`${unread} unread`}
               icon={<MessageSquareMore className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />}
               action={
-                <Link to="/student/chat" className="mt-2 text-xs sm:text-sm text-ocean-700 hover:underline block">
+                <Link to="/student/chat" data-testid="student-dashboard-chat-link" className="mt-2 text-xs sm:text-sm text-ocean-700 hover:underline block">
                   Go to chat
                 </Link>
               }
@@ -563,7 +567,7 @@ export default function StudentDashboard() {
             value="View all"
             icon={<Heart className="h-5 w-5 sm:h-6 sm:w-6 text-rose-600" />}
             action={
-              <Link to="/student/favorites" className="mt-2 text-xs sm:text-sm text-ocean-700 hover:underline block">
+              <Link to="/student/favorites" data-testid="student-dashboard-favorites-link" className="mt-2 text-xs sm:text-sm text-ocean-700 hover:underline block">
                 Manage favorites
               </Link>
             }
@@ -578,6 +582,7 @@ export default function StudentDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 lg:gap-6">
             <Link
               to="/student/bookings"
+              data-testid="student-dashboard-classes-link"
               className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-6 shadow-sm hover:shadow-md transition group active:scale-95"
             >
               <div className="flex items-center justify-between mb-2 sm:mb-3">
@@ -590,6 +595,7 @@ export default function StudentDashboard() {
 
             <Link
               to="/student/progress"
+              data-testid="student-dashboard-progress-link"
               className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-6 shadow-sm hover:shadow-md transition group active:scale-95"
             >
               <div className="flex items-center justify-between mb-2 sm:mb-3">
@@ -602,6 +608,7 @@ export default function StudentDashboard() {
 
             <Link
               to="/student/goals"
+              data-testid="student-dashboard-goals-link"
               className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-6 shadow-sm hover:shadow-md transition group active:scale-95"
             >
               <div className="flex items-center justify-between mb-2 sm:mb-3">
@@ -614,6 +621,7 @@ export default function StudentDashboard() {
 
             <Link
               to="/student/session-notes"
+              data-testid="student-dashboard-notes-link"
               className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-6 shadow-sm hover:shadow-md transition group active:scale-95"
             >
               <div className="flex items-center justify-between mb-2 sm:mb-3">
@@ -626,6 +634,7 @@ export default function StudentDashboard() {
 
             <Link
               to="/student/waitlist"
+              data-testid="student-dashboard-waitlist-link"
               className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-6 shadow-sm hover:shadow-md transition group active:scale-95"
             >
               <div className="flex items-center justify-between mb-2 sm:mb-3">
@@ -644,7 +653,7 @@ export default function StudentDashboard() {
             <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-ocean-700" /> Recommended for you
             </h2>
-            <Link to="/find-tutors" className="text-xs sm:text-sm text-ocean-700 hover:underline font-medium">
+            <Link to="/find-tutors" data-testid="student-dashboard-see-all-tutors-link" className="text-xs sm:text-sm text-ocean-700 hover:underline font-medium">
               See all
             </Link>
           </div>
@@ -715,6 +724,7 @@ export default function StudentDashboard() {
                       </div>
                       <button
                         onClick={() => nav(href)}
+                        data-testid="student-dashboard-tutor-action-btn"
                         className="rounded-lg sm:rounded-xl bg-ocean-700 px-3 sm:px-4 py-2 text-xs font-medium text-white hover:bg-ocean-800 active:scale-95 transition whitespace-nowrap"
                       >
                         {btnLabel}

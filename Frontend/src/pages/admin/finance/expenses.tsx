@@ -143,7 +143,7 @@ export default function ExpenseTracker() {
     : 'All Time';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="expenses-page">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -153,6 +153,7 @@ export default function ExpenseTracker() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowAddModal(true)}
+            data-testid="expenses-add-button"
             className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition"
           >
             <Plus className="w-4 h-4" />
@@ -160,6 +161,7 @@ export default function ExpenseTracker() {
           </button>
           <button
             onClick={handleExport}
+            data-testid="expenses-export-button"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
           >
             <Download className="w-4 h-4" />
@@ -176,6 +178,7 @@ export default function ExpenseTracker() {
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
+            data-testid="expenses-month-input"
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
           />
         </div>
@@ -184,6 +187,7 @@ export default function ExpenseTracker() {
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
+            data-testid="expenses-category-select"
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
           >
             <option value="">All Categories</option>
@@ -213,7 +217,7 @@ export default function ExpenseTracker() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" data-testid="expenses-error-alert">{error}</div>
       )}
 
       {/* Expenses Table */}
@@ -228,7 +232,7 @@ export default function ExpenseTracker() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" data-testid="expenses-table">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold text-slate-700">Date</th>
@@ -266,6 +270,7 @@ export default function ExpenseTracker() {
                   <td className="px-4 py-3 text-center">
                     <button
                       onClick={() => handleDelete(exp.id)}
+                      data-testid={`expenses-delete-${exp.id}`}
                       className="p-1 rounded hover:bg-red-50 text-red-500 hover:text-red-700 transition"
                       title="Delete"
                     >
@@ -289,10 +294,10 @@ export default function ExpenseTracker() {
       {/* Add Expense Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" data-testid="expenses-add-modal">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-900">Add Expense</h3>
-              <button onClick={() => setShowAddModal(false)} className="p-1 rounded hover:bg-slate-100">
+              <button onClick={() => setShowAddModal(false)} data-testid="expenses-modal-close-button" className="p-1 rounded hover:bg-slate-100">
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
@@ -309,6 +314,7 @@ export default function ExpenseTracker() {
                   value={addForm.title}
                   onChange={(e) => setAddForm({ ...addForm, title: e.target.value })}
                   placeholder="e.g., AWS hosting, Office rent"
+                  data-testid="expenses-modal-title-input"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -321,6 +327,7 @@ export default function ExpenseTracker() {
                     value={addForm.amount}
                     onChange={(e) => setAddForm({ ...addForm, amount: e.target.value })}
                     placeholder="0.00"
+                    data-testid="expenses-modal-amount-input"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -329,6 +336,7 @@ export default function ExpenseTracker() {
                   <select
                     value={addForm.category}
                     onChange={(e) => setAddForm({ ...addForm, category: e.target.value })}
+                    data-testid="expenses-modal-category-select"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
                   >
                     {CATEGORIES.map(c => (
@@ -343,6 +351,7 @@ export default function ExpenseTracker() {
                   type="date"
                   value={addForm.expenseDate}
                   onChange={(e) => setAddForm({ ...addForm, expenseDate: e.target.value })}
+                  data-testid="expenses-modal-date-input"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -353,6 +362,7 @@ export default function ExpenseTracker() {
                   onChange={(e) => setAddForm({ ...addForm, description: e.target.value })}
                   placeholder="Optional details"
                   rows={2}
+                  data-testid="expenses-modal-description-input"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -368,6 +378,7 @@ export default function ExpenseTracker() {
                 <button
                   type="button"
                   onClick={() => receiptInputRef.current?.click()}
+                  data-testid="expenses-modal-receipt-button"
                   className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 hover:border-indigo-400 hover:text-indigo-700 transition flex items-center justify-center gap-2"
                 >
                   <Upload className="w-4 h-4" />
@@ -379,6 +390,7 @@ export default function ExpenseTracker() {
             <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setShowAddModal(false)}
+                data-testid="expenses-modal-cancel-button"
                 className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
               >
                 Cancel
@@ -386,6 +398,7 @@ export default function ExpenseTracker() {
               <button
                 onClick={handleAddExpense}
                 disabled={addSubmitting}
+                data-testid="expenses-modal-add-button"
                 className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition"
               >
                 {addSubmitting ? 'Adding...' : 'Add Expense'}

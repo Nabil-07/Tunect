@@ -1,6 +1,6 @@
 // src/pages/student/certificates.tsx
 import { useEffect, useState } from 'react';
-import { Award, Download, Share2, Calendar, BookOpen } from 'lucide-react';
+import { Award, Share2, Calendar, BookOpen } from 'lucide-react';
 import apiClient from '../../services/apiClient';
 
 interface Certificate {
@@ -71,11 +71,6 @@ export default function Certificates() {
     }
   };
 
-  const handleDownload = () => {
-    // TODO: Generate PDF certificate
-    alert('PDF download coming soon!');
-  };
-
   const handleShare = (cert: Certificate) => {
     const text = `I just earned a ${cert.type} certificate in ${cert.subject} on Tunect! 🎓`;
     if (navigator.share) {
@@ -102,7 +97,7 @@ export default function Certificates() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-8">
+    <div className="container mx-auto px-4 py-6 space-y-8" data-testid="student-certificates-page">
       {/* Header */}
       <div className="rounded-3xl bg-gradient-to-r from-ocean-700 to-green-500 p-4 sm:p-8 text-white shadow-lg">
         <h1 className="text-2xl sm:text-4xl font-bold mb-2 flex items-center gap-3">
@@ -198,15 +193,9 @@ export default function Certificates() {
                 {/* Actions */}
                 <div className="flex gap-2">
                   <button
-                    onClick={handleDownload}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition text-sm font-medium"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download
-                  </button>
-                  <button
                     onClick={() => handleShare(cert)}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition text-sm font-medium"
+                    data-testid="student-certificates-share-btn"
                   >
                     <Share2 className="h-4 w-4" />
                     Share

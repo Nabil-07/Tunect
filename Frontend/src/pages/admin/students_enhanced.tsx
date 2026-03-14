@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import { fetchStudents, unbanUser, type StudentSummary } from '../../services/adminService';
 
-type SortField = 'email' | 'grade' | 'tokens' | 'accountStatus' | 'createdAt';
+type SortField = 'email' | 'grade' | 'tokens' | 'accountStatus' | 'profileStatus' | 'createdAt';
 type SortOrder = 'asc' | 'desc';
 
 export default function AdminStudents() {
@@ -17,6 +17,7 @@ export default function AdminStudents() {
   const [emailFilter, setEmailFilter] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BLOCKED'>('ALL');
+  const [profileStatusFilter, setProfileStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'RESUBMISSION_REQUESTED'>('ALL');
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>('createdAt');
@@ -78,6 +79,9 @@ export default function AdminStudents() {
       const isBanned = accountStatusFilter === 'BLOCKED';
       result = result.filter((s) => s.user.isBanned === isBanned);
     }
+    if (profileStatusFilter !== 'ALL') {
+      result = result.filter((s) => (s.profileStatus || 'PENDING') === profileStatusFilter);
+    }
 
     // Apply sorting
     result.sort((a, b) => {
@@ -100,6 +104,10 @@ export default function AdminStudents() {
           aVal = a.user.isBanned ? 1 : 0;
           bVal = b.user.isBanned ? 1 : 0;
           break;
+        case 'profileStatus':
+          aVal = a.profileStatus || 'PENDING';
+          bVal = b.profileStatus || 'PENDING';
+          break;
         case 'createdAt':
           aVal = new Date(a.createdAt).getTime();
           bVal = new Date(b.createdAt).getTime();
@@ -114,7 +122,7 @@ export default function AdminStudents() {
     });
 
     return result;
-  }, [students, emailFilter, gradeFilter, accountStatusFilter, sortField, sortOrder]);
+  }, [students, emailFilter, gradeFilter, accountStatusFilter, profileStatusFilter, sortField, sortOrder]);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ChevronUp className="w-3 h-3 text-slate-300" />;
@@ -124,7 +132,7 @@ export default function AdminStudents() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="admin-students-enhanced-page">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Students</h2>
@@ -132,13 +140,13 @@ export default function AdminStudents() {
         </div>
       </div>
 
-      {error && <div className="text-sm text-rose-600">{error}</div>}
+      {error && <div className="text-sm text-rose-600" data-testid="admin-students-enhanced-error-alert">{error}</div>}
 
       {loading ? (
         <div className="text-slate-600">Loading students...</div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-sm" data-testid="admin-students-enhanced-table">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3 text-left">
@@ -166,6 +174,12 @@ export default function AdminStudents() {
                   </div>
                 </th>
                 <th className="px-4 py-3 text-left">
+                  <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('profileStatus')}>
+                    <span>Profile Status</span>
+                    <SortIcon field="profileStatus" />
+                  </div>
+                </th>
+                <th className="px-4 py-3 text-left">
                   <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleSort('createdAt')}>
                     <span>Created</span>
                     <SortIcon field="createdAt" />
@@ -182,6 +196,7 @@ export default function AdminStudents() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={emailFilter}
                     onChange={(e) => setEmailFilter(e.target.value)}
+                    data-testid="admin-students-enhanced-email-filter-input"
                   />
                 </th>
                 <th className="px-4 py-2">
@@ -191,6 +206,7 @@ export default function AdminStudents() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={gradeFilter}
                     onChange={(e) => setGradeFilter(e.target.value)}
+                    data-testid="admin-students-enhanced-grade-filter-input"
                   />
                 </th>
                 <th className="px-4 py-2"></th>
@@ -199,12 +215,28 @@ export default function AdminStudents() {
                     className="w-full text-xs border rounded px-2 py-1"
                     value={accountStatusFilter}
                     onChange={(e) => setAccountStatusFilter(e.target.value as any)}
+                    data-testid="admin-students-enhanced-account-status-select"
                   >
                     <option value="ALL">All</option>
                     <option value="ACTIVE">Active</option>
                     <option value="BLOCKED">Blocked</option>
                   </select>
                 </th>
+                <th className="px-4 py-2">
+                  <select
+                    className="w-full text-xs border rounded px-2 py-1"
+                    value={profileStatusFilter}
+                    onChange={(e) => setProfileStatusFilter(e.target.value as any)}
+                    data-testid="admin-students-enhanced-profile-status-select"
+                  >
+                    <option value="ALL">All</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="RESUBMISSION_REQUESTED">Resubmission</option>
+                  </select>
+                </th>
+                <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -236,12 +268,35 @@ export default function AdminStudents() {
                       </span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const status = s.profileStatus || 'PENDING';
+                      const styles: Record<string, string> = {
+                        APPROVED: 'bg-green-100 text-green-800',
+                        PENDING: 'bg-blue-100 text-blue-800',
+                        REJECTED: 'bg-red-100 text-red-800',
+                        RESUBMISSION_REQUESTED: 'bg-amber-100 text-amber-800',
+                      };
+                      const labels: Record<string, string> = {
+                        APPROVED: '✓ Approved',
+                        PENDING: '⏳ Pending',
+                        REJECTED: '✗ Rejected',
+                        RESUBMISSION_REQUESTED: '↻ Resubmission',
+                      };
+                      return (
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${styles[status] || 'bg-slate-100 text-slate-800'}`}>
+                          {labels[status] || status}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-3 text-slate-700">{new Date(s.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     {s.user.isBanned && (
                       <button
                         className="text-green-600 text-sm font-semibold"
                         onClick={() => handleUnban(s.user.id)}
+                        data-testid={`admin-students-enhanced-unblock-${s.id}`}
                       >
                         Unblock
                       </button>

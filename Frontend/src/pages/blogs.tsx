@@ -40,7 +40,7 @@ export default function Blogs() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-12 max-w-6xl">
+    <main className="container mx-auto px-4 py-12 max-w-6xl" data-testid="blogs-page">
       <SEO
         title="Tunect Blog | Online Tutoring Tips & Stories | Tunect"
         description="Read the latest articles, tips, and stories about online tutoring, learning strategies, and success stories from Tunect's community of students and tutors."
@@ -65,6 +65,7 @@ export default function Blogs() {
               key={post.id}
               to={`/blogs/${post.slug}`}
               className="group overflow-hidden rounded-2xl border bg-white shadow-sm hover:shadow-md transition"
+              data-testid={`blogs-post-link-${post.slug}`}
             >
               {post.coverImageUrl ? (
                 <img

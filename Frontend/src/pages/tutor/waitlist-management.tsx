@@ -57,7 +57,7 @@ export default function TutorWaitlist() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto p-6" data-testid="tutor-waitlist-page">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-800 mb-2">Student Waitlist</h1>
         <p className="text-slate-600">
@@ -67,17 +67,17 @@ export default function TutorWaitlist() {
 
       {/* Stats */}
       <div className="grid md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white border border-slate-200 rounded-lg p-4" data-testid="tutor-waitlist-total-waiting-card">
           <div className="text-sm text-slate-600 mb-1">Total Waiting</div>
           <div className="text-2xl font-bold text-slate-800">{entries.length}</div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white border border-slate-200 rounded-lg p-4" data-testid="tutor-waitlist-high-priority-card">
           <div className="text-sm text-slate-600 mb-1">High Priority</div>
           <div className="text-2xl font-bold text-red-600">
             {entries.filter((e) => e.priority >= 3).length}
           </div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
+        <div className="bg-white border border-slate-200 rounded-lg p-4" data-testid="tutor-waitlist-this-week-card">
           <div className="text-sm text-slate-600 mb-1">This Week</div>
           <div className="text-2xl font-bold text-blue-600">
             {
@@ -175,6 +175,7 @@ export default function TutorWaitlist() {
                     ? "bg-blue-400 text-white cursor-wait"
                     : "bg-blue-600 text-white hover:bg-blue-700"
                 }`}
+                data-testid="tutor-waitlist-notify-button"
               >
                 <Bell className="h-4 w-4" />
                 {notifying === entry.id ? "Notifying..." : "Notify Student - Slot Available"}

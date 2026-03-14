@@ -89,6 +89,15 @@ export class AdminController {
     return this.svc.getStudentDetail(id);
   }
 
+  @Patch('students/:id/profile-status')
+  setStudentProfileStatus(
+    @Param('id') id: string,
+    @Body() dto: { status: string; notes?: string; fields?: string[] },
+    @Req() req: any,
+  ) {
+    return this.svc.setStudentProfileStatus(id, dto.status, dto.notes, req.user!.id, dto.fields);
+  }
+
   @Get('tutors/:id')
   getTutorDetail(@Param('id') id: string) {
     return this.svc.getTutorDetail(id);

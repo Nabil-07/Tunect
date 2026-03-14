@@ -165,6 +165,7 @@ export default function AdminMessages() {
           <button
             onClick={() => navigate('/admin/messages')}
             className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+            data-testid="admin-messages-back-button"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             Back to Messages
@@ -178,7 +179,7 @@ export default function AdminMessages() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-200px)]">
+    <div className="min-h-[calc(100vh-200px)]" data-testid="admin-messages-page">
       <h2 className="text-2xl font-bold mb-4">Admin Communication</h2>
 
       {/* ── Tab selector ── */}
@@ -190,6 +191,7 @@ export default function AdminMessages() {
               ? 'border-indigo-600 text-indigo-700'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
+          data-testid="admin-messages-broadcast-tab"
         >
           📢 Announcements
         </button>
@@ -200,6 +202,7 @@ export default function AdminMessages() {
               ? 'border-indigo-600 text-indigo-700'
               : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
+          data-testid="admin-messages-private-tab"
         >
           ✉️ Private Message
         </button>
@@ -226,6 +229,7 @@ export default function AdminMessages() {
                     ? 'bg-indigo-600 text-white border-indigo-600'
                     : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
                 }`}
+                data-testid="admin-messages-broadcast-all-button"
               >
                 All Tutors
               </button>
@@ -237,12 +241,13 @@ export default function AdminMessages() {
                     ? 'bg-indigo-600 text-white border-indigo-600'
                     : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
                 }`}
+                data-testid="admin-messages-broadcast-subject-button"
               >
                 By Subject
               </button>
             </div>
 
-            <form className="flex flex-col gap-3" onSubmit={handleBroadcast}>
+            <form className="flex flex-col gap-3" onSubmit={handleBroadcast} data-testid="admin-messages-broadcast-form">
               {broadcastMode === 'subject' && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Select Subject</label>
@@ -255,6 +260,7 @@ export default function AdminMessages() {
                       className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none bg-white"
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
+                      data-testid="admin-messages-subject-select"
                     >
                       {subjects.map((s) => (
                         <option key={s} value={s}>{s}</option>
@@ -268,16 +274,18 @@ export default function AdminMessages() {
                 value={broadcastMsg}
                 onChange={(e) => setBroadcastMsg(e.target.value)}
                 placeholder="Write your announcement…"
+                data-testid="admin-messages-broadcast-textarea"
               />
               <div className="flex items-center justify-between">
                 <div>
-                  {broadcastStatus && <span className="text-xs text-emerald-700">{broadcastStatus}</span>}
-                  {broadcastError && <span className="text-xs text-rose-600">{broadcastError}</span>}
+                  {broadcastStatus && <span className="text-xs text-emerald-700" data-testid="admin-messages-broadcast-success">{broadcastStatus}</span>}
+                  {broadcastError && <span className="text-xs text-rose-600" data-testid="admin-messages-broadcast-error">{broadcastError}</span>}
                 </div>
                 <button
                   type="submit"
                   disabled={!broadcastMsg.trim() || broadcastSending || (broadcastMode === 'subject' && !subject)}
                   className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+                  data-testid="admin-messages-broadcast-send-button"
                 >
                   {broadcastSending
                     ? 'Sending…'
@@ -349,6 +357,7 @@ export default function AdminMessages() {
                     type="button"
                     onClick={() => { setSelectedTutor(null); setTutorSearch(''); }}
                     className="text-slate-400 hover:text-slate-600"
+                    data-testid="admin-messages-clear-tutor-button"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
@@ -360,6 +369,7 @@ export default function AdminMessages() {
                     value={tutorSearch}
                     onChange={(e) => setTutorSearch(e.target.value)}
                     placeholder="Search tutor by name or email…"
+                    data-testid="admin-messages-tutor-search-input"
                   />
                   {searchLoading && (
                     <div className="absolute right-3 top-2.5 text-xs text-slate-400">Searching…</div>
@@ -376,6 +386,7 @@ export default function AdminMessages() {
                             setTutorResults([]);
                           }}
                           className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left transition-colors"
+                          data-testid={`admin-messages-tutor-result-${t.id}`}
                         >
                           <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-semibold text-xs">
                             {(t.user.name || t.user.email)[0].toUpperCase()}
@@ -402,23 +413,25 @@ export default function AdminMessages() {
               )}
             </div>
 
-            <form className="flex flex-col gap-3" onSubmit={handlePrivateMessage}>
+            <form className="flex flex-col gap-3" onSubmit={handlePrivateMessage} data-testid="admin-messages-private-form">
               <textarea
                 className="border border-slate-300 rounded-lg px-3 py-2 text-sm min-h-[100px] focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none resize-y"
                 value={privateMsg}
                 onChange={(e) => setPrivateMsg(e.target.value)}
                 placeholder="Write your private message…"
                 disabled={!selectedTutor}
+                data-testid="admin-messages-private-textarea"
               />
               <div className="flex items-center justify-between">
                 <div>
-                  {privateStatus && <span className="text-xs text-emerald-700">{privateStatus}</span>}
-                  {privateError && <span className="text-xs text-rose-600">{privateError}</span>}
+                  {privateStatus && <span className="text-xs text-emerald-700" data-testid="admin-messages-private-success">{privateStatus}</span>}
+                  {privateError && <span className="text-xs text-rose-600" data-testid="admin-messages-private-error">{privateError}</span>}
                 </div>
                 <button
                   type="submit"
                   disabled={!selectedTutor || !privateMsg.trim() || privateSending}
                   className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+                  data-testid="admin-messages-private-send-button"
                 >
                   {privateSending ? 'Sending…' : 'Send Private Message'}
                 </button>

@@ -263,7 +263,7 @@ export default function TutorDetailPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-red-800">{error || 'Tutor not found'}</p>
-          <Link to="/admin/tutors" className="text-blue-600 hover:underline mt-2 inline-block">
+          <Link to="/admin/tutors" className="text-blue-600 hover:underline mt-2 inline-block" data-testid="admin-tutor-detail-error-back-link">
             ← Back to Tutors
           </Link>
         </div>
@@ -272,10 +272,11 @@ export default function TutorDetailPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8" data-testid="admin-tutor-detail-page">
       <Link
         to="/admin/tutors"
         className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4"
+        data-testid="admin-tutor-detail-back-link"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
         Back to Tutors
@@ -394,6 +395,7 @@ export default function TutorDetailPage() {
               onClick={() => { setShowDeleteModal(true); setDeleteResult(null); }}
               disabled={deletingUser}
               className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors text-sm"
+              data-testid="admin-tutor-detail-delete-button"
             >
               <Trash2 className="w-4 h-4" />
               Delete Account
@@ -420,6 +422,7 @@ export default function TutorDetailPage() {
                       if (deleteResult.ok) navigate('/admin/tutors');
                     }}
                     className="w-full py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium"
+                    data-testid="admin-tutor-detail-delete-result-close-button"
                   >
                     {deleteResult.ok ? 'Go to Tutors' : 'Close'}
                   </button>
@@ -446,6 +449,7 @@ export default function TutorDetailPage() {
                       onClick={() => setShowDeleteModal(false)}
                       disabled={deletingUser}
                       className="flex-1 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium disabled:opacity-50"
+                      data-testid="admin-tutor-detail-delete-cancel-button"
                     >
                       Cancel
                     </button>
@@ -463,6 +467,7 @@ export default function TutorDetailPage() {
                       }}
                       disabled={deletingUser}
                       className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                      data-testid="admin-tutor-detail-delete-confirm-button"
                     >
                       {deletingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                       {deletingUser ? 'Deleting…' : 'Yes, Delete Account'}
@@ -538,6 +543,7 @@ export default function TutorDetailPage() {
                     <button
                       onClick={toggleExpand}
                       className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                      data-testid={`admin-tutor-detail-booking-expand-${student.id}`}
                     >
                       <div className="flex items-center gap-3">
                         {isExpanded
@@ -639,7 +645,7 @@ export default function TutorDetailPage() {
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
           <h2 className="text-xl font-bold text-slate-900 mb-4">Earnings History</h2>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" data-testid="admin-tutor-detail-wallet-ledger-table">
               <thead>
                 <tr className="border-b">
                   <th className="text-left py-2 px-4">Date</th>
@@ -672,7 +678,7 @@ export default function TutorDetailPage() {
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
           <h2 className="text-xl font-bold text-slate-900 mb-4">Payouts</h2>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" data-testid="admin-tutor-detail-payouts-table">
               <thead>
                 <tr className="border-b">
                   <th className="text-left py-2 px-4">Date</th>
@@ -767,6 +773,7 @@ export default function TutorDetailPage() {
             <Link
               to={`/admin/kyc-verification?tutorId=${encodeURIComponent(tutor.id)}`}
               className="text-sm text-blue-600 hover:underline"
+              data-testid="admin-tutor-detail-kyc-review-link"
             >
               Open full KYC review
             </Link>
@@ -804,6 +811,7 @@ export default function TutorDetailPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline"
+                      data-testid={`admin-tutor-detail-view-doc-${doc.id}`}
                     >
                       View Document
                     </a>
@@ -832,6 +840,7 @@ export default function TutorDetailPage() {
                     className={`w-full text-left p-3 rounded-lg mb-2 transition-colors ${
                       isSelected ? 'bg-blue-50 border border-blue-300' : 'bg-slate-50 hover:bg-slate-100 border border-transparent'
                     }`}
+                    data-testid={`admin-tutor-detail-conversation-${group.student.id}`}
                   >
                     <p className="font-semibold text-sm text-slate-900 truncate">
                       {group.student.user.name || group.student.user.email}

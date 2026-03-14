@@ -50,6 +50,12 @@ export class AdminService {
     this.cache.set(key, { value, expiresAt: Date.now() + this.cacheTtlMs });
   }
 
+  private clearCacheByPrefix(prefix: string) {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) this.cache.delete(key);
+    }
+  }
+
   private parseTermsVersion(afterData: unknown): number | null {
     if (!afterData || typeof afterData !== 'object') return null;
     const value = (afterData as any)?.version;
@@ -301,8 +307,8 @@ export class AdminService {
         where, skip, take: pageSize, orderBy: { createdAt: 'desc' },
         select: {
           id: true, grade: true, tokens: true, createdAt: true,
-          board: true, timezone: true, preferredLanguage: true,
-          user: { select: { id: true, email: true, name: true, isBanned: true, bannedScope: true, bannedAt: true } },
+          board: true, timezone: true, preferredLanguage: true, profileStatus: true, marksheetUrl: true,
+          user: { select: { id: true, email: true, name: true, phone: true, avatarUrl: true, isBanned: true, bannedScope: true, bannedAt: true } },
         },
       }),
       this.prisma.student.count({ where }),
@@ -362,6 +368,8 @@ export class AdminService {
             id: true,
             email: true,
             name: true,
+            phone: true,
+            avatarUrl: true,
             createdAt: true,
             updatedAt: true,
             isBanned: true,
@@ -560,13 +568,88 @@ export class AdminService {
       },
     });
 
+    const profileStatus = checkStudentProfileCompletion({
+      ...student,
+      user: student.user,
+    });
+
+    // Resolve avatar URL for admin view
+    let readableAvatarUrl = student.user.avatarUrl ?? null;
+    if (readableAvatarUrl) {
+      try {
+        readableAvatarUrl = await this.uploads.toReadableReference(readableAvatarUrl, student.user.id);
+      } catch {
+        // keep original if resolution fails
+      }
+    }
+
+    // Resolve marksheet URL for admin view
+    let readableMarksheetUrl = (student as any).marksheetUrl ?? null;
+    if (readableMarksheetUrl) {
+      try {
+        readableMarksheetUrl = await this.uploads.toReadableReference(readableMarksheetUrl, student.user.id);
+      } catch {
+        // keep original if resolution fails
+      }
+    }
+
     return {
       ...student,
+      marksheetUrl: readableMarksheetUrl,
       tokens: liveTokens,
       tutorTokenBalances: tutorTokenBalancesWithExpiry,
       payments,
       conversations,
+      profileCompletion: profileStatus.completionPercentage,
+      missingFields: profileStatus.missingFields,
+      profileStatus: (student as any).profileStatus ?? 'PENDING',
+      adminProfileNotes: (student as any).adminProfileNotes ?? null,
+      user: {
+        ...student.user,
+        avatarUrl: readableAvatarUrl,
+      },
     };
+  }
+
+  async setStudentProfileStatus(studentId: string, status: string, notes: string | undefined, adminId: string, fields?: string[]) {
+    const validStatuses = ['APPROVED', 'REJECTED', 'RESUBMISSION_REQUESTED'];
+    if (!validStatuses.includes(status)) {
+      throw new BadRequestException(`status must be one of: ${validStatuses.join(', ')}`);
+    }
+
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { id: true, profileStatus: true, adminProfileNotes: true, userId: true } as any,
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const before = { profileStatus: (student as any).profileStatus, adminProfileNotes: (student as any).adminProfileNotes };
+
+    const updateData: any = { profileStatus: status, adminProfileNotes: notes ?? null };
+    if (status === 'RESUBMISSION_REQUESTED' && fields && fields.length > 0) {
+      const allowedFields = new Set(['name', 'phone', 'bio', 'grade', 'board', 'timezone', 'preferredLanguage', 'marksheet', 'avatar']);
+      updateData.resubmissionFields = fields.filter((f: string) => allowedFields.has(f));
+    } else {
+      updateData.resubmissionFields = [];
+    }
+
+    const updated = await this.prisma.student.update({
+      where: { id: studentId },
+      data: updateData,
+      select: { id: true, profileStatus: true, adminProfileNotes: true } as any,
+    });
+
+    this.audit.log({
+      adminId,
+      action: `STUDENT_PROFILE_${status}`,
+      entityType: AuditEntityType.USER,
+      entityId: studentId,
+      beforeData: before,
+      afterData: { profileStatus: status, adminProfileNotes: notes ?? null },
+    });
+
+    this.clearCacheByPrefix('GET /admin/students');
+    return { ok: true, profileStatus: (updated as any).profileStatus, adminProfileNotes: (updated as any).adminProfileNotes };
   }
 
   async getTutorDetail(tutorId: string) {

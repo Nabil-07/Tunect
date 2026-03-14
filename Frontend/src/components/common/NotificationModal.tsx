@@ -67,13 +67,14 @@ export default function NotificationModal({
   const styles = typeStyles[type];
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4" data-testid="notification-modal">
       <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
         {/* Close Button */}
         <button
           onClick={onClose}
           className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           aria-label="Close"
+          data-testid="notification-modal-close-btn"
         >
           <X size={20} />
         </button>
@@ -98,6 +99,7 @@ export default function NotificationModal({
           <button
             onClick={onClose}
             className={`w-full rounded-xl px-6 py-3 font-medium text-white transition ${styles.button}`}
+            data-testid="notification-modal-ok-btn"
           >
             {confirmText}
           </button>

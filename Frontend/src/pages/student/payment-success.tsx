@@ -20,7 +20,7 @@ export default function PaymentSuccess() {
   }
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-12">
+    <div className="container mx-auto max-w-3xl px-4 py-12" data-testid="student-payment-success-page">
       <div className="rounded-3xl border bg-white p-10 shadow-sm text-center">
         <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center">
           <CheckCircle2 className="h-7 w-7 text-emerald-600" />
@@ -38,12 +38,14 @@ export default function PaymentSuccess() {
           <button
             onClick={() => nav("/student/bookings")}
             className="rounded-xl bg-emerald-600 px-5 py-2.5 font-medium text-white hover:bg-emerald-700"
+            data-testid="student-payment-success-bookings-btn"
           >
             Go to Bookings
           </button>
           <button
             onClick={goPickSlot}
             className="rounded-xl border border-ocean-600 px-5 py-2.5 font-medium text-ocean-700 hover:bg-ocean-50"
+            data-testid="student-payment-success-pick-slot-btn"
           >
             Pick a Slot Now
           </button>

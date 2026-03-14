@@ -63,7 +63,7 @@ export default function MaintenanceModal() {
   const isUpcoming = startDate ? now < startDate : false;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" data-testid="maintenance-modal">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in slide-in-from-bottom-4">
         {/* Header */}
         <div className="bg-amber-500 px-6 py-4 flex items-center justify-between">
@@ -77,6 +77,7 @@ export default function MaintenanceModal() {
             onClick={handleDismiss}
             className="text-white/80 hover:text-white transition p-1 rounded-lg hover:bg-white/20"
             aria-label="Close"
+            data-testid="maintenance-modal-close-btn"
           >
             <X className="w-5 h-5" />
           </button>
@@ -129,6 +130,7 @@ export default function MaintenanceModal() {
           <button
             onClick={handleDismiss}
             className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 transition"
+            data-testid="maintenance-modal-ok-btn"
           >
             I Understand
           </button>

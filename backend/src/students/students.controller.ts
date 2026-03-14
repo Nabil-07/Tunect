@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Patch,
+  Post,
   Query,
   UseGuards,
   Param,
@@ -46,6 +47,9 @@ class UpdateMeDto {
   @IsOptional()
   @IsString()
   preferredLanguage?: string;
+  @IsOptional()
+  @IsString()
+  marksheetUrl?: string;
 }
 
 function toPage(v?: string, def = 1) {
@@ -77,7 +81,13 @@ export class StudentsController {
   @Roles(Role.STUDENT, Role.ADMIN)
   async getProfileStatus(@CurrentUser('id') userId: string) {
     const student = await this.students.getMe(userId);
-    return checkStudentProfileCompletion(student);
+    const completion = checkStudentProfileCompletion(student);
+    return {
+      ...completion,
+      profileStatus: student.profileStatus ?? 'PENDING',
+      adminProfileNotes: student.adminProfileNotes ?? null,
+      resubmissionFields: student.resubmissionFields ?? [],
+    };
   }
 
   @ApiOperation({ summary: 'Update my student profile (grade, board, preferences)' })
@@ -85,6 +95,13 @@ export class StudentsController {
   @Roles(Role.STUDENT)
   patchMe(@CurrentUser('id') userId: string, @Body() dto: UpdateMeDto) {
     return this.students.patchMe(userId, dto);
+  }
+
+  @ApiOperation({ summary: 'Request profile resubmission (when approved and locked)' })
+  @Post('me/request-resubmission')
+  @Roles(Role.STUDENT)
+  requestResubmission(@CurrentUser('id') userId: string) {
+    return this.students.requestResubmission(userId);
   }
 
   @ApiOperation({ summary: 'Get my token balance' })

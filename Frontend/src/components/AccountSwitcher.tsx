@@ -69,11 +69,12 @@ export function AccountSwitcher() {
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative" ref={dropdownRef} data-testid="account-switcher">
       <button
         onClick={() => setIsOpen((prev) => !prev)}
         className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
         aria-label="Account menu"
+        data-testid="account-switcher-toggle-btn"
       >
         {avatarUrl ? (
           <img
@@ -97,7 +98,7 @@ export function AccountSwitcher() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50">
+        <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50" data-testid="account-switcher-dropdown">
           <div className="flex items-center gap-3 px-3 py-3 border-b border-gray-200">
             {avatarUrl ? (
               <img src={avatarUrl} alt={displayName} className="h-10 w-10 rounded-full object-cover" />
@@ -122,6 +123,7 @@ export function AccountSwitcher() {
                 window.location.href = '/login?add_account=true';
               }}
               className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              data-testid="account-switcher-add-account-btn"
             >
               <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -132,6 +134,7 @@ export function AccountSwitcher() {
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              data-testid="account-switcher-logout-btn"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

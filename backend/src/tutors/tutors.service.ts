@@ -69,7 +69,7 @@ function mergeUniqueStrings(...arrays: Array<string[] | null | undefined>): stri
 }
 
 function normalizeSpaces(value: string): string {
-  return String(value || '').replace(/\s+/g, ' ').trim();
+  return String(value || '').replaceAll(/\s+/g, ' ').trim();
 }
 
 function toTitleCase(value: string): string {
@@ -113,7 +113,7 @@ const SUBJECT_SHORTFORM_MAP: Record<string, string> = {
 };
 
 function normalizeAliasKey(value: string): string {
-  return normalizeSpaces(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+  return normalizeSpaces(value).toLowerCase().replaceAll(/[^a-z0-9]/g, '');
 }
 
 function standardizeSubjectText(value: string): string {
@@ -126,11 +126,11 @@ function standardizeGradeText(value: string): string {
   const cleaned = normalizeSpaces(value);
   if (!cleaned) return '';
 
-  const normalized = cleaned.replace(/\bclass\b/gi, 'Grade').replace(/\bstd\b/gi, 'Grade');
-  const single = normalized.match(/^(?:grade|standard)\s*(\d{1,2})$/i) || normalized.match(/^(\d{1,2})$/);
+  const normalized = cleaned.replaceAll(/\bclass\b/gi, 'Grade').replaceAll(/\bstd\b/gi, 'Grade');
+  const single = /^(?:grade|standard)\s*(\d{1,2})$/i.exec(normalized) ?? /^(\d{1,2})$/.exec(normalized);
   if (single) return `Grade ${single[1]}`;
 
-  const range = normalized.match(/^(?:grade|standard)?\s*(\d{1,2})\s*(?:-|to)\s*(\d{1,2})$/i);
+  const range = /^(?:grade|standard)?\s*(\d{1,2})\s*(?:-|to)\s*(\d{1,2})$/i.exec(normalized);
   if (range) return `Grade ${range[1]}-${range[2]}`;
 
   return toTitleCase(normalized);
@@ -235,6 +235,65 @@ function hasTutorAttendance(data: unknown): boolean {
 function hasStudentAttendance(data: unknown): boolean {
   const attendance = parseAttendance(data);
   return !!attendance.studentJoinedAt;
+}
+
+type SessionDisplayStatus =
+  | 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'PENDING_SLOT'
+  | 'CONFIRMED' | 'EXPIRED' | 'NO_SHOW' | 'CANCELED';
+
+function resolveSessionStatus(
+  booking: { status: string; startTime: any; endTime: any },
+  now: Date,
+  tutorDidJoin: boolean,
+  studentDidJoin: boolean,
+): SessionDisplayStatus {
+  const bothJoined = tutorDidJoin && studentDidJoin;
+
+  if (booking.status === BookingStatus.CANCELED) {
+    const sessionEnded = booking.endTime && new Date(booking.endTime) <= now;
+    return sessionEnded && !tutorDidJoin && !studentDidJoin ? 'EXPIRED' : 'CANCELED';
+  }
+  if (booking.status === BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW) return 'NO_SHOW';
+  if (booking.status === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW) return 'COMPLETED';
+  if (booking.status === BookingStatus.PENDING_SLOT) return 'PENDING_SLOT';
+  if (booking.status === BookingStatus.COMPLETED) return 'COMPLETED';
+
+  if (
+    booking.status === BookingStatus.CONFIRMED ||
+    booking.status === BookingStatus.WAITING_ROOM ||
+    booking.status === BookingStatus.LIVE
+  ) {
+    const sessionStarted = new Date(booking.startTime!) <= now;
+    const sessionEnded = new Date(booking.endTime!) <= now;
+    if (sessionEnded) {
+      if (bothJoined || (tutorDidJoin && !studentDidJoin)) return 'COMPLETED';
+      if (!tutorDidJoin && studentDidJoin) return 'NO_SHOW';
+      return 'EXPIRED';
+    }
+    return sessionStarted ? 'ACTIVE' : 'UPCOMING';
+  }
+
+  return 'CONFIRMED';
+}
+
+function resolveAttendanceInfo(
+  bookingStatus: string,
+  displayStatus: SessionDisplayStatus,
+  tutorDidJoin: boolean,
+  studentDidJoin: boolean,
+): 'both_joined' | 'tutor_only' | 'student_only' | 'neither' | null {
+  const bothJoined = tutorDidJoin && studentDidJoin;
+  if (
+    bookingStatus === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW ||
+    (displayStatus === 'COMPLETED' && tutorDidJoin && !studentDidJoin)
+  ) return 'tutor_only';
+  if (
+    bookingStatus === BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW ||
+    (displayStatus === 'NO_SHOW' && !tutorDidJoin && studentDidJoin)
+  ) return 'student_only';
+  if (displayStatus === 'EXPIRED' && !tutorDidJoin && !studentDidJoin) return 'neither';
+  if (displayStatus === 'COMPLETED' && bothJoined) return 'both_joined';
+  return null;
 }
 
 function normalizeTutor(row: any): TutorPublic { // NOSONAR
@@ -369,8 +428,9 @@ export class TutorsService {
   @Cacheable('filter-options', 300) // Cache for 5 minutes
   async getFilterOptions() {
     // Get all approved tutors with their subjects, languages and reviews (exclude deleted users)
+    // Also exclude tutors with no subjects or zero price – they won't appear in listings
     const tutors = await this.prisma.tutor.findMany({
-      where: { status: TutorStatus.APPROVED, user: { deletedAt: null } },
+      where: { status: TutorStatus.APPROVED, user: { deletedAt: null }, subjects: { isEmpty: false }, hourlyRate: { gt: 0 } },
       select: {
         subjects: true,
         classesTeach: true,
@@ -468,7 +528,13 @@ export class TutorsService {
     const skip = (page - 1) * pageSize;
 
     // ✅ Only tutors with APPROVED status & non-deleted users
-    const where: any = { status: TutorStatus.APPROVED, user: { deletedAt: null } };
+    // ✅ Also exclude tutors with no subjects or price = 0
+    const where: any = {
+      status: TutorStatus.APPROVED,
+      user: { deletedAt: null },
+      subjects: { isEmpty: false },
+      hourlyRate: { gt: 0 },
+    };
 
     const andConditions: any[] = [];
 
@@ -697,7 +763,12 @@ export class TutorsService {
     }
 
     const candidates = await this.prisma.tutor.findMany({
-      where: { status: TutorStatus.APPROVED, user: { deletedAt: null } },
+      where: {
+        status: TutorStatus.APPROVED,
+        user: { deletedAt: null },
+        subjects: { isEmpty: false },
+        hourlyRate: { gt: 0 },
+      },
       orderBy: { updatedAt: 'desc' },
       take: 200,
       include: {
@@ -1244,6 +1315,8 @@ export class TutorsService {
       isTrending: true,
       status: TutorStatus.APPROVED,
       user: { deletedAt: null },
+      subjects: { isEmpty: false },
+      hourlyRate: { gt: 0 },
     };
 
     if (params.subject) {
@@ -1447,80 +1520,12 @@ export class TutorsService {
           ? booking.tutor.subjects[0]
           : 'Session');
 
-      let status: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'PENDING_SLOT' | 'CONFIRMED' | 'EXPIRED' | 'NO_SHOW' | 'CANCELED' = 'CONFIRMED';
       const wbData = booking.whiteboardSessions?.[0]?.data;
       const tutorDidJoin = hasTutorAttendanceDb(booking.attendance) || hasTutorAttendance(wbData);
       const studentDidJoin = hasStudentAttendanceDb(booking.attendance) || hasStudentAttendance(wbData);
-      const bothJoined = tutorDidJoin && studentDidJoin;
 
-      if (booking.status === BookingStatus.CANCELED) {
-        // Check if this was a "both missing" cancellation vs user-initiated cancel
-        // If neither party joined and endTime has passed, show as EXPIRED
-        const sessionEnded = booking.endTime && new Date(booking.endTime) <= now;
-        if (sessionEnded && !tutorDidJoin && !studentDidJoin) {
-          status = 'EXPIRED';
-        } else {
-          status = 'CANCELED';
-        }
-      } else if (booking.status === BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW) {
-        // Tutor didn't join — NO_SHOW (tutor's fault)
-        status = 'NO_SHOW';
-      } else if (booking.status === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW) {
-        // Student didn't join but tutor did — tutor gets paid, show as COMPLETED
-        status = 'COMPLETED';
-      } else if (booking.status === BookingStatus.PENDING_SLOT) {
-        status = 'PENDING_SLOT';
-      } else if (booking.status === BookingStatus.COMPLETED) {
-        // DB says completed — trust it (both attended or admin-completed)
-        status = 'COMPLETED';
-      } else if (
-        booking.status === BookingStatus.CONFIRMED ||
-        booking.status === BookingStatus.WAITING_ROOM ||
-        booking.status === BookingStatus.LIVE
-      ) {
-        const sessionStarted = new Date(booking.startTime!) <= now;
-        const sessionEnded = new Date(booking.endTime!) <= now;
-        if (sessionEnded) {
-          if (bothJoined) {
-            // Both attended — COMPLETED (cron will finalize DB status)
-            status = 'COMPLETED';
-          } else if (tutorDidJoin && !studentDidJoin) {
-            // Tutor joined, student didn't — tutor still gets paid
-            // Show COMPLETED for tutor (handlePostClassNoShow cron will mark AUTO_CANCELLED_STUDENT_NO_SHOW)
-            status = 'COMPLETED';
-          } else if (!tutorDidJoin && studentDidJoin) {
-            // Student joined, tutor didn't — tutor no-show (tutor's fault)
-            // handleNoShowBookings should have already caught this; show NO_SHOW
-            status = 'NO_SHOW';
-          } else {
-            // Neither joined — EXPIRED (company keeps tokens)
-            status = 'EXPIRED';
-          }
-        } else if (sessionStarted) {
-          // Class has started but not ended — tutor is in or about to join
-          status = 'ACTIVE';
-        } else {
-          status = 'UPCOMING';
-        }
-      }
-
-      // Determine attendance info for contextual UI messages
-      let attendanceInfo: 'both_joined' | 'tutor_only' | 'student_only' | 'neither' | null = null;
-      if (
-        booking.status === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW ||
-        (status === 'COMPLETED' && tutorDidJoin && !studentDidJoin)
-      ) {
-        attendanceInfo = 'tutor_only';
-      } else if (
-        booking.status === BookingStatus.AUTO_CANCELLED_TUTOR_NO_SHOW ||
-        (status === 'NO_SHOW' && !tutorDidJoin && studentDidJoin)
-      ) {
-        attendanceInfo = 'student_only';
-      } else if (status === 'EXPIRED' && !tutorDidJoin && !studentDidJoin) {
-        attendanceInfo = 'neither';
-      } else if (status === 'COMPLETED' && bothJoined) {
-        attendanceInfo = 'both_joined';
-      }
+      const status = resolveSessionStatus(booking, now, tutorDidJoin, studentDidJoin);
+      const attendanceInfo = resolveAttendanceInfo(booking.status, status, tutorDidJoin, studentDidJoin);
 
       return {
         id: booking.id,
@@ -1580,7 +1585,8 @@ export class TutorsService {
         .map((b) => b.studentId),
     ).size;
 
-    const completedBookings = await this.prisma.booking.findMany({
+    // completedBookings query removed — sessionsCompleted below uses prisma.booking.count directly
+    await this.prisma.booking.findMany({
       where: {
         tutorId,
         status: BookingStatus.COMPLETED,

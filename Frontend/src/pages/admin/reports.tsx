@@ -218,7 +218,7 @@ export default function AdminReports() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-testid="reports-page">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -230,6 +230,7 @@ export default function AdminReports() {
           <select
             value={selectedPeriod}
             onChange={(e) => setSelectedPeriod(e.target.value)}
+            data-testid="reports-period-select"
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-300"
           >
             <option value="week">Weekly</option>
@@ -240,6 +241,7 @@ export default function AdminReports() {
           <button
             onClick={() => handleExport('CSV')}
             disabled={exporting !== null}
+            data-testid="reports-download-all-button"
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
@@ -258,6 +260,7 @@ export default function AdminReports() {
             <a
               key={report.path}
               href={report.path}
+              data-testid={`reports-card-${report.color}`}
               className={`rounded-2xl border-2 p-6 transition-all ${colors.border} ${colors.bg} ${colors.hover} cursor-pointer group`}
             >
               <div className="flex items-start justify-between mb-4">
@@ -318,6 +321,7 @@ export default function AdminReports() {
               key={option.format}
               onClick={() => handleExport(option.format)}
               disabled={exporting !== null}
+              data-testid={`reports-export-${option.format.toLowerCase()}-button`}
               className="rounded-lg border border-slate-200 bg-white p-4 text-left hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               <p className="font-semibold text-slate-900">

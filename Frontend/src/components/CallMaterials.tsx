@@ -113,9 +113,9 @@ export default function CallMaterials({ studentId, onOpenInClass, isDemo }: Call
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-testid="call-materials">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700" data-testid="call-materials-error-alert">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -137,6 +137,7 @@ export default function CallMaterials({ studentId, onOpenInClass, isDemo }: Call
               disabled={sharingId === m.id || sharedIds.has(m.id)}
               onClick={() => handleShare(m.id)}
               className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium border transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50"
+              data-testid={`call-materials-share-btn-${m.id}`}
             >
               {sharedIds.has(m.id) ? (
                 <><CheckCircle2 className="h-3 w-3 text-green-600" /> Shared</>
@@ -152,6 +153,7 @@ export default function CallMaterials({ studentId, onOpenInClass, isDemo }: Call
                 disabled={openingId === m.id}
                 onClick={() => handleOpenInClass(m)}
                 className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium bg-slate-900 text-white transition hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid={`call-materials-open-btn-${m.id}`}
               >
                 {openingId === m.id ? (
                   <><Loader2 className="h-3 w-3 animate-spin" /> Loading…</>

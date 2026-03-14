@@ -280,7 +280,7 @@ export default function TutorDashboard() {
         onAccept={handleAcceptTerms}
         onDecline={handleDeclineTerms}
       />
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50" data-testid="tutor-dashboard-page">
       <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-6 sm:space-y-8 max-w-7xl">
         {/* Hero */}
         <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-r from-indigo-700 to-purple-600 p-6 sm:p-8 lg:p-10 text-white shadow-md">
@@ -306,6 +306,7 @@ export default function TutorDashboard() {
               <Link
                 to="/tutor/profile"
                 className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                data-testid="tutor-dashboard-complete-profile-link"
               >
                 Complete profile
               </Link>
@@ -334,18 +335,21 @@ export default function TutorDashboard() {
                 value={`₹${stats.totalEarnings.toLocaleString()}`}
                 icon={<DollarSign className="h-6 w-6 text-emerald-600" />}
                 bgColor="bg-emerald-50"
+                testId="tutor-dashboard-total-earnings-card"
               />
               <StatCard
                 title="Monthly Earnings"
                 value={`₹${stats.monthlyEarnings.toLocaleString()}`}
                 icon={<TrendingUp className="h-6 w-6 text-blue-600" />}
                 bgColor="bg-blue-50"
+                testId="tutor-dashboard-monthly-earnings-card"
               />
               <StatCard
                 title="Sessions Completed"
                 value={stats.sessionsCompleted}
                 icon={<BookOpen className="h-6 w-6 text-purple-600" />}
                 bgColor="bg-purple-50"
+                testId="tutor-dashboard-sessions-completed-card"
               />
               <StatCard
                 title="Average Rating"
@@ -353,22 +357,26 @@ export default function TutorDashboard() {
                 icon={<Star className="h-6 w-6 text-amber-600 fill-amber-600" />}
                 bgColor="bg-amber-50"
                 subtitle={`${stats.totalReviews} reviews`}
+                testId="tutor-dashboard-average-rating-card"
               />
               <StatCard
                 title="Active Students"
                 value={stats.activeStudents}
                 icon={<User className="h-6 w-6 text-indigo-600" />}
                 bgColor="bg-indigo-50"
+                testId="tutor-dashboard-active-students-card"
               />
               <StatCard
                 title="Quick Action"
                 value="Manage Availability"
                 icon={<CalendarDays className="h-6 w-6 text-rose-600" />}
                 bgColor="bg-rose-50"
+                testId="tutor-dashboard-quick-action-card"
                 action={
                   <Link 
                     to="/tutor/availability" 
                     className="mt-2 text-sm text-indigo-700 hover:underline font-medium inline-block"
+                    data-testid="tutor-dashboard-update-availability-link"
                   >
                     Update Now →
                   </Link>
@@ -386,7 +394,7 @@ export default function TutorDashboard() {
               <h3 className="font-semibold flex items-center gap-2">
                 <CalendarDays className="h-5 w-5 text-indigo-600"/> Upcoming Availability
               </h3>
-              <Link to="/tutor/availability" className="text-sm text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1 font-medium">
+              <Link to="/tutor/availability" className="text-sm text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1 font-medium" data-testid="tutor-dashboard-availability-see-all-link">
                 See all <ArrowRight className="h-4 w-4"/>
               </Link>
             </div>
@@ -400,6 +408,7 @@ export default function TutorDashboard() {
                   <Link 
                     to="/tutor/availability" 
                     className="mt-2 inline-block text-sm text-indigo-600 hover:underline"
+                    data-testid="tutor-dashboard-add-availability-link"
                   >
                     Add availability
                   </Link>
@@ -420,6 +429,7 @@ export default function TutorDashboard() {
                       <Link 
                         to="/tutor/availability" 
                         className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                        data-testid="tutor-dashboard-edit-availability-link"
                       >
                         Edit
                       </Link>
@@ -436,7 +446,7 @@ export default function TutorDashboard() {
               <h3 className="font-semibold flex items-center gap-2">
                 <User className="h-5 w-5 text-emerald-600"/> Recent Bookings
               </h3>
-              <Link to="/tutor/sessions" className="text-sm text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1 font-medium">
+              <Link to="/tutor/sessions" className="text-sm text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1 font-medium" data-testid="tutor-dashboard-bookings-see-all-link">
                 See all <ArrowRight className="h-4 w-4"/>
               </Link>
             </div>
@@ -483,6 +493,7 @@ export default function TutorDashboard() {
               emoji="👤"
               title="Profile"
               description="Update your bio and subjects"
+              testId="tutor-dashboard-tool-profile"
             />
             <ToolCard
               to="/tutor/availability"
@@ -490,6 +501,7 @@ export default function TutorDashboard() {
               emoji="📅"
               title="Availability"
               description="Manage your time slots"
+              testId="tutor-dashboard-tool-availability"
             />
             <ToolCard
               to="/tutor/sessions"
@@ -497,6 +509,7 @@ export default function TutorDashboard() {
               emoji="📚"
               title="Sessions"
               description="View all your classes"
+              testId="tutor-dashboard-tool-sessions"
             />
             <ToolCard
               to="/tutor/earnings"
@@ -504,6 +517,7 @@ export default function TutorDashboard() {
               emoji="💰"
               title="Earnings"
               description="Check your income"
+              testId="tutor-dashboard-tool-earnings"
             />
             <ToolCard
               to="/tutor/content-library"
@@ -511,6 +525,7 @@ export default function TutorDashboard() {
               emoji="📄"
               title="Content"
               description="Share study materials"
+              testId="tutor-dashboard-tool-content"
             />
             <ToolCard
               to="/tutor/performance-tracking"
@@ -518,6 +533,7 @@ export default function TutorDashboard() {
               emoji="📊"
               title="Analytics"
               description="Track student progress"
+              testId="tutor-dashboard-tool-analytics"
             />
             <ToolCard
               to="/tutor/messages"
@@ -525,6 +541,7 @@ export default function TutorDashboard() {
               emoji="💬"
               title="Messages"
               description="Chat with students"
+              testId="tutor-dashboard-tool-messages"
             />
           </div>
         </section>
@@ -541,7 +558,8 @@ function StatCard({
   icon, 
   bgColor = "bg-slate-50",
   subtitle,
-  action 
+  action,
+  testId 
 }: { 
   title: string; 
   value: string | number; 
@@ -549,9 +567,10 @@ function StatCard({
   bgColor?: string;
   subtitle?: string;
   action?: React.ReactNode;
+  testId?: string;
 }) {
   return (
-    <div className={`rounded-2xl border p-5 shadow-sm ${bgColor} hover:shadow-md transition`}>
+    <div className={`rounded-2xl border p-5 shadow-sm ${bgColor} hover:shadow-md transition`} data-testid={testId}>
       <div className="flex items-start justify-between mb-3">
         <div className="p-2 rounded-lg bg-white shadow-sm">
           {icon}
@@ -570,18 +589,21 @@ function ToolCard({
   icon, 
   emoji, 
   title, 
-  description 
+  description,
+  testId 
 }: { 
   to: string; 
   icon: React.ReactNode; 
   emoji: string; 
   title: string; 
   description: string;
+  testId?: string;
 }) {
   return (
     <Link
       to={to}
       className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-5 shadow-sm hover:shadow-md transition group active:scale-95"
+      data-testid={testId}
     >
       <div className="flex items-center justify-between mb-2 sm:mb-3">
         <div className="group-hover:scale-110 transition">

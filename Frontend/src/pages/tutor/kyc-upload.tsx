@@ -6,8 +6,8 @@ import { getCountries, type CountryOption, findCountry } from '../../utils/count
 
 /* ----------------- Validators ----------------- */
 
-// IFSC: 4 letters + '0' + 6 digits
-const IFSC_RE = /^[A-Z]{4}0\d{6}$/i;
+// IFSC: 4 letters + '0' + 6 alphanumeric (RBI format)
+const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/i;
 // UAE IBAN: AE + 21 digits (length 23 total)
 const AE_IBAN_RE = /^AE\d{21}$/i;
 // SWIFT/BIC: 8 or 11 alphanum
@@ -247,7 +247,10 @@ export default function TutorKYC() {
       const acc2 = onlyDigits(accNumber2);
       if (acc.length < 9) e.accNumber = 'Account number looks too short';
       if (acc2 !== acc) e.accNumber2 = 'Account numbers do not match';
-      if (!IFSC_RE.test(ifsc)) e.ifsc = 'Invalid IFSC (e.g. HDFC0001234)';
+      const normalizedIfsc = ifsc.replace(/\s+/g, '').toUpperCase();
+      if (!IFSC_RE.test(normalizedIfsc)) {
+        e.ifsc = 'Invalid IFSC (format: ABCD0XXXXXX, e.g. HDFC0001234)';
+      }
     } else if (isUAE) {
       if (!AE_IBAN_RE.test(iban)) e.iban = 'Invalid UAE IBAN (e.g. AE07 0331 ...)';
       if (swift && !SWIFT_RE.test(swift)) e.swift = 'Invalid SWIFT/BIC';
@@ -292,7 +295,7 @@ export default function TutorKYC() {
 
       // India
       accountNumber: payloadIsIndia ? onlyDigits(accNumber) : undefined,
-      ifsc: payloadIsIndia ? ifsc.toUpperCase() : undefined,
+      ifsc: payloadIsIndia ? ifsc.replace(/\s+/g, '').toUpperCase() : undefined,
       upiId: payloadIsIndia ? (upi || undefined) : undefined,
 
       // UAE
@@ -539,7 +542,14 @@ export default function TutorKYC() {
               </label>
               <label className="text-sm">
                 <span className="block text-slate-600 mb-1">IFSC *</span>
-                <input className="w-full border rounded-lg px-3 py-2" value={ifsc} onChange={e=>setIfsc(e.target.value)} placeholder="e.g. HDFC0001234" disabled={!canEditField('ifsc')} />
+                <input
+                  className="w-full border rounded-lg px-3 py-2"
+                  value={ifsc}
+                  onChange={e=>setIfsc(e.target.value.replace(/\s+/g, '').toUpperCase())}
+                  placeholder="e.g. HDFC0001234"
+                  maxLength={11}
+                  disabled={!canEditField('ifsc')}
+                />
                 {errors.ifsc && <p className="text-rose-600 text-xs mt-1">{errors.ifsc}</p>}
               </label>
               <label className="text-sm">

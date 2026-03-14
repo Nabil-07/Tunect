@@ -71,6 +71,10 @@ export class UploadsService {
       maxBytes: 10 * 1024 * 1024,
       allowedMimeTypes: new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']),
     },
+    marksheets: {
+      maxBytes: 10 * 1024 * 1024,
+      allowedMimeTypes: new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
+    },
   };
 
   constructor(
@@ -164,6 +168,14 @@ export class UploadsService {
       const expectedPrefix = `avatars/${params.userId}/`;
       if (!key.startsWith(expectedPrefix)) {
         throw new ForbiddenException('Avatar key does not belong to user');
+      }
+      return key;
+    }
+
+    if (params.useCase === 'marksheets') {
+      const expectedPrefix = `marksheets/${params.userId}/`;
+      if (!key.startsWith(expectedPrefix)) {
+        throw new ForbiddenException('Marksheet key does not belong to user');
       }
       return key;
     }
@@ -395,6 +407,11 @@ export class UploadsService {
       return;
     }
 
+    // Students can read their own marksheets
+    if (key.startsWith(`marksheets/${userId}/`)) {
+      return;
+    }
+
     if (key.startsWith('study-materials/')) {
       const student = await this.prisma.student.findUnique({
         where: { userId },
@@ -499,6 +516,10 @@ export class UploadsService {
       return `blogs/${userId}/${id}.${ext}`;
     }
 
+    if (dto.useCase === 'marksheets') {
+      return `marksheets/${userId}/${id}.${ext}`;
+    }
+
     const tutor = await this.prisma.tutor.findUnique({
       where: { userId },
       select: { id: true },
@@ -557,7 +578,8 @@ export class UploadsService {
       key.startsWith('kyc/') ||
       key.startsWith('certificates/') ||
       key.startsWith('study-materials/') ||
-      key.startsWith('blogs/')
+      key.startsWith('blogs/') ||
+      key.startsWith('marksheets/')
     );
   }
 }

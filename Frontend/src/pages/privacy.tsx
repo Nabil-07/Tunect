@@ -3,7 +3,7 @@ import { Shield, Lock, Eye, Users, FileText, Mail, AlertCircle } from 'lucide-re
 
 export default function Privacy() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50" data-testid="privacy-page">
       {/* Header */}
       <section className="bg-gradient-to-r from-ocean-700 to-green-500 text-white py-16">
         <div className="container mx-auto px-4">

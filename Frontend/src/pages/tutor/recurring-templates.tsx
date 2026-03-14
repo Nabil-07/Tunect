@@ -153,7 +153,7 @@ export default function RecurringTemplates() {
   }, {} as Record<number, RecurringTemplate[]>);
 
   return (
-    <main className="container-px mx-auto py-8">
+    <main className="container-px mx-auto py-8" data-testid="tutor-recurring-templates-page">
       <ConfirmDialogComponent />
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -165,6 +165,7 @@ export default function RecurringTemplates() {
         <button
           onClick={() => setShowForm(!showForm)}
           className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          data-testid="tutor-recurring-templates-add-button"
         >
           <Plus className="h-4 w-4" />
           Add Template
@@ -173,12 +174,12 @@ export default function RecurringTemplates() {
 
       {/* Alerts */}
       {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" data-testid="tutor-recurring-templates-error-alert">
           {error}
         </div>
       )}
       {success && (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700" data-testid="tutor-recurring-templates-success-alert">
           {success}
         </div>
       )}
@@ -189,7 +190,7 @@ export default function RecurringTemplates() {
           <h2 className="text-lg font-semibold mb-4">
             {editingId ? 'Edit Template' : 'Create New Template'}
           </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" data-testid="tutor-recurring-templates-form">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Title (optional)
@@ -200,6 +201,7 @@ export default function RecurringTemplates() {
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 placeholder="e.g., Morning Sessions"
+                data-testid="tutor-recurring-templates-title-input"
               />
             </div>
 
@@ -213,6 +215,7 @@ export default function RecurringTemplates() {
                   value={formData.dayOfWeek}
                   onChange={(e) => setFormData({ ...formData, dayOfWeek: Number(e.target.value) })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  data-testid="tutor-recurring-templates-day-select"
                 >
                   {DAYS_OF_WEEK.map((day, index) => (
                     <option key={index} value={index}>
@@ -232,6 +235,7 @@ export default function RecurringTemplates() {
                   value={formData.startTime}
                   onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  data-testid="tutor-recurring-templates-start-time-input"
                 />
               </div>
 
@@ -245,6 +249,7 @@ export default function RecurringTemplates() {
                   value={formData.endTime}
                   onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  data-testid="tutor-recurring-templates-end-time-input"
                 />
               </div>
             </div>
@@ -256,6 +261,7 @@ export default function RecurringTemplates() {
                   checked={formData.isActive}
                   onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
                   className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  data-testid="tutor-recurring-templates-active-checkbox"
                 />
                 <span className="text-sm font-medium text-slate-700">
                   Active template
@@ -267,6 +273,7 @@ export default function RecurringTemplates() {
               <button
                 type="submit"
                 className="rounded-xl bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                data-testid="tutor-recurring-templates-submit-button"
               >
                 {editingId ? 'Update' : 'Create'}
               </button>
@@ -274,6 +281,7 @@ export default function RecurringTemplates() {
                 type="button"
                 onClick={resetForm}
                 className="rounded-xl border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                data-testid="tutor-recurring-templates-cancel-button"
               >
                 Cancel
               </button>
@@ -346,6 +354,7 @@ export default function RecurringTemplates() {
                                   onClick={() => handleToggleActive(template.id, template.isActive)}
                                   className="rounded-lg p-2 hover:bg-white/50"
                                   title={template.isActive ? 'Deactivate' : 'Activate'}
+                                  data-testid="tutor-recurring-templates-toggle-button"
                                 >
                                   {template.isActive ? (
                                     <ToggleRight className="h-5 w-5 text-emerald-600" />
@@ -357,6 +366,7 @@ export default function RecurringTemplates() {
                                   onClick={() => handleEdit(template)}
                                   className="rounded-lg p-2 text-slate-600 hover:bg-white"
                                   title="Edit"
+                                  data-testid="tutor-recurring-templates-edit-button"
                                 >
                                   <Edit className="h-4 w-4" />
                                 </button>
@@ -364,6 +374,7 @@ export default function RecurringTemplates() {
                                   onClick={() => handleDelete(template.id)}
                                   className="rounded-lg p-2 text-red-600 hover:bg-red-50"
                                   title="Delete"
+                                  data-testid="tutor-recurring-templates-delete-button"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </button>

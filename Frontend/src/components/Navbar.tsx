@@ -228,14 +228,15 @@ export default function Navbar() {
   }, [logout, nav]);
 
   return (
-    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b border-slate-100">
-      <nav className="container mx-auto max-w-7xl px-3 sm:px-4 md:px-6 flex h-16 items-center gap-4">
+    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b border-slate-100" data-testid="navbar">
+      <nav className="container mx-auto max-w-7xl px-3 sm:px-4 md:px-6 flex h-16 items-center gap-4" data-testid="navbar-nav">
         {/* Brand with real logo */}
         <button
           type="button"
           onClick={() => nav(isAuthed ? roleDashboard(role) : '/')}
           className="flex items-center gap-2"
           aria-label="Go to home"
+          data-testid="navbar-logo-btn"
         >
           <img
             src="/tunect_logo_hd.png"
@@ -268,11 +269,12 @@ export default function Navbar() {
                   type="button"
                   onClick={() => setExtraOpen((v) => !v)}
                   className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
+                  data-testid="navbar-more-btn"
                 >
                   More <ChevronDown size={16} className="text-slate-500" />
                 </button>
                 {extraOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-none border border-slate-200 bg-white shadow-md p-0 z-50 overflow-hidden">
+                  <div className="absolute right-0 mt-2 w-56 rounded-none border border-slate-200 bg-white shadow-md p-0 z-50 overflow-hidden" data-testid="navbar-more-dropdown">
                     {PUBLIC_EXTRA.map((n) => (
                       <Link
                         key={n.to}
@@ -295,16 +297,17 @@ export default function Navbar() {
                   type="button"
                   onClick={() => setExtraOpen((v) => !v)}
                   className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
+                  data-testid="navbar-student-more-btn"
                 >
                   More <ChevronDown size={16} className="text-slate-500" />
                 </button>
                 {extraOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
-                    <Link to="/support" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Support</Link>
-                    <Link to="/about" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>About</Link>
-                    <Link to="/student/favorites" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Favorites</Link>
-                    <Link to="/student/reviews" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Reviews</Link>
-                    <Link to="/student/transactions" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Transactions</Link>
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50" data-testid="navbar-student-more-dropdown">
+                    <Link to="/support" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-student-support-link">Support</Link>
+                    <Link to="/about" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-student-about-link">About</Link>
+                    <Link to="/student/favorites" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-student-favorites-link">Favorites</Link>
+                    <Link to="/student/reviews" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-student-reviews-link">Reviews</Link>
+                    <Link to="/student/transactions" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-student-transactions-link">Transactions</Link>
                   </div>
                 )}
               </div>
@@ -317,16 +320,17 @@ export default function Navbar() {
                   type="button"
                   onClick={() => setExtraOpen((v) => !v)}
                   className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
+                  data-testid="navbar-tutor-more-btn"
                 >
                   More <ChevronDown size={16} className="text-slate-500" />
                 </button>
                 {extraOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
-                    <Link to="/tutor/kyc" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>KYC Status</Link>
-                    <Link to="/tutor/recurring-templates" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Recurring Templates</Link>
-                    <Link to="/find-tutors" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Find Tutor</Link>
-                    <Link to="/become-tutor" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Become a Tutor</Link>
-                    <Link to="/support" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Support</Link>
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50" data-testid="navbar-tutor-more-dropdown">
+                    <Link to="/tutor/kyc" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-tutor-kyc-link">KYC Status</Link>
+                    <Link to="/tutor/recurring-templates" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-tutor-templates-link">Recurring Templates</Link>
+                    <Link to="/find-tutors" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-tutor-find-tutors-link">Find Tutor</Link>
+                    <Link to="/become-tutor" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-tutor-become-tutor-link">Become a Tutor</Link>
+                    <Link to="/support" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)} data-testid="navbar-tutor-support-link">Support</Link>
                   </div>
                 )}
               </div>
@@ -339,11 +343,12 @@ export default function Navbar() {
                   type="button"
                   onClick={() => setExtraOpen((v) => !v)}
                   className="ml-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-ink hover:bg-slate-50 inline-flex items-center gap-1"
+                  data-testid="navbar-admin-more-btn"
                 >
                   More <ChevronDown size={16} className="text-slate-500" />
                 </button>
                 {extraOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50">
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50" data-testid="navbar-admin-more-dropdown">
                     <Link to="/admin/kyc-verification" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>KYC Verification</Link>
                     <Link to="/admin/reports" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Reports</Link>
                     <Link to="/admin/reviews" className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100 transition-colors" onClick={() => setExtraOpen(false)}>Reviews</Link>
@@ -369,6 +374,7 @@ export default function Navbar() {
                 className="relative inline-flex items-center justify-center rounded-xl p-2 hover:bg-slate-100"
                 aria-label="Open messages"
                 title="Messages"
+                data-testid="navbar-messages-link"
               >
                 <MessageSquare className="h-5 w-5 text-slate-700" />
                 {unreadMsgCount > 0 && (
@@ -378,7 +384,7 @@ export default function Navbar() {
                 )}
               </Link>
 
-              <div className="inline-flex items-center justify-center rounded-xl hover:bg-slate-100">
+              <div className="inline-flex items-center justify-center rounded-xl hover:bg-slate-100" data-testid="navbar-notifications">
                 <NotificationBell />
               </div>
             </>
@@ -392,6 +398,7 @@ export default function Navbar() {
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 aria-label="Open user menu"
+                data-testid="navbar-user-menu-btn"
               >
                 <img src={avatarUrl} alt="avatar" className="w-8 h-8 rounded-xl object-cover" />
                 <span className="text-sm font-medium hidden lg:inline max-w-[12rem] truncate">{displayName}</span>
@@ -401,11 +408,13 @@ export default function Navbar() {
                 <div
                   role="menu"
                   className="absolute right-0 mt-2 w-56 rounded-2xl border border-slate-100 bg-white shadow-soft p-2 z-50"
+                  data-testid="navbar-user-dropdown"
                 >
                   <Link
                     to={roleDashboard(role)}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
                     onClick={() => setMenuOpen(false)}
+                    data-testid="navbar-menu-dashboard-link"
                   >
                     <span className="inline-block w-4" />
                     <span>Dashboard</span>
@@ -414,6 +423,7 @@ export default function Navbar() {
                     to={role === 'tutor' ? '/tutor/profile' : '/student/profile'}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
                     onClick={() => setMenuOpen(false)}
+                    data-testid="navbar-menu-profile-link"
                   >
                     <User size={16} />
                     <span>Edit details</span>
@@ -422,6 +432,7 @@ export default function Navbar() {
                     to={manageAccountPath}
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
                     onClick={() => setMenuOpen(false)}
+                    data-testid="navbar-menu-manage-account-link"
                   >
                     <Settings size={16} />
                     <span>Manage account</span>
@@ -430,6 +441,7 @@ export default function Navbar() {
                     to="/account/security"
                     className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-slate-50"
                     onClick={() => setMenuOpen(false)}
+                    data-testid="navbar-menu-security-link"
                   >
                     <KeyRound size={16} />
                     <span>Password &amp; security</span>
@@ -443,6 +455,7 @@ export default function Navbar() {
                       setMenuOpen(false);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50"
+                    data-testid="navbar-menu-logout-btn"
                   >
                     <LogOut size={16} />
                     <span>Logout</span>
@@ -452,10 +465,10 @@ export default function Navbar() {
             </div>
           ) : (
             <>
-              <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-ink">
+              <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-ink" data-testid="navbar-login-link">
                 Login
               </Link>
-              <Link to="/signup" className="text-sm font-medium text-ocean-600 hover:text-ocean-800">
+              <Link to="/signup" className="text-sm font-medium text-ocean-600 hover:text-ocean-800" data-testid="navbar-signup-link">
                 Sign Up
               </Link>
             </>
@@ -467,6 +480,7 @@ export default function Navbar() {
           className="md:hidden ml-auto p-2 rounded-xl hover:bg-slate-100"
           onClick={() => setOpen((v) => !v)}
           aria-label="Toggle menu"
+          data-testid="navbar-mobile-menu-btn"
         >
           {open ? <X /> : <Menu />}
         </button>
@@ -474,8 +488,8 @@ export default function Navbar() {
 
       {/* Mobile drawer */}
       {open && (
-        <div className="md:hidden border-t border-slate-100 bg-white">
-          <div className="container mx-auto max-w-7xl px-3 sm:px-4 md:px-6 py-2 flex flex-col gap-1">
+        <div className="md:hidden border-t border-slate-100 bg-white h-[calc(100dvh-56px)] overflow-y-auto" data-testid="navbar-mobile-drawer">
+          <div className="px-3 sm:px-4 py-2 pb-8 flex flex-col gap-1">
             {isAuthed && (
               <div className="flex items-center gap-2 px-3 py-2">
                 <NavLink
@@ -542,8 +556,12 @@ export default function Navbar() {
             {isAuthed && role === 'tutor' && (
               <>
                 <hr className="my-2" />
+                <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Account</div>
+                <NavLink to="/tutor/profile" className="btn-ghost inline-flex items-center gap-2" onClick={() => setOpen(false)}><User size={16} /> Edit details</NavLink>
+                <NavLink to="/tutor/manage-account" className="btn-ghost inline-flex items-center gap-2" onClick={() => setOpen(false)}><Settings size={16} /> Manage account</NavLink>
+                <NavLink to="/account/security" className="btn-ghost inline-flex items-center gap-2" onClick={() => setOpen(false)}><KeyRound size={16} /> Password &amp; security</NavLink>
+                <hr className="my-2" />
                 <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Extra</div>
-                <NavLink to="/tutor/profile" className="btn-ghost" onClick={() => setOpen(false)}>Profile</NavLink>
                 <NavLink to="/find-tutors" className="btn-ghost" onClick={() => setOpen(false)}>Find Tutor</NavLink>
                 <NavLink to="/become-tutor" className="btn-ghost" onClick={() => setOpen(false)}>
                   Become a Tutor {showBecomeTutorForTutor ? '' : '(KYC)'}
@@ -556,6 +574,11 @@ export default function Navbar() {
             {/* Student Extra on mobile */}
             {isAuthed && role === 'student' && (
               <>
+                <hr className="my-2" />
+                <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Account</div>
+                <NavLink to="/student/profile" className="btn-ghost inline-flex items-center gap-2" onClick={() => setOpen(false)}><User size={16} /> Edit details</NavLink>
+                <NavLink to="/student/manage-account" className="btn-ghost inline-flex items-center gap-2" onClick={() => setOpen(false)}><Settings size={16} /> Manage account</NavLink>
+                <NavLink to="/account/security" className="btn-ghost inline-flex items-center gap-2" onClick={() => setOpen(false)}><KeyRound size={16} /> Password &amp; security</NavLink>
                 <hr className="my-2" />
                 <div className="text-xs font-semibold text-slate-500 px-3 mb-1">Extra</div>
                 <NavLink to="/support" className="btn-ghost" onClick={() => setOpen(false)}>Support</NavLink>
@@ -638,12 +661,14 @@ export default function Navbar() {
               <button
                 onClick={() => setShowLogoutModal(false)}
                 className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                data-testid="navbar-logout-cancel-btn"
               >
                 Cancel
               </button>
               <button
                 onClick={handleLogout}
                 className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors shadow-sm"
+                data-testid="navbar-logout-confirm-btn"
               >
                 Sign out
               </button>

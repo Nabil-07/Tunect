@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Calendar,
   Clock,
@@ -42,6 +42,11 @@ export default function MyBookings() {
   // slot picker state
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerBooking, setPickerBooking] = useState<Booking | null>(null);
+
+  // After auto-reserving tokens, remember which tutor to open picker for on the next refresh
+  const autoOpenTutorIdRef = useRef<string | null>(null);
+  // Tutor whose booking should be auto-reserved once token balances are confirmed
+  const [pendingAutoReserveTutorId, setPendingAutoReserveTutorId] = useState<string | null>(null);
 
   // confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -202,18 +207,32 @@ export default function MyBookings() {
         [...comp].sort((a, b) => getEnd(b) - getEnd(a)) // most recent first
       );
 
-      // If redirected from payment success, auto-open the first unscheduled booking
+      // If redirected from payment success, auto-open the matching unscheduled booking
       const prompt =
         params.get("promptSelect") === "1" ||
         localStorage.getItem("PROMPT_SELECT_SLOT") === "1";
 
       const promptTutorId = params.get("tutorId") || localStorage.getItem("PROMPT_TUTOR_ID") || "";
 
-      if (prompt && uns.length > 0) {
-        const match = promptTutorId
-          ? uns.find((b) => b.tutor?.id === promptTutorId || b.tutorId === promptTutorId)
-          : undefined;
-        openPickerFor(match || uns[0]);
+      // Check if we need to auto-open after a reserve-with-tokens call
+      const pendingAutoOpen = autoOpenTutorIdRef.current;
+      if (pendingAutoOpen) {
+        autoOpenTutorIdRef.current = null;
+        const match = uns.find((b) => b.tutor?.id === pendingAutoOpen || b.tutorId === pendingAutoOpen);
+        if (match) openPickerFor(match);
+      } else if (prompt) {
+        if (promptTutorId) {
+          // Only open picker if we find the EXACT tutor's booking — never fall back to an unrelated booking
+          const match = uns.find((b) => b.tutor?.id === promptTutorId || b.tutorId === promptTutorId);
+          if (match) {
+            openPickerFor(match);
+          }
+          // If no match: the token balance section will show "Schedule Class";
+          // we'll handle it after balances load via useEffect below
+          if (!match) setPendingAutoReserveTutorId(promptTutorId);
+        } else if (uns.length > 0) {
+          openPickerFor(uns[0]);
+        }
       }
 
       if (prompt) {
@@ -292,8 +311,46 @@ export default function MyBookings() {
     };
   }, [upcoming, completed]);
 
+  // When arriving from payment-success with a tutorId but no existing booking, auto-call
+  // reserve-with-tokens so the slot picker has something to open.
+  useEffect(() => {
+    if (!pendingAutoReserveTutorId || loadingBalances || loadingBookings) return;
+    const tutorId = pendingAutoReserveTutorId;
+    // If a booking appeared in the meantime, just open it directly
+    const existingBooking = unscheduled.find(
+      (b) => b.tutor?.id === tutorId || b.tutorId === tutorId
+    );
+    if (existingBooking) {
+      setPendingAutoReserveTutorId(null);
+      openPickerFor(existingBooking);
+      return;
+    }
+    // Check there's enough token balance before auto-reserving
+    const balance = tokenBalances.get(tutorId) ?? 0;
+    if (balance <= 0) {
+      setPendingAutoReserveTutorId(null);
+      return;
+    }
+    setPendingAutoReserveTutorId(null);
+    // Signal the next refresh to auto-open the slot picker for this tutor
+    autoOpenTutorIdRef.current = tutorId;
+    api
+      .post(`/bookings/reserve-with-tokens/${tutorId}`)
+      .then(() => {
+        showSuccess("Token reserved — opening slot picker…");
+        return refresh();
+      })
+      .catch((err: any) => {
+        autoOpenTutorIdRef.current = null;
+        showError(
+          err?.response?.data?.message ?? "Could not prepare booking for slot selection"
+        );
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoReserveTutorId, loadingBalances, loadingBookings]);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100" data-testid="student-bookings-page">
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Enhanced Header */}
         <div className="mb-8">
@@ -389,6 +446,7 @@ export default function MyBookings() {
                           showError(err.response?.data?.message || 'Failed to reserve tokens');
                         }
                       }}
+                      data-testid="student-bookings-schedule-btn"
                       className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-700 active:bg-emerald-800 transition transform hover:scale-105"
                     >
                       <CalendarPlus2 size={18} /> Schedule Class
@@ -415,6 +473,7 @@ export default function MyBookings() {
               <div className="flex gap-2">
                 <button
                   onClick={() => openPickerFor(b)}
+                  data-testid="student-bookings-select-slot-btn"
                   className="inline-flex items-center gap-2 rounded-xl bg-ocean-700 px-4 py-2 text-sm font-medium text-white hover:bg-ocean-800"
                 >
                   <CalendarPlus2 className="h-4 w-4" />
@@ -422,6 +481,7 @@ export default function MyBookings() {
                 </button>
                 <button
                   onClick={() => handleCancel(b)}
+                  data-testid="student-bookings-cancel-btn"
                   className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
                 >
                   <XCircle className="h-4 w-4" />
@@ -443,6 +503,7 @@ export default function MyBookings() {
             actions={
               <button
                 onClick={() => handleCancel(b)}
+                data-testid="student-bookings-cancel-upcoming-btn"
                 className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
               >
                 <XCircle className="h-4 w-4" />
@@ -700,6 +761,7 @@ function BookingCard({
             <div className="mt-3">
               <a
                 href={joinUrl}
+                data-testid="student-bookings-join-class-link"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition"
               >
                 <Video size={16} />

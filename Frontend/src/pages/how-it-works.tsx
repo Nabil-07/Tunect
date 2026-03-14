@@ -135,7 +135,7 @@ const faqSchema = {
 /* ── component ────────────────────────────────────────────────────── */
 export default function HowItWorks() {
   return (
-    <main className="container-px mx-auto py-12">
+    <main className="container-px mx-auto py-12" data-testid="how-it-works-page">
       <SEO
         title="How Tunect Works | Online tutoring for students & tutors"
         description="Learn how Tunect works for students and tutors. Find a tutor online, book a free demo, join live 1-on-1 sessions, and start learning or earning today."
@@ -176,7 +176,7 @@ export default function HowItWorks() {
           ))}
         </div>
         <div className="mt-8 text-center">
-          <Link to="/find-tutors" className="btn-primary inline-block">
+          <Link to="/find-tutors" className="btn-primary inline-block" data-testid="how-it-works-find-tutor-link">
             Find a tutor now
           </Link>
         </div>
@@ -205,7 +205,7 @@ export default function HowItWorks() {
           ))}
         </div>
         <div className="mt-8 text-center">
-          <Link to="/become-tutor" className="btn-primary inline-block">
+          <Link to="/become-tutor" className="btn-primary inline-block" data-testid="how-it-works-become-tutor-link">
             Become a tutor
           </Link>
         </div>
@@ -252,8 +252,8 @@ export default function HowItWorks() {
           Join thousands of students and tutors on Tunect — it only takes a minute.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
-          <Link to="/signup" className="btn-primary">Sign up free</Link>
-          <Link to="/find-tutors" className="btn-ghost">Browse tutors</Link>
+          <Link to="/signup" className="btn-primary" data-testid="how-it-works-signup-link">Sign up free</Link>
+          <Link to="/find-tutors" className="btn-ghost" data-testid="how-it-works-browse-tutors-link">Browse tutors</Link>
         </div>
       </section>
     </main>

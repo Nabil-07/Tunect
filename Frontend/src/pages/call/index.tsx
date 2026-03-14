@@ -12,7 +12,7 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, type Participant, DisconnectReason, RoomEvent } from "livekit-client";
-import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle, BookOpen } from "lucide-react";
+import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle, BookOpen, Maximize2, Minimize2 } from "lucide-react";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
 import { useToast } from "../../contexts/ToastContext";
 import api, { getTokenPayload } from "../../lib/apiClient";
@@ -54,7 +54,7 @@ function ParticipantList() {
   );
 }
 
-function LivekitStage() {
+function LivekitStage({ compact }: { compact?: boolean } = {}) {
   const cameraTracks = useTracks(
     [{ source: Track.Source.Camera, withPlaceholder: true }],
     { onlySubscribed: false }
@@ -64,20 +64,46 @@ function LivekitStage() {
     { onlySubscribed: false }
   );
 
-  return (
-    <div className="flex h-full flex-col gap-2 sm:gap-4 overflow-hidden">
-      {screenTracks.length > 0 && (
-        <div className="flex-1 min-h-0 max-h-[50%] rounded-xl sm:rounded-2xl border bg-white p-1 sm:p-2 overflow-hidden">
-          <TrackLoop tracks={screenTracks}>
-            <ParticipantTile />
-          </TrackLoop>
-        </div>
-      )}
-      <div className="flex-1 min-h-0 rounded-xl sm:rounded-2xl border bg-white p-1 sm:p-2 overflow-hidden">
+  const hasScreenShare = screenTracks.length > 0;
+
+  if (compact) {
+    // Compact mode for sidebar: just show cameras
+    return (
+      <div className="h-full overflow-hidden">
         <GridLayout tracks={cameraTracks}>
           <ParticipantTile />
         </GridLayout>
+        <RoomAudioRenderer />
       </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full overflow-hidden">
+      {hasScreenShare ? (
+        <>
+          {/* Screen share takes full space */}
+          <div className="absolute inset-0 rounded-xl bg-white overflow-hidden">
+            <TrackLoop tracks={screenTracks}>
+              <ParticipantTile />
+            </TrackLoop>
+          </div>
+          {/* Camera feeds as small floating thumbnails in bottom-left */}
+          <div className="absolute bottom-2 left-2 z-10 flex gap-1">
+            {cameraTracks.map((track) => (
+              <div key={track.participant.identity} className="h-[56px] w-[80px] sm:h-[64px] sm:w-[96px] rounded-lg overflow-hidden border-2 border-white shadow-lg bg-slate-900">
+                <ParticipantTile trackRef={track} />
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="h-full rounded-xl sm:rounded-2xl border bg-white p-1 sm:p-2 overflow-hidden">
+          <GridLayout tracks={cameraTracks}>
+            <ParticipantTile />
+          </GridLayout>
+        </div>
+      )}
       <RoomAudioRenderer />
     </div>
   );
@@ -320,6 +346,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
 
   const isWhiteboardActive = sideTab === "whiteboard";
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // No-show modal — shown for STUDENT when tutor didn't join within 10 min
   if (showNoShowModal && !isTutor) {
@@ -350,37 +377,57 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   }
 
   return (
-    <div className="flex h-[calc(100dvh-44px)] sm:h-[calc(100dvh-52px)] flex-col p-1.5 sm:p-3 lg:p-4 gap-1.5 sm:gap-3 lg:gap-4 overflow-hidden">
-      {/* ── Timer bar ── */}
-      {timeLeft !== null && (
-        <div className={`shrink-0 flex items-center justify-center gap-2 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold shadow-sm ${
-          isOvertime
-            ? "bg-red-100 text-red-700 border border-red-300"
-            : timeLeft <= "05:00"
-              ? "bg-amber-100 text-amber-800 border border-amber-300"
-              : "bg-slate-100 text-slate-700 border border-slate-200"
-        }`}>
-          <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          {isOvertime ? "Time ended — wrap up" : `Time remaining: ${timeLeft}`}
-        </div>
-      )}
+    <div className={`flex flex-col overflow-hidden ${
+      isFullscreen
+        ? 'fixed inset-0 z-50 bg-slate-50 p-1.5 gap-1.5'
+        : 'h-[calc(100dvh-44px)] sm:h-[calc(100dvh-52px)] p-1.5 sm:p-3 lg:p-4 gap-1.5 sm:gap-3 lg:gap-4'
+    }`}>
 
       {/* ── No-show countdown bar (student waiting for tutor only) ── */}
       {!isTutor && !hasBothJoined && noShowCountdown !== null && (
-        <div className="shrink-0 flex items-center justify-center gap-2 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold shadow-sm bg-orange-50 text-orange-700 border border-orange-200">
+        <div className="shrink-0 flex items-center justify-center gap-2 rounded-xl px-3 py-1 sm:px-4 sm:py-1.5 text-xs sm:text-sm font-semibold shadow-sm bg-orange-50 text-orange-700 border border-orange-200">
           <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           Waiting for tutor to join: {noShowCountdown}
         </div>
       )}
 
-      <div className="flex-1 min-h-0 relative grid grid-cols-1 lg:grid-cols-[1fr_240px] xl:grid-cols-[1fr_300px] 2xl:grid-cols-[1fr_320px] gap-1.5 sm:gap-3 lg:gap-4">
+      <div className={`flex-1 min-h-0 relative gap-1.5 sm:gap-3 lg:gap-4 ${
+        isFullscreen
+          ? 'flex flex-col'
+          : 'grid grid-cols-1 lg:grid-cols-[1fr_240px] xl:grid-cols-[1fr_300px] 2xl:grid-cols-[1fr_320px]'
+      }`}>
         {/* ── Main area ── */}
-        <div className="relative min-h-0 h-full overflow-hidden">
+        <div className="relative min-h-0 h-full overflow-hidden flex-1">
           {!hasBothJoined && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/90 text-sm text-slate-700 px-4 text-center">
               Waiting room: the class will start when both participants join.
             </div>
           )}
+
+          {/* ── Timer pill (floating top-right) ── */}
+          {timeLeft !== null && (
+            <div className={`absolute top-2 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-12 z-20 flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold shadow-md backdrop-blur-sm ${
+              isOvertime
+                ? "bg-red-500/90 text-white"
+                : timeLeft <= "05:00"
+                  ? "bg-amber-500/90 text-white"
+                  : "bg-black/50 text-white"
+            }`}>
+              <Clock className="h-3 w-3" />
+              {isOvertime ? "Ended" : timeLeft}
+            </div>
+          )}
+
+          {/* ── Fullscreen toggle ── */}
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(f => !f)}
+            className="absolute top-2 right-2 z-20 flex items-center justify-center h-8 w-8 rounded-lg bg-black/50 text-white hover:bg-black/70 transition-colors backdrop-blur-sm"
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            title={isFullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
 
           {/* Keep both Whiteboard and LivekitStage mounted to prevent data loss on tab switch */}
           <div
@@ -420,37 +467,47 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
           )}
         </div>
 
-        {/* ── Mobile toggle button (visible only on small screens) ── */}
+        {/* ── Panel toggle button (mobile + fullscreen) ── */}
         <button
           type="button"
           onClick={() => setSidePanelOpen(!sidePanelOpen)}
-          className="lg:hidden fixed bottom-20 right-3 z-40 flex items-center justify-center h-12 w-12 rounded-full bg-slate-900 text-white shadow-lg active:scale-95 transition-transform"
+          className={`fixed bottom-20 right-3 z-[52] flex items-center justify-center h-10 w-10 rounded-full bg-slate-900 text-white shadow-lg active:scale-95 transition-transform ${
+            isFullscreen ? '' : 'lg:hidden'
+          }`}
           aria-label={sidePanelOpen ? "Close panel" : "Open panel"}
         >
-          {sidePanelOpen ? <X className="h-5 w-5" /> : <PanelRightOpen className="h-5 w-5" />}
+          {sidePanelOpen ? <X className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
         </button>
 
-        {/* ── Side panel backdrop (mobile only) ── */}
+        {/* ── Side panel backdrop (mobile + fullscreen) ── */}
         {sidePanelOpen && (
           <button
             type="button"
             aria-label="Close panel"
-            className="lg:hidden fixed inset-0 z-30 bg-black/40 backdrop-blur-sm border-0 cursor-default"
+            className={`fixed inset-0 z-30 bg-black/40 backdrop-blur-sm border-0 cursor-default ${isFullscreen ? '' : 'lg:hidden'}`}
             onClick={() => setSidePanelOpen(false)}
           />
         )}
 
         {/* ── Side panel ── */}
         <div className={`
-          /* Mobile: slide-over drawer from right */
-          fixed inset-y-0 right-0 z-30 w-[85vw] max-w-[340px] transition-transform duration-300 ease-in-out
-          ${sidePanelOpen ? "translate-x-0" : "translate-x-full"}
-          /* Desktop: static in grid */
-          lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:transition-none
-          rounded-l-2xl lg:rounded-2xl border bg-white p-2.5 lg:p-3 xl:p-4 flex flex-col min-h-0 overflow-hidden shadow-xl lg:shadow-none
+          ${isFullscreen ? `
+            /* Fullscreen: floating drawer from right */
+            fixed inset-y-0 right-0 z-[51] w-[300px] max-w-[85vw] transition-transform duration-300 ease-in-out
+            ${sidePanelOpen ? "translate-x-0" : "translate-x-full"}
+            rounded-l-2xl shadow-2xl
+          ` : `
+            /* Mobile: slide-over drawer from right */
+            fixed inset-y-0 right-0 z-30 w-[85vw] max-w-[340px] transition-transform duration-300 ease-in-out
+            ${sidePanelOpen ? "translate-x-0" : "translate-x-full"}
+            /* Desktop: static in grid */
+            lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:transition-none
+            rounded-l-2xl lg:rounded-2xl lg:shadow-none
+          `}
+          border bg-white p-2.5 lg:p-3 xl:p-4 flex flex-col min-h-0 overflow-hidden shadow-xl
         `}>
-          {/* Mobile panel header */}
-          <div className="lg:hidden flex items-center justify-between mb-3 pb-2 border-b shrink-0">
+          {/* Panel close header (mobile + fullscreen) */}
+          <div className={`${isFullscreen ? '' : 'lg:hidden'} flex items-center justify-between mb-3 pb-2 border-b shrink-0`}>
             <span className="text-sm font-bold text-slate-900">Panel</span>
             <button
               type="button"
@@ -537,8 +594,8 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
             ) : sideTab === "whiteboard" ? (
               /* Video + participants in sidebar when whiteboard is main */
               <div className="flex flex-col gap-2">
-                <div className="h-[140px] lg:h-[150px] xl:h-[180px] rounded-lg overflow-hidden border">
-                  <LivekitStage />
+                <div className={`${isFullscreen ? 'h-[100px]' : 'h-[140px] lg:h-[150px] xl:h-[180px]'} rounded-lg overflow-hidden border`}>
+                  <LivekitStage compact />
                 </div>
                 <ParticipantList />
               </div>
@@ -552,7 +609,9 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
 
       {/* ── Bottom control bar ── */}
       {hasBothJoined ? (
-        <div className="shrink-0 flex items-center justify-between rounded-2xl border bg-white/95 px-2 py-1.5 sm:p-2 shadow-sm backdrop-blur gap-2 overflow-x-auto">
+        <div className={`shrink-0 flex items-center justify-between rounded-2xl border bg-white/95 px-2 py-1.5 sm:p-2 shadow-sm backdrop-blur gap-2 overflow-x-auto ${
+          isFullscreen ? 'relative z-[51]' : ''
+        }`}>
           <div className="flex-1 min-w-0 [&_.lk-control-bar]:flex [&_.lk-control-bar]:gap-1 [&_.lk-control-bar]:flex-wrap [&_.lk-button]:!px-2 [&_.lk-button]:!py-1.5 [&_.lk-button]:!text-xs sm:[&_.lk-button]:!px-3 sm:[&_.lk-button]:!py-2 sm:[&_.lk-button]:!text-sm">
             <ControlBar controls={{ leave: false }} />
           </div>

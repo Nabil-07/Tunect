@@ -151,9 +151,9 @@ export default function ForgotPassword() {
   }
 
   return (
-    <main className="min-h-[70vh] flex items-center">
+    <main className="min-h-[70vh] flex items-center" data-testid="forgot-password-page">
       <div className="container-px mx-auto max-w-md w-full">
-        <h1 className="text-2xl font-extrabold text-center">
+        <h1 className="text-2xl font-extrabold text-center" data-testid="forgot-password-title">
           {step === 1 && 'Reset your password'}
           {step === 2 && 'Verify OTP'}
           {step === 3 && 'Set a new password'}
@@ -163,17 +163,17 @@ export default function ForgotPassword() {
         {/* Alerts */}
         <div className="mt-4 space-y-2" aria-live="polite" aria-atomic="true">
           {err && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" data-testid="forgot-password-error">
               {err}{' '}
               {/not found|doesn.?t exist|no account/i.test(err) && (
-                <Link to="/signup" className="text-ocean-700 font-medium underline">
+                <Link to="/signup" className="text-ocean-700 font-medium underline" data-testid="forgot-password-signup-link">
                   Create a new account
                 </Link>
               )}
             </div>
           )}
           {ok && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700" data-testid="forgot-password-success">
               {ok}
             </div>
           )}
@@ -181,7 +181,7 @@ export default function ForgotPassword() {
 
         {/* STEP 1: Choose method + enter contact */}
         {step === 1 && (
-          <form onSubmit={handleStart} className="mt-6 space-y-5">
+          <form onSubmit={handleStart} className="mt-6 space-y-5" data-testid="forgot-password-step1-form">
             {/* Toggle */}
             <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 mx-auto">
               <button
@@ -192,6 +192,7 @@ export default function ForgotPassword() {
                     ? 'bg-ocean-700 text-white shadow-soft'
                     : 'text-slate-700 hover:bg-slate-50'
                 }`}
+                data-testid="forgot-password-method-email-btn"
               >
                 Email
               </button>
@@ -203,6 +204,7 @@ export default function ForgotPassword() {
                     ? 'bg-ocean-700 text-white shadow-soft'
                     : 'text-slate-700 hover:bg-slate-50'
                 }`}
+                data-testid="forgot-password-method-phone-btn"
               >
                 Phone
               </button>
@@ -221,6 +223,7 @@ export default function ForgotPassword() {
                   autoComplete="email"
                   disabled={loading}
                   required
+                  data-testid="forgot-password-email-input"
                 />
               </div>
             ) : (
@@ -236,6 +239,7 @@ export default function ForgotPassword() {
                   autoComplete="tel"
                   disabled={loading}
                   required
+                  data-testid="forgot-password-phone-input"
                 />
                 <p className="mt-1 text-xs text-slate-500">Use your registered number.</p>
               </div>
@@ -247,13 +251,14 @@ export default function ForgotPassword() {
               className={`w-full rounded-2xl py-3 text-white font-medium shadow-soft
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-300 active:scale-[0.99]
                 ${canStart ? 'bg-ocean-700 hover:bg-ocean-800' : 'bg-ocean-700/60'}`}
+              data-testid="forgot-password-send-otp-btn"
             >
               {loading ? 'Sending OTP…' : 'Send OTP'}
             </button>
 
             <p className="text-center text-sm text-slate-600">
               Remembered it?{' '}
-              <Link to="/login" className="text-ocean-700 font-medium hover:underline">
+              <Link to="/login" className="text-ocean-700 font-medium hover:underline" data-testid="forgot-password-back-login-link">
                 Back to login
               </Link>
             </p>
@@ -262,7 +267,7 @@ export default function ForgotPassword() {
 
         {/* STEP 2: Enter OTP */}
         {step === 2 && (
-          <form onSubmit={handleVerify} className="mt-6 space-y-4">
+          <form onSubmit={handleVerify} className="mt-6 space-y-4" data-testid="forgot-password-step2-form">
             <p className="text-sm text-slate-600">
               Enter the 4–6 digit code sent to{' '}
               <span className="font-medium">{masked || (method === 'email' ? 'your email' : 'your phone')}</span>.
@@ -281,6 +286,7 @@ export default function ForgotPassword() {
                            focus:outline-none focus:ring-2 focus:ring-ocean-300 disabled:opacity-60"
                 disabled={loading}
                 required
+                data-testid="forgot-password-otp-input"
               />
             </div>
 
@@ -290,6 +296,7 @@ export default function ForgotPassword() {
                 onClick={handleResend}
                 disabled={loading || resendCooldown > 0}
                 className={`font-medium ${resendCooldown ? 'text-slate-500' : 'text-ocean-700 hover:underline'}`}
+                data-testid="forgot-password-resend-otp-btn"
               >
                 {resendCooldown ? `Resend in ${resendCooldown}s` : 'Resend OTP'}
               </button>
@@ -297,6 +304,7 @@ export default function ForgotPassword() {
                 type="button"
                 onClick={() => setStep(1)}
                 className="text-slate-600 hover:underline"
+                data-testid="forgot-password-change-contact-btn"
               >
                 Change email/phone
               </button>
@@ -308,6 +316,7 @@ export default function ForgotPassword() {
               className={`w-full rounded-2xl py-3 text-white font-medium shadow-soft
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-300 active:scale-[0.99]
                 ${canVerify ? 'bg-ocean-700 hover:bg-ocean-800' : 'bg-ocean-700/60'}`}
+              data-testid="forgot-password-verify-btn"
             >
               {loading ? 'Verifying…' : 'Verify'}
             </button>
@@ -316,7 +325,7 @@ export default function ForgotPassword() {
 
         {/* STEP 3: New password */}
         {step === 3 && (
-          <form onSubmit={handleFinalize} className="mt-6 space-y-4">
+          <form onSubmit={handleFinalize} className="mt-6 space-y-4" data-testid="forgot-password-step3-form">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">New password</label>
               <input
@@ -329,6 +338,7 @@ export default function ForgotPassword() {
                 minLength={6}
                 autoComplete="new-password"
                 required
+                data-testid="forgot-password-new-pw-input"
               />
               <p className="mt-1 text-xs text-slate-500">Minimum 6 characters.</p>
             </div>
@@ -343,6 +353,7 @@ export default function ForgotPassword() {
                            focus:outline-none focus:ring-2 focus:ring-ocean-300 disabled:opacity-60"
                 autoComplete="new-password"
                 required
+                data-testid="forgot-password-confirm-pw-input"
               />
             </div>
 
@@ -352,6 +363,7 @@ export default function ForgotPassword() {
               className={`w-full rounded-2xl py-3 text-white font-medium shadow-soft
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-300 active:scale-[0.99]
                 ${canFinalize ? 'bg-ocean-700 hover:bg-ocean-800' : 'bg-ocean-700/60'}`}
+              data-testid="forgot-password-set-pw-btn"
             >
               {loading ? 'Updating…' : 'Set new password'}
             </button>
@@ -360,11 +372,11 @@ export default function ForgotPassword() {
 
         {/* STEP 4: Done */}
         {step === 4 && (
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center" data-testid="forgot-password-done">
             <p className="text-slate-700">Password reset successfully.</p>
             <p className="text-slate-500 text-sm mt-1">
               Redirecting you to&nbsp;
-              <Link to="/login" className="text-ocean-700 font-medium underline">Login</Link>
+              <Link to="/login" className="text-ocean-700 font-medium underline" data-testid="forgot-password-done-login-link">Login</Link>
               …
             </p>
           </div>

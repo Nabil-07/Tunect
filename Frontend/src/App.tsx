@@ -36,15 +36,20 @@ const getStoredRoleUpper = (): RoleApi | null => {
 
 function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, loading } = useAuth();
+  const token = readToken();
   
   // Wait for auth to finish loading before making decisions
   if (loading) {
     return <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">Loading...</div>;
   }
   
-  // Only redirect to login if definitely not authenticated
-  if (!user && !readToken()) {
+  if (!token) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Token exists but user is not yet resolved: wait for AuthContext revalidation
+  if (!user) {
+    return <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">Restoring session...</div>;
   }
   
   return <>{children}</>;
@@ -52,6 +57,7 @@ function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
 
 function PublicOnlyRoute({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, loading } = useAuth();
+  const token = readToken();
   
   // Wait for auth to finish loading before making decisions
   if (loading) {
@@ -59,8 +65,12 @@ function PublicOnlyRoute({ children }: Readonly<{ children: React.ReactNode }>) 
   }
   
   // If not authenticated, show the public page
-  if (!user && !readToken()) {
+  if (!token) {
     return <>{children}</>;
+  }
+
+  if (!user) {
+    return <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">Restoring session...</div>;
   }
   
   // If authenticated, redirect to dashboard based on role
@@ -86,6 +96,7 @@ function RoleRoute({
 }>) {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const token = readToken();
 
   // Get role from JWT token (most authoritative source) and fall back to stored role
   const role = (user?.role?.toUpperCase() as RoleApi | undefined) ?? getStoredRoleUpper();
@@ -95,6 +106,14 @@ function RoleRoute({
     return (
       <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">
         Loading…
+      </div>
+    );
+  }
+
+  if (token && !user) {
+    return (
+      <div className="w-full h-[50vh] flex items-center justify-center text-slate-600">
+        Restoring session...
       </div>
     );
   }
@@ -213,6 +232,7 @@ const AdminPolicyConfig = lazy(() => import('./pages/admin/policy-config'));
 const AdminControlsPage = lazy(() => import('./pages/admin/admin-controls'));
 const AdminManagement = lazy(() => import('./pages/admin/admins'));
 const AdminBookings = lazy(() => import('./pages/admin/bookings'));
+const AdminNotifications = lazy(() => import('./pages/admin/notifications'));
 
 /** Role chooser */
 const ChooseRole = lazy(() => import('./pages/choose-role'));
@@ -470,6 +490,7 @@ function App() {
           <Route path="/admin/controls" element={<AdminControlsPage />} />
           <Route path="/admin/admins" element={<AdminManagement />} />
           <Route path="/admin/bookings" element={<AdminBookings />} />
+          <Route path="/admin/notifications" element={<AdminNotifications />} />
         </Route>
 
         {/* 404 Fallback */}

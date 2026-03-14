@@ -30,7 +30,7 @@ export default function ReconTable({
   }, [rows, q, status]);
 
   return (
-    <div className="rounded-2xl border">
+    <div className="rounded-2xl border" data-testid="recon-table">
       <div className="p-3 flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 border rounded-lg px-3 h-10">
           <Filter className="h-4 w-4 opacity-70" />
@@ -39,12 +39,14 @@ export default function ReconTable({
             placeholder="Search ref/description"
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            data-testid="recon-table-search-input"
           />
         </div>
         <select
           className="h-10 px-3 rounded-lg border text-sm"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
+          data-testid="recon-table-status-select"
         >
           <option value="ALL">All statuses</option>
           <option value="MATCHED">Matched</option>
@@ -57,7 +59,7 @@ export default function ReconTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-full text-sm" data-testid="recon-table-data">
           <thead className="bg-slate-50">
             <tr className="text-left">
               <Th>Date</Th>
@@ -91,6 +93,7 @@ export default function ReconTable({
                     className="inline-flex items-center gap-1 h-8 px-2 rounded border hover:bg-slate-50"
                     onClick={() => onAdjust(r.ref)}
                     title="Adjust"
+                    data-testid={`recon-table-adjust-btn-${r.id}`}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     Adjust

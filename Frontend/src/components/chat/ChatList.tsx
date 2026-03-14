@@ -133,12 +133,13 @@ export default function ChatList() {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-testid="chat-list">
       {/* Pinned Admin entry */}
       {adminMessages.length > 0 && (
         <div
           onClick={() => navigate(`${getBasePath()}/admin-messages`)}
           className="p-4 border border-purple-200 bg-purple-50 rounded-lg hover:bg-purple-100 cursor-pointer transition-colors"
+          data-testid="chat-list-admin-thread"
         >
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 mt-1">
@@ -164,6 +165,7 @@ export default function ChatList() {
           key={conv.id}
           onClick={() => navigate(`${getBasePath()}/${conv.id}`)}
           className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+          data-testid={`chat-list-thread-${conv.id}`}
         >
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 mt-1">{getConversationIcon(conv.type)}</div>

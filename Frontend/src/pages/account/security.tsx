@@ -85,7 +85,7 @@ export default function AccountSecurity() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-3xl">
+    <div className="container mx-auto px-4 py-8 max-w-3xl" data-testid="account-security-page">
       <div className="mb-8">
         <div className="inline-flex items-center gap-2 text-slate-500 text-sm mb-2">
           <ShieldCheck className="h-4 w-4" />
@@ -99,7 +99,7 @@ export default function AccountSecurity() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5" data-testid="account-security-form">
         <div className="flex items-center gap-2 text-slate-700">
           <KeyRound className="h-5 w-5 text-ocean-600" />
           <h2 className="text-base font-semibold">
@@ -119,14 +119,16 @@ export default function AccountSecurity() {
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-300"
                 autoComplete="current-password"
                 disabled={saving}
+                data-testid="account-security-current-password-input"
               />
               <button
                 type="button"
                 aria-label={showCurrent ? 'Hide password' : 'Show password'}
                 onClick={() => setShowCurrent((v) => !v)}
                 className="absolute inset-y-0 right-2 my-auto inline-flex items-center justify-center rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+                data-testid="account-security-toggle-current-password"
               >
-                {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
           </div>
@@ -145,14 +147,16 @@ export default function AccountSecurity() {
               disabled={saving}
               minLength={6}
               required
+              data-testid="account-security-new-password-input"
             />
             <button
               type="button"
               aria-label={showNew ? 'Hide password' : 'Show password'}
               onClick={() => setShowNew((v) => !v)}
               className="absolute inset-y-0 right-2 my-auto inline-flex items-center justify-center rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+              data-testid="account-security-toggle-new-password"
             >
-              {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
+              {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
           <p className="mt-1 text-xs text-slate-500">Minimum 6 characters.</p>
@@ -171,18 +175,20 @@ export default function AccountSecurity() {
               disabled={saving}
               minLength={6}
               required
+              data-testid="account-security-confirm-password-input"
             />
             <button
               type="button"
               aria-label={showConfirm ? 'Hide password' : 'Show password'}
               onClick={() => setShowConfirm((v) => !v)}
               className="absolute inset-y-0 right-2 my-auto inline-flex items-center justify-center rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+              data-testid="account-security-toggle-confirm-password"
             >
-              {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+              {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
           {pwMismatch && (
-            <p className="mt-1 text-xs text-rose-600">Passwords do not match.</p>
+            <p className="mt-1 text-xs text-rose-600" data-testid="account-security-password-mismatch">Passwords do not match.</p>
           )}
         </div>
 
@@ -193,6 +199,7 @@ export default function AccountSecurity() {
             className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white shadow-soft
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-300
               ${canSubmit ? 'bg-ocean-700 hover:bg-ocean-800' : 'bg-ocean-700/60'}`}
+            data-testid="account-security-submit-button"
           >
             {saving ? 'Saving…' : hasPassword ? 'Update Password' : 'Create Password'}
           </button>

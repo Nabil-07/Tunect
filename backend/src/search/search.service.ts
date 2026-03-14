@@ -19,8 +19,12 @@ export class SearchService {
     const page = Math.max(q.page ?? 1, 1);
     const pageSize = Math.min(100, Math.max(q.pageSize ?? 20, 1));
 
-    // Base filter: only approved tutors
-    const whereTutor: any = { status: TutorStatus.APPROVED };
+    // Base filter: only approved tutors with at least 1 subject and price > 0
+    const whereTutor: any = {
+      status: TutorStatus.APPROVED,
+      subjects: { isEmpty: false },
+      hourlyRate: { gt: 0 },
+    };
     const AND: any[] = [];
 
     // Text search (q) - handled in post-query filter for reliable partial matching

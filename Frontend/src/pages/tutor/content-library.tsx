@@ -729,7 +729,7 @@ export default function ContentLibrary() {
   });
 
   return (
-    <main className="container-px mx-auto py-8">
+    <main className="container-px mx-auto py-8" data-testid="tutor-content-library-page">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Content Library</h1>
@@ -740,6 +740,7 @@ export default function ContentLibrary() {
         <button
           onClick={() => setShowForm(!showForm)}
           className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          data-testid="tutor-content-library-upload-button"
         >
           <Upload className="h-4 w-4" />
           Upload Material
@@ -748,12 +749,12 @@ export default function ContentLibrary() {
 
       {/* Alerts */}
       {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" data-testid="tutor-content-library-error-alert">
           {error}
         </div>
       )}
       {success && (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700" data-testid="tutor-content-library-success-alert">
           {success}
         </div>
       )}
@@ -764,7 +765,7 @@ export default function ContentLibrary() {
           <h2 className="text-lg font-semibold mb-4">
             {editingId ? 'Edit Material' : 'Upload New Material'}
           </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" data-testid="tutor-content-library-form">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Title *
@@ -776,6 +777,7 @@ export default function ContentLibrary() {
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 placeholder="e.g., Algebra Practice Worksheet"
+                data-testid="tutor-content-library-title-input"
               />
             </div>
 
@@ -789,6 +791,7 @@ export default function ContentLibrary() {
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 placeholder="Brief description of the material"
                 rows={3}
+                data-testid="tutor-content-library-description-input"
               />
             </div>
 
@@ -803,6 +806,7 @@ export default function ContentLibrary() {
                   required={!editingId}
                   onChange={(e) => handleFileSelection(e.target.files?.[0] || null)}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  data-testid="tutor-content-library-file-input"
                 />
                 <p className="mt-1 text-xs text-slate-500">Max file size: 5MB (PDF only)</p>
                 {editingId && (
@@ -839,6 +843,7 @@ export default function ContentLibrary() {
                   value={formData.subject}
                   onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  data-testid="tutor-content-library-subject-select"
                 >
                   <option value="">No specific subject</option>
                   {subjectOptions.map((s) => (
@@ -857,6 +862,7 @@ export default function ContentLibrary() {
                   value={formData.classLevel}
                   onChange={(e) => setFormData({ ...formData, classLevel: e.target.value })}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  data-testid="tutor-content-library-class-select"
                 >
                   <option value="">No specific class</option>
                   {classOptions.map((c) => (
@@ -874,6 +880,7 @@ export default function ContentLibrary() {
                     onClick={() => handleOpenShare(editingId)}
                     disabled={sharingLoading}
                     className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    data-testid="tutor-content-library-share-students-button"
                   >
                     <Share2 className="h-4 w-4" />
                     Share with students
@@ -891,6 +898,7 @@ export default function ContentLibrary() {
                 type="submit"
                 disabled={uploading}
                 className="rounded-xl bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                data-testid="tutor-content-library-submit-button"
               >
                 {uploading ? 'Saving...' : editingId ? 'Update' : 'Upload'}
               </button>
@@ -898,6 +906,7 @@ export default function ContentLibrary() {
                 type="button"
                 onClick={resetForm}
                 className="rounded-xl border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                data-testid="tutor-content-library-cancel-button"
               >
                 Cancel
               </button>
@@ -1034,6 +1043,7 @@ export default function ContentLibrary() {
                       onClick={() => handleOpenShare(material.id)}
                       className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                       title="Share"
+                      data-testid="tutor-content-library-material-share-button"
                     >
                       <Share2 className="h-4 w-4" />
                       Share
@@ -1042,6 +1052,7 @@ export default function ContentLibrary() {
                       onClick={() => handleEdit(material)}
                       className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
                       title="Edit"
+                      data-testid="tutor-content-library-material-edit-button"
                     >
                       <Edit className="h-4 w-4" />
                     </button>
@@ -1049,6 +1060,7 @@ export default function ContentLibrary() {
                       onClick={() => openDeleteModal(material)}
                       className="rounded-lg p-2 text-red-600 hover:bg-red-50"
                       title="Delete"
+                      data-testid="tutor-content-library-material-delete-button"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -1074,6 +1086,7 @@ export default function ContentLibrary() {
                             onClick={handleSelectAllStudents}
                             type="button"
                             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                            data-testid="tutor-content-library-select-all-students-button"
                           >
                             Select all
                           </button>
@@ -1081,6 +1094,7 @@ export default function ContentLibrary() {
                             onClick={handleClearStudents}
                             type="button"
                             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                            data-testid="tutor-content-library-clear-students-button"
                           >
                             Clear
                           </button>
@@ -1134,12 +1148,14 @@ export default function ContentLibrary() {
                         onClick={handleSaveShare}
                         disabled={sharingLoading}
                         className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        data-testid="tutor-content-library-save-sharing-button"
                       >
                         Save Sharing
                       </button>
                       <button
                         onClick={() => setSharingMaterialId(null)}
                         className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-white"
+                        data-testid="tutor-content-library-close-sharing-button"
                       >
                         Close
                       </button>
@@ -1168,6 +1184,7 @@ export default function ContentLibrary() {
                 onClick={closeDeleteModal}
                 disabled={deleting}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                data-testid="tutor-content-library-delete-cancel-button"
               >
                 Cancel
               </button>
@@ -1176,6 +1193,7 @@ export default function ContentLibrary() {
                 onClick={confirmDelete}
                 disabled={deleting}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                data-testid="tutor-content-library-delete-confirm-button"
               >
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>

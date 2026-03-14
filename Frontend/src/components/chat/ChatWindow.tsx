@@ -173,7 +173,7 @@ export default function ChatWindow({ conversationId }: ChatWindowProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow-lg">
+    <div className="flex flex-col h-full bg-white rounded-lg shadow-lg" data-testid="chat-window">
       {/* Header */}
       <div className="border-b p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -191,7 +191,7 @@ export default function ChatWindow({ conversationId }: ChatWindowProps) {
       {getTokenWarning() && <div className="px-4 pt-4">{getTokenWarning()}</div>}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-window-messages">
         {conversation.messages.length === 0 ? (
           <div className="text-center text-gray-500 py-12">No messages yet. Start the conversation!</div>
         ) : (
@@ -249,11 +249,13 @@ export default function ChatWindow({ conversationId }: ChatWindowProps) {
               placeholder="Type a message..."
               className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={sending}
+              data-testid="chat-window-message-input"
             />
             <button
               onClick={handleSendMessage}
               disabled={!messageText.trim() || sending}
               className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              data-testid="chat-window-send-btn"
             >
               <Send className="h-4 w-4" />
               Send

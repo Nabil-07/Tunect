@@ -161,11 +161,12 @@ export default function BalanceSheetPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="balance-sheet-page">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/admin/finance')}
+            data-testid="balance-sheet-back-button"
             className="rounded-lg p-2 hover:bg-slate-100"
             aria-label="Back to Finance"
           >
@@ -182,6 +183,7 @@ export default function BalanceSheetPage() {
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value as any)}
+            data-testid="balance-sheet-period-select"
             className="rounded-lg border px-3 py-2 text-sm"
           >
             <option value="month">This Month</option>
@@ -192,6 +194,7 @@ export default function BalanceSheetPage() {
           <button
             onClick={handleExport}
             disabled={exporting || loading}
+            data-testid="balance-sheet-export-button"
             className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
           >
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -201,7 +204,7 @@ export default function BalanceSheetPage() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" data-testid="balance-sheet-error-alert">{error}</div>
       )}
       {content}
     </div>

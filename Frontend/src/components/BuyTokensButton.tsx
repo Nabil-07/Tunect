@@ -28,7 +28,7 @@ export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess 
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-testid="buy-tokens">
         <input
           type="number"
           min={5}
@@ -36,11 +36,13 @@ export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess 
           value={tokens}
           onChange={(e) => setTokens(Math.max(5, Number(e.target.value) || 5))}
           className="w-24 border rounded px-2 py-1"
+          data-testid="buy-tokens-amount-input"
         />
         <button
           onClick={handlePay}
           disabled={loading}
           className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+          data-testid="buy-tokens-btn"
         >
           {loading ? "Processing..." : `Buy ${tokens} tokens`}
         </button>

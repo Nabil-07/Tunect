@@ -3,7 +3,7 @@ import { GraduationCap, Users, Globe, Award, Shield, Heart, TrendingUp, Sparkles
 
 export default function About() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white" data-testid="about-page">
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-ocean-700 to-green-500 text-white py-20">
         <div className="container mx-auto px-4">
@@ -176,12 +176,14 @@ export default function About() {
             <a
               href="/find-tutors"
               className="px-8 py-4 bg-white text-ocean-700 rounded-xl font-semibold text-lg hover:bg-slate-100 transition shadow-lg"
+              data-testid="about-find-tutor-link"
             >
               Find a Tutor
             </a>
             <a
               href="/become-tutor"
               className="px-8 py-4 bg-ocean-900 text-white rounded-xl font-semibold text-lg hover:bg-ocean-800 transition shadow-lg"
+              data-testid="about-become-tutor-link"
             >
               Become a Tutor
             </a>

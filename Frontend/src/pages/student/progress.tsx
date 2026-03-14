@@ -98,7 +98,7 @@ export default function StudentProgress() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-8">
+    <div className="container mx-auto px-4 py-6 space-y-8" data-testid="student-progress-page">
       {/* Header */}
       <div className="rounded-3xl bg-gradient-to-r from-ocean-700 to-green-500 p-4 sm:p-8 text-white shadow-lg">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -173,7 +173,7 @@ export default function StudentProgress() {
               <Award className="h-6 w-6 text-amber-600" />
               Your Certificates
             </h2>
-            <Link to="/student/certificates" className="text-ocean-700 hover:underline text-sm font-medium">
+            <Link to="/student/certificates" className="text-ocean-700 hover:underline text-sm font-medium" data-testid="student-progress-view-all-certs-link">
               View All
             </Link>
           </div>
@@ -215,6 +215,7 @@ export default function StudentProgress() {
             <Link
               to="/find-tutors"
               className="inline-block px-6 py-3 bg-ocean-700 text-white rounded-xl font-semibold hover:bg-ocean-800 transition"
+              data-testid="student-progress-find-tutor-link"
             >
               Find a Tutor
             </Link>
@@ -236,6 +237,7 @@ export default function StudentProgress() {
         <Link
           to="/student/goals"
           className="inline-block px-6 py-3 bg-ocean-700 text-white rounded-xl font-semibold hover:bg-ocean-800 transition"
+          data-testid="student-progress-manage-goals-link"
         >
           Manage Goals
         </Link>

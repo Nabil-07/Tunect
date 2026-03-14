@@ -28,6 +28,34 @@ type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 const rawApiBase = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const apiBase = String(rawApiBase).replace(/\/+$/, '');
 
+function GoogleButton({ loading }: Readonly<{ loading: boolean }>) {
+  const go = () => {
+    try { localStorage.setItem('remember_intent', '1'); } catch {}
+    const url = new URL(`${apiBase}/auth/google`);
+    url.searchParams.set('remember', '1');
+    globalThis.location.href = url.toString();
+  };
+  return (
+    <button
+      type="button"
+      onClick={go}
+      disabled={loading}
+      className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-medium
+                 hover:bg-slate-50 transition disabled:opacity-60"
+      data-testid="login-google-btn"
+    >
+      <span className="inline-flex items-center justify-center gap-2">
+        <img
+          src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+          alt=""
+          className="h-5 w-5"
+        />{' '}
+        Sign in with Google
+      </span>
+    </button>
+  );
+}
+
 /** Try to store role in localStorage from either the login result or JWT. */
 function ensureRoleStored(loginResult?: any): RoleApi | null {
   const fromResult =
@@ -77,8 +105,8 @@ export default function Login() {
     const syncAutofill = () => {
       const emailEl = emailRef.current;
       const pwEl = passwordRef.current;
-      if (emailEl && emailEl.value && !email) setEmail(emailEl.value);
-      if (pwEl && pwEl.value && !password) setPassword(pwEl.value);
+      if (emailEl?.value && !email) setEmail(emailEl.value);
+      if (pwEl?.value && !password) setPassword(pwEl.value);
     };
     // Most browsers fill within 300ms of page load; check a few times
     const timers = [
@@ -108,9 +136,9 @@ export default function Login() {
 
   const fallbackRedirect = () => {
     const role = (localStorage.getItem('role')?.toUpperCase() as RoleApi) || 'STUDENT';
-    if (role === 'ADMIN') window.location.assign('/admin/dashboard');
-    else if (role === 'TUTOR') window.location.assign('/tutor/dashboard');
-    else window.location.assign('/student/dashboard');
+    if (role === 'ADMIN') globalThis.location.assign('/admin/dashboard');
+    else if (role === 'TUTOR') globalThis.location.assign('/tutor/dashboard');
+    else globalThis.location.assign('/student/dashboard');
   };
 
   async function submit() {
@@ -143,11 +171,11 @@ export default function Login() {
 
       // Extract user data and tokens from response
       const role = ensureRoleStored(res);
-      try { window.dispatchEvent(new Event('auth:login')); } catch {}
+      try { globalThis.dispatchEvent(new Event('auth:login')); } catch {}
 
-      if (role === 'ADMIN') window.location.assign('/admin/dashboard');
-      else if (role === 'TUTOR') window.location.assign('/tutor/dashboard');
-      else if (role === 'STUDENT') window.location.assign('/student/dashboard');
+      if (role === 'ADMIN') globalThis.location.assign('/admin/dashboard');
+      else if (role === 'TUTOR') globalThis.location.assign('/tutor/dashboard');
+      else if (role === 'STUDENT') globalThis.location.assign('/student/dashboard');
       else setTimeout(fallbackRedirect, 150);
     } catch (e: any) {
       const msg =
@@ -165,45 +193,20 @@ export default function Login() {
     void submit();
   };
 
-  const GoogleButton = () => {
-    const go = () => {
-      try { localStorage.setItem('remember_intent', '1'); } catch {}
-      const url = new URL(`${apiBase}/auth/google`);
-      url.searchParams.set('remember', '1');
-      window.location.href = url.toString();
-    };
-    return (
-      <button
-        type="button"
-        onClick={go}
-        disabled={loading}
-        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-medium
-                   hover:bg-slate-50 transition disabled:opacity-60"
-      >
-        <span className="inline-flex items-center justify-center gap-2">
-          <img
-            src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-            alt=""
-            className="h-5 w-5"
-          />
-          Sign in with Google
-        </span>
-      </button>
-    );
-  };
 
   return (
-    <main className="min-h-screen grid grid-cols-1 md:grid-cols-2">
+    <main className="min-h-screen grid grid-cols-1 md:grid-cols-2" data-testid="login-page">
       {/* LEFT: form */}
-      <section className="flex flex-col">
+      <section className="flex flex-col" data-testid="login-form-section">
         <div className="mx-auto w-full max-w-md px-6 py-8 md:py-12 flex-1">
           {/* Logo / brand */}
           <div className="mb-8">
-            <Link to="/" className="inline-flex items-center gap-2">
+            <Link to="/" className="inline-flex items-center gap-2" data-testid="login-logo-link">
               <img 
                 src="/tunect_logo_hd_main.png" 
                 alt="Tunect Logo" 
                 className="h-12 w-auto rounded-lg shadow-md object-contain"
+                data-testid="login-logo-img"
               />
             </Link>
           </div>
@@ -211,9 +214,9 @@ export default function Login() {
           <h1 className="text-3xl font-bold text-slate-900">Welcome back</h1>
           <p className="mt-2 text-slate-600">Please enter your details</p>
 
-          <form onSubmit={onSubmit} className="mt-8 space-y-5" autoComplete="on" noValidate>
+          <form onSubmit={onSubmit} className="mt-8 space-y-5" autoComplete="on" noValidate data-testid="login-form">
             {err && (
-              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" data-testid="login-error-alert">
                 {err}
               </div>
             )}
@@ -236,6 +239,7 @@ export default function Login() {
                 autoComplete="username"
                 inputMode="email"
                 disabled={loading}
+                data-testid="login-email-input"
               />
             </div>
 
@@ -257,6 +261,7 @@ export default function Login() {
                              focus:outline-none focus:ring-2 focus:ring-ocean-300 disabled:opacity-60"
                   autoComplete="current-password"
                   disabled={loading}
+                  data-testid="login-password-input"
                 />
                 <button
                   type="button"
@@ -265,6 +270,7 @@ export default function Login() {
                   onClick={() => setShowPw((v) => !v)}
                   className="absolute inset-y-0 right-2 my-auto inline-flex items-center justify-center rounded-md p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-60"
                   disabled={loading}
+                  data-testid="login-toggle-password-btn"
                 >
                   {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -273,7 +279,7 @@ export default function Login() {
 
             {/* Forgot password */}
             <div className="mt-1 flex items-center justify-end">
-              <Link to="/forgot-password" className="text-sm text-ocean-700 hover:underline">
+              <Link to="/forgot-password" className="text-sm text-ocean-700 hover:underline" data-testid="login-forgot-password-link">
                 Forgot password
               </Link>
             </div>
@@ -285,15 +291,16 @@ export default function Login() {
               className={`w-full rounded-lg py-3 text-white font-medium shadow-sm
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-300
                 ${canSubmit ? 'bg-ocean-700 hover:bg-ocean-800' : 'bg-ocean-700/60'}`}
+              data-testid="login-submit-btn"
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
 
-            <GoogleButton />
+            <GoogleButton loading={loading} />
 
             <p className="text-center text-sm text-slate-600">
               Don&apos;t have an account?{' '}
-              <Link to="/signup" className="text-ocean-700 font-medium hover:underline">
+              <Link to="/signup" className="text-ocean-700 font-medium hover:underline" data-testid="login-signup-link">
                 Sign up
               </Link>
             </p>

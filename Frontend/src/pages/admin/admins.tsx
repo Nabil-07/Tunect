@@ -165,7 +165,7 @@ export default function AdminManagement() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="admins-page">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -180,6 +180,7 @@ export default function AdminManagement() {
         {isDirector && (
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
+            data-testid="admins-create-admin-button"
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition"
           >
             <UserPlus className="w-4 h-4" />
@@ -190,12 +191,12 @@ export default function AdminManagement() {
 
       {/* Alerts */}
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center gap-2">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center gap-2" data-testid="admins-error-alert">
           <X className="w-4 h-4 shrink-0" /> {error}
         </div>
       )}
       {successMsg && (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 flex items-center gap-2">
+        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 flex items-center gap-2" data-testid="admins-success-alert">
           <Check className="w-4 h-4 shrink-0" /> {successMsg}
         </div>
       )}
@@ -212,6 +213,7 @@ export default function AdminManagement() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
               <input
                 type="email"
+                data-testid="admins-email-input"
                 className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
                 value={adminEmail}
                 onChange={(e) => setAdminEmail(e.target.value)}
@@ -222,6 +224,7 @@ export default function AdminManagement() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
               <input
                 type="text"
+                data-testid="admins-name-input"
                 className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
                 value={adminName}
                 onChange={(e) => setAdminName(e.target.value)}
@@ -235,6 +238,7 @@ export default function AdminManagement() {
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  data-testid="admins-password-input"
                   className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm pr-10 focus:ring-2 focus:ring-indigo-500"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
@@ -243,6 +247,7 @@ export default function AdminManagement() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  data-testid="admins-toggle-password-button"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -252,6 +257,7 @@ export default function AdminManagement() {
             <button
               onClick={handleCreateAdmin}
               disabled={creatingAdmin || !adminEmail.trim() || !adminName.trim()}
+              data-testid="admins-create-submit-button"
               className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition disabled:opacity-50"
             >
               <UserPlus className="w-4 h-4" />
@@ -273,7 +279,7 @@ export default function AdminManagement() {
                       <code className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono">
                         {createdAdmin.temporaryPassword}
                       </code>
-                      <button onClick={copyPassword} className="text-slate-500 hover:text-slate-700">
+                      <button onClick={copyPassword} data-testid="admins-copy-password-button" className="text-slate-500 hover:text-slate-700">
                         {copiedPassword ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
@@ -290,6 +296,7 @@ export default function AdminManagement() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
+          data-testid="admins-search-input"
           className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
           placeholder="Search by name or email..."
           value={search}
@@ -340,6 +347,7 @@ export default function AdminManagement() {
                     <button
                       onClick={() => toggleDirector(admin.id, admin.isDirector)}
                       disabled={togglingDirector === admin.id}
+                      data-testid={`admins-director-toggle-${admin.id}`}
                       className={`transition-colors ${admin.isDirector ? 'text-amber-600' : 'text-slate-400'} ${togglingDirector === admin.id ? 'opacity-50' : ''}`}
                       title={admin.isDirector ? 'Revoke director access' : 'Grant director access'}
                     >
@@ -355,6 +363,7 @@ export default function AdminManagement() {
                     <button
                       onClick={() => deleteAdminUser(admin)}
                       disabled={deletingAdmin === admin.id}
+                      data-testid={`admins-delete-${admin.id}`}
                       className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                       title="Delete admin user"
                     >
@@ -392,10 +401,11 @@ export default function AdminManagement() {
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            data-testid="admins-delete-modal-backdrop"
             onClick={() => setConfirmDelete(null)}
           />
           {/* Dialog */}
-          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
+          <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl border border-slate-200 p-6" data-testid="admins-delete-modal">
             <div className="flex items-start gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100">
                 <Trash2 className="w-5 h-5 text-red-600" />
@@ -418,6 +428,7 @@ export default function AdminManagement() {
               <button
                 onClick={() => setConfirmDelete(null)}
                 disabled={deletingAdmin === confirmDelete.id}
+                data-testid="admins-delete-cancel-button"
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
               >
                 Cancel
@@ -425,6 +436,7 @@ export default function AdminManagement() {
               <button
                 onClick={confirmDeleteAdmin}
                 disabled={deletingAdmin === confirmDelete.id}
+                data-testid="admins-delete-confirm-button"
                 className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 transition disabled:opacity-50"
               >
                 <Trash2 className="w-4 h-4" />

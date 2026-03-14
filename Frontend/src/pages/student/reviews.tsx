@@ -180,7 +180,7 @@ export default function StudentReviews() {
 
               <div className="mt-4">
                 <label htmlFor={ratingId} className="block text-sm text-slate-600 mb-2">Rating</label>
-                <div id={ratingId} className="flex gap-2">
+                <div id={ratingId} className="flex gap-2" data-testid="student-reviews-rating-input">
                   {[1, 2, 3, 4, 5].map((n) => (
                     <button
                       key={n}
@@ -205,6 +205,7 @@ export default function StudentReviews() {
                   onChange={(e) => updateDraft(row.tutorId, { comment: e.target.value })}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   placeholder="Share your experience..."
+                  data-testid="student-reviews-comment-input"
                 />
               </div>
 
@@ -214,6 +215,7 @@ export default function StudentReviews() {
                   onClick={() => handleSave(row)}
                   disabled={isSaving}
                   className="rounded-lg bg-ocean-600 px-4 py-2 text-sm font-medium text-white hover:bg-ocean-700 disabled:opacity-60"
+                  data-testid="student-reviews-submit-btn"
                 >
                   {row.review ? 'Update Review' : 'Submit Review'}
                 </button>
@@ -223,6 +225,7 @@ export default function StudentReviews() {
                     onClick={() => handleDelete(row)}
                     disabled={isSaving}
                     className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+                    data-testid="student-reviews-delete-btn"
                   >
                     Delete
                   </button>
@@ -236,8 +239,7 @@ export default function StudentReviews() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-semibold mb-2">Your Reviews</h1>
+    <div className="container mx-auto px-4 py-8" data-testid="student-reviews-page">
       <p className="text-slate-600 mb-6">Leave one review per tutor. You can edit or delete it anytime.</p>
       {content}
     </div>

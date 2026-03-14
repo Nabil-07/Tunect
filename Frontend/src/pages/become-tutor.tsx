@@ -151,7 +151,7 @@ export default function BecomeTutor() {
     n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
   return (
-    <div className="bg-white text-slate-800 relative">
+    <div className="bg-white text-slate-800 relative" data-testid="become-tutor-page">
       <SEO
         title="Become a Tutor Online in India | Teach & Earn | Tunect"
         description="Join Tunect as an online tutor and teach students 1-on-1. Set your own rates, flexible schedule, verified platform. Start teaching today and earn from home."
@@ -180,6 +180,7 @@ export default function BecomeTutor() {
                 onClick={startApplication}
                 disabled={isLoading}
                 className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                data-testid="become-tutor-start-teaching-button"
               >
                 {isLoading ? (
                   <>
@@ -208,6 +209,7 @@ export default function BecomeTutor() {
               <Link
                 to="/support"
                 className="px-6 py-3 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition"
+                data-testid="become-tutor-questions-link"
               >
                 Have Questions?
               </Link>
@@ -268,6 +270,7 @@ export default function BecomeTutor() {
               onClick={startApplication}
               disabled={isLoading}
               className="w-full py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              data-testid="become-tutor-start-kyc-button"
             >
               {isLoading ? (
                 <>
@@ -405,6 +408,7 @@ export default function BecomeTutor() {
                 value={rate}
                 onChange={(e) => setRate(Number(e.target.value))}
                 className="w-full accent-white"
+                data-testid="become-tutor-rate-slider"
               />
             </div>
 
@@ -421,6 +425,7 @@ export default function BecomeTutor() {
                 value={hours}
                 onChange={(e) => setHours(Number(e.target.value))}
                 className="w-full accent-white"
+                data-testid="become-tutor-hours-slider"
               />
             </div>
 
@@ -538,6 +543,7 @@ export default function BecomeTutor() {
           <Link
             to="/support"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-slate-50 transition"
+            data-testid="become-tutor-contact-support-link"
           >
             Still have a question? Contact support
           </Link>
@@ -555,12 +561,14 @@ export default function BecomeTutor() {
           <button
             onClick={startApplication}
             className="px-6 py-3 bg-white text-green-700 rounded-lg font-medium hover:bg-slate-100 transition"
+            data-testid="become-tutor-apply-now-button"
           >
             Apply Now — It’s Free
           </button>
           <Link
             to="/support"
             className="px-6 py-3 border border-white rounded-lg font-medium hover:bg-white hover:text-green-700 transition"
+            data-testid="become-tutor-contact-us-link"
           >
             Contact Us
           </Link>

@@ -172,7 +172,7 @@ export default function StudentGoals() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-6" data-testid="student-goals-page">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
@@ -186,6 +186,7 @@ export default function StudentGoals() {
             setFormData({ title: '', description: '', subject: '', targetDate: '', targetHours: 10 });
           }}
           className="flex items-center gap-2 px-4 py-2 bg-ocean-700 text-white rounded-xl font-semibold hover:bg-ocean-800 transition"
+          data-testid="student-goals-add-btn"
         >
           <Plus className="h-5 w-5" />
           New Goal
@@ -194,10 +195,10 @@ export default function StudentGoals() {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" data-testid="student-goals-form-modal">
           <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold mb-6">{editingGoal ? 'Edit Goal' : 'Create New Goal'}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" data-testid="student-goals-form">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Title *</label>
                 <input
@@ -206,6 +207,7 @@ export default function StudentGoals() {
                   onChange={e => setFormData({ ...formData, title: e.target.value })}
                   className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-ocean-500 outline-none"
                   required
+                  data-testid="student-goals-title-input"
                 />
               </div>
 
@@ -217,6 +219,7 @@ export default function StudentGoals() {
                   onChange={e => setFormData({ ...formData, subject: e.target.value })}
                   className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-ocean-500 outline-none"
                   required
+                  data-testid="student-goals-subject-input"
                 />
               </div>
 
@@ -227,6 +230,7 @@ export default function StudentGoals() {
                   onChange={e => setFormData({ ...formData, description: e.target.value })}
                   className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-ocean-500 outline-none"
                   rows={3}
+                  data-testid="student-goals-description-input"
                 />
               </div>
 
@@ -240,6 +244,7 @@ export default function StudentGoals() {
                     min={new Date().toISOString().split('T')[0]}
                     className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-ocean-500 outline-none"
                     required
+                    data-testid="student-goals-target-date-input"
                   />
                 </div>
 
@@ -251,6 +256,7 @@ export default function StudentGoals() {
                     value={formData.targetHours}
                     onChange={e => setFormData({ ...formData, targetHours: Number(e.target.value) })}
                     className="w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-ocean-500 outline-none"
+                    data-testid="student-goals-target-hours-input"
                   />
                 </div>
               </div>
@@ -260,6 +266,7 @@ export default function StudentGoals() {
                   type="submit"
                   disabled={submitting}
                   className="flex-1 px-4 py-2 bg-ocean-700 text-white rounded-xl font-semibold hover:bg-ocean-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid="student-goals-submit-btn"
                 >
                   {submitting ? 'Saving...' : editingGoal ? 'Update Goal' : 'Create Goal'}
                 </button>
@@ -267,6 +274,7 @@ export default function StudentGoals() {
                   type="button"
                   onClick={() => setShowForm(false)}
                   className="px-4 py-2 border rounded-xl hover:bg-slate-50 transition"
+                  data-testid="student-goals-cancel-btn"
                 >
                   Cancel
                 </button>
@@ -335,6 +343,7 @@ export default function StudentGoals() {
                       disabled={togglingGoalId === goal.id}
                       className="p-2 hover:bg-slate-100 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                       title={goal.completed ? 'Mark incomplete' : 'Mark complete'}
+                      data-testid="student-goals-toggle-complete-btn"
                     >
                       {goal.completed ? (
                         <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -345,12 +354,14 @@ export default function StudentGoals() {
                     <button
                       onClick={() => handleEdit(goal)}
                       className="p-2 hover:bg-slate-100 rounded-lg transition"
+                      data-testid="student-goals-edit-btn"
                     >
                       <Edit2 className="h-5 w-5 text-ocean-600" />
                     </button>
                     <button
                       onClick={() => handleDelete(goal.id)}
                       className="p-2 hover:bg-slate-100 rounded-lg transition"
+                      data-testid="student-goals-delete-btn"
                     >
                       <Trash2 className="h-5 w-5 text-rose-600" />
                     </button>
@@ -383,6 +394,7 @@ export default function StudentGoals() {
                           key={milestone.id}
                           onClick={() => toggleMilestone(milestone.id, milestone.completed)}
                           className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition text-left"
+                          data-testid="student-goals-milestone-checkbox"
                         >
                           {milestone.completed ? (
                             <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />

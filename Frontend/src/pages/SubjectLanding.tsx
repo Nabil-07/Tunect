@@ -226,7 +226,7 @@ export default function SubjectLanding({ config }: { config: SubjectConfig }) {
   const otherSubjects = SUBJECT_PAGES.filter((s) => s.slug !== config.slug);
 
   return (
-    <main className="container-px mx-auto py-10">
+    <main className="container-px mx-auto py-10" data-testid="subject-landing-page">
       <SEO
         title={`${config.primaryKeyword} | ${config.secondaryKeyword} | Tunect`}
         description={config.intro}
@@ -235,10 +235,10 @@ export default function SubjectLanding({ config }: { config: SubjectConfig }) {
       />
 
       {/* Breadcrumb */}
-      <nav className="text-sm text-slate-500 mb-6" aria-label="Breadcrumb">
-        <Link to="/" className="hover:text-ocean-600">Home</Link>
+      <nav className="text-sm text-slate-500 mb-6" aria-label="Breadcrumb" data-testid="subject-landing-breadcrumb">
+        <Link to="/" className="hover:text-ocean-600" data-testid="subject-landing-breadcrumb-home">Home</Link>
         <span className="mx-1">/</span>
-        <Link to="/find-tutors" className="hover:text-ocean-600">Find Tutors</Link>
+        <Link to="/find-tutors" className="hover:text-ocean-600" data-testid="subject-landing-breadcrumb-find-tutors">Find Tutors</Link>
         <span className="mx-1">/</span>
         <span className="text-slate-800 font-medium">{config.label}</span>
       </nav>
@@ -258,10 +258,11 @@ export default function SubjectLanding({ config }: { config: SubjectConfig }) {
         <button
           onClick={() => nav(`/find-tutors?subject=${encodeURIComponent(config.apiSubject)}`)}
           className="btn-primary"
+          data-testid="subject-landing-browse-tutors-button"
         >
           Browse all {config.label} tutors
         </button>
-        <Link to="/become-tutor" className="btn-ghost">
+        <Link to="/become-tutor" className="btn-ghost" data-testid="subject-landing-become-tutor-link">
           Become a tutor
         </Link>
       </div>
@@ -308,6 +309,7 @@ export default function SubjectLanding({ config }: { config: SubjectConfig }) {
               key={s.slug}
               to={`/${s.slug}`}
               className="px-3 py-1.5 rounded-xl text-sm bg-ocean-50 text-ocean-800 hover:bg-ocean-100 transition"
+              data-testid={`subject-landing-other-${s.slug}`}
             >
               {s.primaryKeyword}
             </Link>

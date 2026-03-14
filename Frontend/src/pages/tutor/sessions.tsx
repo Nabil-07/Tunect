@@ -159,7 +159,7 @@ export default function MySessions() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto" data-testid="tutor-sessions-page">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-slate-800 mb-2">📅 My Teaching Sessions</h2>
         <p className="text-slate-600">
@@ -347,6 +347,7 @@ export default function MySessions() {
                     className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-colors font-medium ${
                       isActive ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
                     }`}
+                    data-testid="tutor-sessions-join-class-button"
                   >
                     {isActive ? 'Join Class Now' : 'Join Class'}
                   </a>
@@ -355,6 +356,7 @@ export default function MySessions() {
                   <button
                     onClick={() => openConvertModal(session)}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                    data-testid="tutor-sessions-convert-to-group-button"
                   >
                     <UserPlus className="h-4 w-4" />
                     Convert to Group
@@ -367,6 +369,7 @@ export default function MySessions() {
                       setCancelModalOpen(true);
                     }}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-red-300 bg-white text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium"
+                    data-testid="tutor-sessions-cancel-button"
                   >
                     <XCircle className="h-4 w-4" />
                     Cancel Session
@@ -420,8 +423,7 @@ export default function MySessions() {
               <h3 className="font-semibold text-lg">Convert to Group Session</h3>
               <button
                 className="p-1 rounded hover:bg-slate-100"
-                onClick={() => setConvertModalOpen(false)}
-              >
+                onClick={() => setConvertModalOpen(false)}                data-testid="tutor-sessions-convert-modal-close-button"              >
                 <X size={20} />
               </button>
             </div>
@@ -447,6 +449,7 @@ export default function MySessions() {
                   value={maxStudents}
                   onChange={(e) => setMaxStudents(parseInt(e.target.value))}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  data-testid="tutor-sessions-convert-max-students-input"
                 />
               </div>
 
@@ -461,6 +464,7 @@ export default function MySessions() {
                   value={pricePerStudent}
                   onChange={(e) => setPricePerStudent(parseFloat(e.target.value))}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  data-testid="tutor-sessions-convert-price-input"
                 />
                 <p className="mt-1 text-xs text-slate-500">
                   Recommended: 0.5 tokens for group sessions
@@ -479,6 +483,7 @@ export default function MySessions() {
                 className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
                 onClick={() => setConvertModalOpen(false)}
                 disabled={converting}
+                data-testid="tutor-sessions-convert-cancel-button"
               >
                 Cancel
               </button>
@@ -486,6 +491,7 @@ export default function MySessions() {
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed"
                 onClick={handleConvertToGroup}
                 disabled={converting}
+                data-testid="tutor-sessions-convert-submit-button"
               >
                 {converting ? 'Converting...' : 'Convert to Group'}
               </button>

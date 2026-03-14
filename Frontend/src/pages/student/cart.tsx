@@ -226,7 +226,7 @@ export default function Cart() {
           <h1 className="text-2xl font-bold">Confirm Demo Booking</h1>
         </div>
 
-        <div className="rounded-2xl border p-6 shadow-sm max-w-lg mx-auto">
+        <div className="rounded-2xl border p-6 shadow-sm max-w-lg mx-auto" data-testid="student-cart-demo-section">
           <div className="flex items-center gap-4">
             <img
               src={
@@ -251,6 +251,7 @@ export default function Cart() {
           <button
             onClick={confirmDemoBooking}
             disabled={loading}
+            data-testid="student-cart-confirm-demo-btn"
             className="mt-6 w-full rounded-xl bg-emerald-600 py-3 font-medium text-white hover:bg-emerald-700 active:scale-[0.99]"
           >
             {loading ? 'Booking…' : 'Confirm Demo Booking'}
@@ -262,7 +263,7 @@ export default function Cart() {
 
   // ✅ Paid Booking UI (default)
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8" data-testid="student-cart-page">
       <div className="mb-6 flex items-center gap-2">
         <ShoppingCart className="h-6 w-6" />
         <h1 className="text-2xl font-bold">Your Cart</h1>
@@ -300,6 +301,7 @@ export default function Cart() {
               step={1}
               value={qty || ''}
               onChange={onQtyChange}
+              data-testid="student-cart-tokens-input"
               className="w-40 rounded-xl border px-3 py-2 text-sm focus:border-ocean-500 focus:outline-none focus:ring-1 focus:ring-ocean-500"
             />
             {qty < 5 && (
@@ -364,6 +366,7 @@ export default function Cart() {
           <button
             onClick={proceedToPayment}
             disabled={qty < 5}
+            data-testid="student-cart-proceed-btn"
             className={`mt-4 w-full rounded-xl py-3 font-medium text-white active:scale-[0.99] ${
               qty < 5
                 ? 'bg-gray-400 cursor-not-allowed'

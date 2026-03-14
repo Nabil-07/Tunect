@@ -70,7 +70,7 @@ export default function BlogPost() {
         <div className="rounded-xl border bg-white p-6 text-slate-600">
           Blog post not found.
         </div>
-        <Link to="/blogs" className="mt-4 inline-block text-sm text-ocean-700 hover:underline">
+        <Link to="/blogs" className="mt-4 inline-block text-sm text-ocean-700 hover:underline" data-testid="blog-post-not-found-back-link">
           Back to all posts
         </Link>
       </main>
@@ -105,7 +105,7 @@ export default function BlogPost() {
   const seoDesc = post?.seoDescription || post?.summary || post?.content.substring(0, 160) || 'Read this article on Tunect Blog';
 
   return (
-    <main className="container mx-auto px-4 py-12 max-w-3xl">
+    <main className="container mx-auto px-4 py-12 max-w-3xl" data-testid="blog-post-page">
       {post && (
         <SEO
           title={`${seoTitle} | Tunect Blog`}
@@ -116,7 +116,7 @@ export default function BlogPost() {
           structuredData={articleSchema || undefined}
         />
       )}
-      <Link to="/blogs" className="text-sm text-ocean-700 hover:underline">
+      <Link to="/blogs" className="text-sm text-ocean-700 hover:underline" data-testid="blog-post-back-link">
         ← Back to all posts
       </Link>
 
@@ -128,6 +128,7 @@ export default function BlogPost() {
             <Link
               to={`/blogs/${post.pillar.slug}`}
               className="font-semibold text-indigo-700 hover:underline"
+              data-testid="blog-post-pillar-link"
             >
               {post.pillar.title}
             </Link>
@@ -171,6 +172,7 @@ export default function BlogPost() {
                 key={child.id}
                 to={`/blogs/${child.slug}`}
                 className="group rounded-xl border bg-white shadow-sm hover:shadow-md transition overflow-hidden"
+                data-testid={`blog-post-related-link-${child.slug}`}
               >
                 {child.coverImageUrl ? (
                   <img

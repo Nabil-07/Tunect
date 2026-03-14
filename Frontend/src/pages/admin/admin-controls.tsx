@@ -200,7 +200,7 @@ export default function AdminControlsPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-8 max-w-4xl" data-testid="admin-controls-page">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
@@ -219,12 +219,12 @@ export default function AdminControlsPage() {
 
       {/* Alerts */}
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center gap-2">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center gap-2" data-testid="admin-controls-error-alert">
           <X className="w-4 h-4 shrink-0" /> {error}
         </div>
       )}
       {successMsg && (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 flex items-center gap-2">
+        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 flex items-center gap-2" data-testid="admin-controls-success-alert">
           <Check className="w-4 h-4 shrink-0" /> {successMsg}
         </div>
       )}
@@ -249,6 +249,7 @@ export default function AdminControlsPage() {
             <button
               onClick={toggleTutorRole}
               disabled={saving}
+              data-testid="admin-controls-tutor-role-toggle"
               className={`transition-colors ${controls?.tutorRoleEnabled ? 'text-green-600' : 'text-slate-400'}`}
               title={controls?.tutorRoleEnabled ? 'Enabled – click to disable' : 'Disabled – click to enable'}
             >
@@ -269,6 +270,7 @@ export default function AdminControlsPage() {
             <button
               onClick={toggleStudentRole}
               disabled={saving}
+              data-testid="admin-controls-student-role-toggle"
               className={`transition-colors ${controls?.studentRoleEnabled ? 'text-green-600' : 'text-slate-400'}`}
               title={controls?.studentRoleEnabled ? 'Enabled – click to disable' : 'Disabled – click to enable'}
             >
@@ -301,6 +303,7 @@ export default function AdminControlsPage() {
             </div>
             <button
               onClick={() => setMaintEnabled(!maintEnabled)}
+              data-testid="admin-controls-maintenance-toggle"
               className={`transition-colors ${maintEnabled ? 'text-amber-600' : 'text-slate-400'}`}
             >
               {maintEnabled ? (
@@ -318,6 +321,7 @@ export default function AdminControlsPage() {
             </label>
             <textarea
               id="maint-message"
+              data-testid="admin-controls-maintenance-message-input"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               rows={3}
               value={maintMessage}
@@ -334,6 +338,7 @@ export default function AdminControlsPage() {
               </label>
               <input
                 type="datetime-local"
+                data-testid="admin-controls-maintenance-start-input"
                 className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
                 value={maintStart}
                 onChange={(e) => setMaintStart(e.target.value)}
@@ -345,6 +350,7 @@ export default function AdminControlsPage() {
               </label>
               <input
                 type="datetime-local"
+                data-testid="admin-controls-maintenance-end-input"
                 className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
                 value={maintEnd}
                 onChange={(e) => setMaintEnd(e.target.value)}
@@ -357,6 +363,7 @@ export default function AdminControlsPage() {
             <button
               onClick={saveMaintenance}
               disabled={saving}
+              data-testid="admin-controls-save-maintenance-button"
               className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 transition disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save Maintenance Settings'}
@@ -364,6 +371,7 @@ export default function AdminControlsPage() {
             <button
               onClick={clearMaintenance}
               disabled={saving}
+              data-testid="admin-controls-clear-maintenance-button"
               className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition"
             >
               Clear / Disable
@@ -406,6 +414,7 @@ export default function AdminControlsPage() {
             <input
               id="admin-email"
               type="email"
+              data-testid="admin-controls-email-input"
               className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
@@ -418,6 +427,7 @@ export default function AdminControlsPage() {
             <input
               id="admin-name"
               type="text"
+              data-testid="admin-controls-name-input"
               className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
               value={adminName}
               onChange={(e) => setAdminName(e.target.value)}
@@ -433,6 +443,7 @@ export default function AdminControlsPage() {
               <input
                 id="admin-password"
                 type={showPassword ? 'text' : 'password'}
+                data-testid="admin-controls-password-input"
                 className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm pr-10 focus:ring-2 focus:ring-indigo-500"
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
@@ -441,6 +452,7 @@ export default function AdminControlsPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                data-testid="admin-controls-toggle-password-button"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -449,7 +461,7 @@ export default function AdminControlsPage() {
           </div>
 
           {adminError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" data-testid="admin-controls-admin-error-alert">
               {adminError}
             </div>
           )}
@@ -457,6 +469,7 @@ export default function AdminControlsPage() {
           <button
             onClick={handleCreateAdmin}
             disabled={creatingAdmin || !adminEmail.trim() || !adminName.trim()}
+            data-testid="admin-controls-create-admin-button"
             className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 transition disabled:opacity-50"
           >
             <UserPlus className="w-4 h-4" />
@@ -465,7 +478,7 @@ export default function AdminControlsPage() {
 
           {/* Success result */}
           {createdAdmin && (
-            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl" data-testid="admin-controls-created-admin-success">
               <div className="flex items-center gap-2 text-green-700 font-medium mb-2">
                 <Check className="w-4 h-4" />
                 Admin user created successfully
@@ -483,6 +496,7 @@ export default function AdminControlsPage() {
                       onClick={copyPassword}
                       className="text-slate-500 hover:text-slate-700"
                       title="Copy password"
+                      data-testid="admin-controls-copy-password-button"
                     >
                       {copiedPassword ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                     </button>

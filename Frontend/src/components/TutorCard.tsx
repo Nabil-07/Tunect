@@ -254,7 +254,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
   const hasBoards = (tutor.boards ?? []).length > 0;
 
   return (
-    <article className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md relative cursor-pointer h-full" onClick={viewProfile}>
+    <article className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md relative cursor-pointer h-full" onClick={viewProfile} data-testid="tutor-card">
       {toast && (
         <div className="absolute top-4 left-4 right-4 z-50 flex items-center gap-2 rounded-lg bg-yellow-50 border border-yellow-300 px-4 py-3 text-sm text-yellow-800 shadow-lg">
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
@@ -287,6 +287,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
                   : 'bg-white/90 hover:bg-white'
               } ${favoriteLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              data-testid="tutor-card-favorite-btn"
             >
               <Heart 
                 className={`h-4 w-4 ${
@@ -481,6 +482,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
               goMsg();
             }}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            data-testid="tutor-card-message-btn"
           >
             <MessageSquare className="h-4 w-4" />
             Message
@@ -493,6 +495,7 @@ const TutorCard: React.FC<TutorCardProps> = ({ tutor, tokenBalance: propTokenBal
             }}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700"
               disabled={tokenBalanceLoading}
+            data-testid="tutor-card-book-btn"
           >
               {tutor.demoUsed 
                 ? (tokenBalanceLoading

@@ -198,12 +198,14 @@ function TrendingTutorCard({ tutor }: { tutor: TrendingTutor }) {
           <button
             onClick={(e) => { e.stopPropagation(); handleMessage(); }}
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            data-testid="trending-tutors-message-button"
           >
             <MessageSquare className="h-4 w-4" /> Message
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); handleBookDemo(); }}
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700"
+            data-testid="trending-tutors-book-demo-button"
           >
             {tutor.demoUsed ? 'Buy Tokens' : 'Book Demo'}
           </button>
@@ -339,7 +341,7 @@ export default function TrendingTutors() {
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
 
   return (
-    <main className="container-px mx-auto py-8">
+    <main className="container-px mx-auto py-8" data-testid="trending-tutors-page">
       <SEO
         title="Trending Tutors | Top-Rated Online Tutors | Tunect"
         description="Discover trending tutors with 4.5+ ratings on Tunect. Filter by subject and grade to find the perfect tutor for your needs."
@@ -363,6 +365,7 @@ export default function TrendingTutors() {
           <button
             onClick={clearFilters}
             className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            data-testid="trending-tutors-clear-filters-button"
           >
             Clear filters
           </button>
@@ -380,6 +383,7 @@ export default function TrendingTutors() {
           value={subject}
           onChange={(e) => setParam('subject', e.target.value)}
           className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-300"
+          data-testid="trending-tutors-subject-select"
         >
           <option value="">All subjects</option>
           {availableSubjects.map((s) => (
@@ -391,6 +395,7 @@ export default function TrendingTutors() {
           value={classTeach}
           onChange={(e) => setParam('class', e.target.value)}
           className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-300"
+          data-testid="trending-tutors-class-select"
         >
           <option value="">All grades / classes</option>
           {availableClasses.map((cls) => (
@@ -466,6 +471,7 @@ export default function TrendingTutors() {
                 <Link
                   to="/find-tutors"
                   className="mt-5 inline-flex items-center gap-2 rounded-xl bg-ocean-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-ocean-700 transition"
+                  data-testid="trending-tutors-browse-all-link"
                 >
                   Browse all tutors
                 </Link>
@@ -481,6 +487,7 @@ export default function TrendingTutors() {
               className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium disabled:opacity-50"
               disabled={page <= 1}
               onClick={() => setParam('page', String(page - 1))}
+              data-testid="trending-tutors-prev-page-button"
             >
               Previous
             </button>
@@ -491,6 +498,7 @@ export default function TrendingTutors() {
               className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium disabled:opacity-50"
               disabled={page >= totalPages}
               onClick={() => setParam('page', String(page + 1))}
+              data-testid="trending-tutors-next-page-button"
             >
               Next
             </button>
