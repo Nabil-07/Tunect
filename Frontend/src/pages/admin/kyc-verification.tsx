@@ -68,7 +68,7 @@ function getDocStatusClass(status: string): string {
 type KycDetailMap = Record<string, { loading?: boolean; error?: string; data?: KycBundle | null }>;
 
 interface KycTutorGroupProps {
-  group: KycItem & { tutorId: string; email: string; docs: KycItem[] };
+  group: { tutorId: string; email: string; docs: KycItem[] };
   isOpen: boolean;
   detail: KycDetailMap[string] | undefined;
   focusedDocId: string | null;
@@ -79,7 +79,7 @@ interface KycTutorGroupProps {
   correctionFields: Record<string, string[]>;
   requestingResubmission: Record<string, boolean>;
   onToggle: (tutorId: string) => void;
-  onReview: (docId: string, tutorId: string, status: string) => void;
+  onReview: (docId: string, tutorId: string, status: 'PENDING' | 'APPROVED' | 'REJECTED') => void;
   onRequestResubmission: (tutorId: string) => void;
   onToggleOlderDocs: (tutorId: string, next: boolean) => void;
   onNoteChange: (tutorId: string, value: string) => void;
