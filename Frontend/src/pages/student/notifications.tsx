@@ -61,6 +61,8 @@ export default function NotificationsPage() {
       setUnreadCount(Math.max(0, unreadCount - 1));
       // Notify NotificationBell to update
       globalThis.dispatchEvent(new Event('notifications:updated'));
+    } catch (err) {
+      console.error("Failed to mark notification as read", err);
     }
   };
 
