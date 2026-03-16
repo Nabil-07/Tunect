@@ -1,5 +1,12 @@
 import { Logger } from '@nestjs/common';
 
+export type EmailAttachment = {
+  filename: string;
+  /** Base64-encoded file content */
+  contentBase64: string;
+  contentType: string;
+};
+
 export type GraphEmailSenderConfig = {
   tenantId: string;
   clientId: string;
@@ -101,20 +108,34 @@ export class GraphEmailSender {
   }
 
   async sendHtmlEmail(to: string, subject: string, html: string): Promise<void> {
+    return this.sendHtmlEmailWithAttachments(to, subject, html);
+  }
+
+  async sendHtmlEmailWithAttachments(
+    to: string,
+    subject: string,
+    html: string,
+    attachments: EmailAttachment[] = [],
+  ): Promise<void> {
     const token = await this.getAccessToken();
 
     const endpoint = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(
       this.config.senderUpn,
     )}/sendMail`;
 
-    const payload = {
+    const graphAttachments = attachments.map((a) => ({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: a.filename,
+      contentType: a.contentType,
+      contentBytes: a.contentBase64,
+    }));
+
+    const payload: Record<string, any> = {
       message: {
         subject,
-        body: {
-          contentType: 'HTML',
-          content: html,
-        },
+        body: { contentType: 'HTML', content: html },
         toRecipients: [{ emailAddress: { address: to } }],
+        ...(graphAttachments.length > 0 ? { attachments: graphAttachments } : {}),
       },
       saveToSentItems: Boolean(this.config.saveToSentItems),
     };

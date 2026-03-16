@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
 import { UploadsService } from '../uploads/uploads.service';
@@ -324,11 +324,23 @@ export class StudentsService {
     const userUpdates = buildUserUpdates(data as any, canEdit);
     const studentUpdates = buildStudentUpdates(data as any, canEdit);
 
-    if (Object.keys(userUpdates).length > 0) {
-      await this.prisma.user.update({ where: { id: userId }, data: userUpdates });
-    }
-    if (Object.keys(studentUpdates).length > 0) {
-      await this.prisma.student.update({ where: { id: studentId }, data: studentUpdates });
+    try {
+      if (Object.keys(userUpdates).length > 0) {
+        await this.prisma.user.update({ where: { id: userId }, data: userUpdates });
+      }
+      if (Object.keys(studentUpdates).length > 0) {
+        await this.prisma.student.update({ where: { id: studentId }, data: studentUpdates });
+      }
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        const fields: string[] = err?.meta?.target ?? [];
+        if (fields.includes('phone')) {
+          throw new ConflictException('This phone number is already registered to another account.');
+        }
+        const fieldLabel = fields[0] ?? 'field';
+        throw new ConflictException(`This ${fieldLabel} is already in use by another account.`);
+      }
+      throw err;
     }
 
     await this.handlePostPatchStatus(studentId, userId, currentStatus);

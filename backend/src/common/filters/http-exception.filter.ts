@@ -39,9 +39,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status = HttpStatus.BAD_REQUEST;
       
       switch (exception.code) {
-        case 'P2002':
-          message = 'Unique constraint violation';
+        case 'P2002': {
+          const raw = (exception.meta as any)?.target;
+          const targetStr = Array.isArray(raw) ? raw.join(' ') : String(raw ?? '');
+          if (targetStr.toLowerCase().includes('phone')) {
+            message = 'This phone number is already registered to another account.';
+          } else if (targetStr.toLowerCase().includes('email')) {
+            message = 'This email address is already registered to another account.';
+          } else if (targetStr) {
+            message = 'A unique field is already in use by another account.';
+          } else {
+            message = 'Duplicate value detected. Please check your input.';
+          }
+          status = HttpStatus.CONFLICT;
           break;
+        }
         case 'P2025':
           message = 'Record not found';
           status = HttpStatus.NOT_FOUND;

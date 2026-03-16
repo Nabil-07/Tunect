@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotifierService } from './notifier.service';
 import { AvailabilityTrackingService } from '../availability/availability-tracking.service';
 import { TutorsService } from '../tutors/tutors.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { fromUtc } from '../common/time.util';
 import { addMinutes } from 'date-fns';
 import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
@@ -20,6 +21,7 @@ export class TasksService {
     private notifier: NotifierService,
     private availabilityTracking: AvailabilityTrackingService,
     private tutorsService: TutorsService,
+    private notifications: NotificationsService,
   ) {}
 
   /**
@@ -200,6 +202,7 @@ export class TasksService {
     let processedCount = 0;
 
     for (const booking of bookings) {
+      let noShowType: 'TUTOR_NO_SHOW' | 'STUDENT_NO_SHOW' | null = null;
       try {
         const attendance = this.parseAttendance(booking.attendance, booking.whiteboardSessions?.[0]?.data);
         const tutorJoined = !!attendance.tutorJoinedAt;
@@ -249,6 +252,7 @@ export class TasksService {
             }
           } else if (tutorJoined && !studentJoined) {
             // Student no-show → AUTO_CANCELLED_STUDENT_NO_SHOW + pay tutor
+            noShowType = 'STUDENT_NO_SHOW';
             await tx.booking.update({
               where: { id: booking.id },
               data: {
@@ -286,6 +290,7 @@ export class TasksService {
             }
           } else if (!tutorJoined && studentJoined) {
             // Tutor no-show safety net → AUTO_CANCELLED_TUTOR_NO_SHOW + refund + demerit
+            noShowType = 'TUTOR_NO_SHOW';
             await tx.booking.update({
               where: { id: booking.id },
               data: {
@@ -351,6 +356,30 @@ export class TasksService {
             });
           }
         });
+
+        if (noShowType) {
+          const bk = await this.prisma.booking.findUnique({
+            where: { id: booking.id },
+            select: {
+              startTime: true,
+              isDemo: true,
+              student: { select: { user: { select: { email: true, name: true } } } },
+              tutor: { select: { user: { select: { name: true } } } },
+            },
+          });
+          if (bk?.student?.user?.email) {
+            this.notifications.bookingCancellationEmail({
+              studentEmail: bk.student.user.email,
+              studentName: bk.student.user.name ?? undefined,
+              tutorName: bk.tutor?.user?.name ?? undefined,
+              bookingId: booking.id,
+              startIso: bk.startTime?.toISOString(),
+              reason: noShowType,
+              tokensRefunded: noShowType === 'TUTOR_NO_SHOW' && !bk.isDemo ? 1 : 0,
+            }).catch(() => {});
+          }
+        }
+
         processedCount += 1;
       } catch (error) {
         this.logger.warn(`Failed to process stale booking ${booking.id}: ${error}`);
@@ -491,6 +520,29 @@ export class TasksService {
             );
           }
         });
+
+        if (isTutorNoShow) {
+          const bk = await this.prisma.booking.findUnique({
+            where: { id: booking.id },
+            select: {
+              startTime: true,
+              isDemo: true,
+              student: { select: { user: { select: { email: true, name: true } } } },
+              tutor: { select: { user: { select: { name: true } } } },
+            },
+          });
+          if (bk?.student?.user?.email) {
+            this.notifications.bookingCancellationEmail({
+              studentEmail: bk.student.user.email,
+              studentName: bk.student.user.name ?? undefined,
+              tutorName: bk.tutor?.user?.name ?? undefined,
+              bookingId: booking.id,
+              startIso: bk.startTime?.toISOString(),
+              reason: 'TUTOR_NO_SHOW',
+              tokensRefunded: !bk.isDemo ? 1 : 0,
+            }).catch(() => {});
+          }
+        }
       } catch (error) {
         this.logger.warn(`Failed no-show handling for booking ${booking.id}: ${error}`);
       }
@@ -524,6 +576,7 @@ export class TasksService {
     });
 
     for (const booking of bookings) {
+      let noShowType: 'TUTOR_NO_SHOW' | 'STUDENT_NO_SHOW' | null = null;
       try {
         const attendance = this.parseAttendance(booking.attendance, booking.whiteboardSessions?.[0]?.data);
         const tutorJoined = !!attendance.tutorJoinedAt;
@@ -624,6 +677,7 @@ export class TasksService {
             this.logger.log(
               `Student no-show (post-class): paid tutor for booking ${booking.id}`,
             );
+            noShowType = 'STUDENT_NO_SHOW';
           });
         } else if (!tutorJoined && studentJoined) {
           // Tutor no-show that handleNoShowBookings somehow missed
@@ -691,6 +745,7 @@ export class TasksService {
             this.logger.log(
               `Tutor no-show (post-class safety net): refunded student for booking ${booking.id}`,
             );
+            noShowType = 'TUTOR_NO_SHOW';
           });
         } else {
           // Neither joined — company keeps tokens, no money movement
@@ -705,6 +760,28 @@ export class TasksService {
           this.logger.log(
             `Both no-show (post-class): booking ${booking.id} cancelled, company keeps tokens`,
           );
+        }
+        if (noShowType) {
+          const bk = await this.prisma.booking.findUnique({
+            where: { id: booking.id },
+            select: {
+              startTime: true,
+              isDemo: true,
+              student: { select: { user: { select: { email: true, name: true } } } },
+              tutor: { select: { user: { select: { name: true } } } },
+            },
+          });
+          if (bk?.student?.user?.email) {
+            this.notifications.bookingCancellationEmail({
+              studentEmail: bk.student.user.email,
+              studentName: bk.student.user.name ?? undefined,
+              tutorName: bk.tutor?.user?.name ?? undefined,
+              bookingId: booking.id,
+              startIso: bk.startTime?.toISOString(),
+              reason: noShowType,
+              tokensRefunded: noShowType === 'TUTOR_NO_SHOW' && !bk.isDemo ? 1 : 0,
+            }).catch(() => {});
+          }
         }
       } catch (error) {
         this.logger.warn(`Failed post-class no-show handling for booking ${booking.id}: ${error}`);

@@ -690,11 +690,11 @@ export default function TutorPublicProfile() { // NOSONAR
       />
       <NotificationModal
         open={!!successModal}
-        onClose={() => setSuccessModal(null)}
+        onClose={() => { setSuccessModal(null); navigate('/student/bookings'); }}
         title="Slot Booked!"
         message={successModal || 'Your session has been booked successfully!'}
         type="success"
-        confirmText="Got it"
+        confirmText="View Bookings"
       />
 
       {/* Study details popup – opens after the student selects a time slot */}

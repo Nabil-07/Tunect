@@ -1,16 +1,20 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { Prisma, TokenReason } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import * as crypto from 'node:crypto';
 
 const TOKENS_PER_HOUR = 1;
 
 @Injectable()
 export class PaymentsPublicService {
+  private readonly logger = new Logger(PaymentsPublicService.name);
+
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private getRazorpayClient() {
@@ -252,9 +256,134 @@ export class PaymentsPublicService {
       }
     });
 
+    // Send in-app notification and email receipt to student after successful purchase
+    const studentUser = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { user: { select: { id: true, email: true, name: true } } },
+    });
+    const tutorUser = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      select: { user: { select: { id: true, email: true, name: true } } },
+    });
+
+    if (studentUser?.user?.id) {
+      this.notifications.createPaymentNotification(
+        studentUser.user.id,
+        'Token Purchase Successful',
+        `You have successfully purchased ${tokensPurchased} token${tokensPurchased === 1 ? '' : 's'}. They are ready to use for booking sessions.`,
+      ).catch((err) => this.logger.error(`In-app payment notification failed: ${err?.message ?? err}`));
+
+      if (studentUser.user.email) {
+        this.logger.log(`Sending payment receipt email to ${studentUser.user.email} for ${tokensPurchased} tokens`);
+        this.notifications.paymentReceiptEmail({
+          studentEmail: studentUser.user.email,
+          studentName: studentUser.user.name ?? undefined,
+          tutorName: tutorUser?.user?.name ?? undefined,
+          tokensPurchased,
+          amountPaid: amountInMinor,
+          currency: process.env.CURRENCY ?? 'INR',
+          paymentId: payment.id,
+          providerOrderId: payment.providerOrderId ?? undefined,
+          purchasedAt: new Date().toISOString(),
+          expiryDate: expiryDate.toISOString(),
+        }).then(() => this.logger.log(`Payment receipt email sent to ${studentUser.user.email}`))
+          .catch((err) => this.logger.error(`Payment receipt email FAILED for ${studentUser.user.email}: ${err?.message ?? err}`));
+      }
+    }
+
+    // Notify tutor about the purchase + check availability
+    if (tutorUser?.user) {
+      const studentName = studentUser?.user?.name ?? 'A student';
+
+      // In-app notification for tutor
+      if (tutorUser.user.id) {
+        this.notifications.createPaymentNotification(
+          tutorUser.user.id,
+          'New Token Purchase',
+          `${studentName} has purchased ${tokensPurchased} token${tokensPurchased === 1 ? '' : 's'} for your sessions.`,
+        ).catch((err) => this.logger.error(`Tutor in-app notification failed: ${err?.message ?? err}`));
+      }
+
+      // Email to tutor about purchase
+      if (tutorUser.user.email) {
+        this.notifications.tutorTokenPurchaseEmail({
+          tutorEmail: tutorUser.user.email,
+          tutorName: tutorUser.user.name ?? undefined,
+          studentName,
+          tokensPurchased,
+        }).catch((err) => this.logger.error(`Tutor purchase email FAILED: ${err?.message ?? err}`));
+      }
+
+      // Check tutor's upcoming availability — if < 2 slots, send low-availability reminder
+      this.checkTutorAvailabilityAndRemind(tutorId, tutorUser.user.email, tutorUser.user.name)
+        .catch((err) => this.logger.error(`Low-availability check failed: ${err?.message ?? err}`));
+    }
+
     return {
       ok: true,
       paymentId: payment.id,
     };
+  }
+
+  /**
+   * Check if tutor has fewer than 2 upcoming slots. If so, email them a reminder
+   * listing all students with remaining tokens.
+   */
+  private async checkTutorAvailabilityAndRemind(
+    tutorId: string,
+    tutorEmail?: string | null,
+    tutorName?: string | null,
+  ): Promise<void> {
+    if (!tutorEmail) return;
+
+    const now = new Date();
+    const tenDaysFromNow = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+
+    // Count upcoming availability slots in the next 10 days
+    const totalSlots = await this.prisma.availabilitySlot.count({
+      where: {
+        tutorId,
+        startTime: { gte: now, lte: tenDaysFromNow },
+      },
+    });
+
+    // Count how many of those have a confirmed booking overlapping
+    const bookedCount = await this.prisma.booking.count({
+      where: {
+        tutorId,
+        status: { in: ['CONFIRMED', 'COMPLETED'] },
+        startTime: { gte: now, lte: tenDaysFromNow },
+      },
+    });
+
+    const upcomingSlotCount = totalSlots - bookedCount;
+
+    if (upcomingSlotCount >= 2) return; // Enough availability, no reminder needed
+
+    // Get all students with remaining token balance for this tutor
+    const tokenBalances = await this.prisma.tutorTokenBalance.findMany({
+      where: {
+        tutorId,
+        balance: { gt: 0 },
+      },
+      select: {
+        balance: true,
+        student: { select: { user: { select: { name: true } } } },
+      },
+    });
+
+    if (tokenBalances.length === 0) return;
+
+    const students = tokenBalances.map((tb) => ({
+      name: tb.student?.user?.name || 'Student',
+      remainingTokens: Number(tb.balance),
+    }));
+
+    this.notifications.lowAvailabilityReminderEmail({
+      tutorEmail,
+      tutorName: tutorName ?? undefined,
+      upcomingSlotCount,
+      students,
+    }).catch((err) => this.logger.error(`Low-availability reminder email FAILED: ${err?.message ?? err}`));
   }
 }

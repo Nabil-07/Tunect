@@ -159,7 +159,7 @@ interface HeaderActionsProps {
 }
 
 function HeaderActions({ profileStatus, editing, saving, requestingResubmission, onCancel, onSave, onEdit, onRequestResubmission }: Readonly<HeaderActionsProps>) {
-  if (profileStatus === 'RESUBMISSION_REQUESTED') {
+  if (profileStatus === 'RESUBMISSION_REQUESTED' || profileStatus === 'PENDING') {
     if (editing) {
       return (
         <div className="flex flex-wrap gap-2">
@@ -216,7 +216,7 @@ interface EmptyMarksheetAreaProps {
 }
 
 function EmptyMarksheetArea({ profileStatus, canEditMarksheet, uploadingMarksheet, marksheetInputRef, onUpload }: Readonly<EmptyMarksheetAreaProps>) {
-  if (profileStatus === 'RESUBMISSION_REQUESTED' && canEditMarksheet) {
+  if ((profileStatus === 'RESUBMISSION_REQUESTED' || profileStatus === 'PENDING') && canEditMarksheet) {
     return (
       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
         <Upload className="h-8 w-8 text-slate-400 mb-2" />
@@ -349,7 +349,7 @@ function AvatarSection({ avatarInitial, resolvedAvatarUrl, formData, authUserEma
         <div className="text-white min-w-0 overflow-hidden text-center sm:text-left">
           <h2 className="text-xl sm:text-2xl font-bold mb-1 truncate">{formData.name || 'Student'}</h2>
           <p className="text-blue-100 truncate">{authUserEmail ?? 'No email'}</p>
-          {profileStatus === 'RESUBMISSION_REQUESTED' && canEditAvatar && (
+          {(profileStatus === 'RESUBMISSION_REQUESTED' || profileStatus === 'PENDING') && canEditAvatar && (
             <div className="mt-3">
               <button type="button" onClick={onChangePhoto} disabled={uploadingAvatar} data-testid="student-profile-change-photo-btn" className="rounded-md bg-white/20 px-3 py-1.5 text-sm font-medium hover:bg-white/30 disabled:opacity-60">
                 {uploadingAvatar ? 'Uploading...' : 'Change Photo'}
@@ -388,7 +388,7 @@ function MarksheetSection({ profile, profileStatus, canEditMarksheet, marksheetV
               </div>
             </div>
             <div>
-              {profileStatus === 'RESUBMISSION_REQUESTED' && canEditMarksheet && (
+              {(profileStatus === 'RESUBMISSION_REQUESTED' || profileStatus === 'PENDING') && canEditMarksheet && (
                 <label className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer text-sm">
                   <Upload className="h-4 w-4" />
                   {uploadingMarksheet ? 'Uploading...' : 'Replace Marksheet'}
@@ -499,10 +499,12 @@ function useStudentProfileState() {
     if (validationError) { showError(validationError); return; }
     try {
       setUploadingMarksheet(true);
-      await uploadMarksheetFile(file);
+      const newKey = await uploadMarksheetFile(file);
       showSuccess('Marksheet uploaded successfully!');
-      setMarksheetViewUrl(null);
-      loadProfile();
+      // Update only the marksheet in profile state — do NOT call loadProfile()
+      // because that resets formData, wiping any unsaved field changes.
+      setProfile((prev) => prev ? { ...prev, marksheetUrl: newKey, student: prev.student ? { ...prev.student, marksheetUrl: newKey } : prev.student } : prev);
+      resolveMarksheetViewUrl(newKey).then(setMarksheetViewUrl);
       loadProfileStatus();
     } catch (err: any) {
       showError(err?.response?.data?.message || err?.message || 'Failed to upload marksheet');
@@ -622,6 +624,17 @@ export default function StudentProfile() {
         marksheetInputRef={marksheetInputRef}
         onUpload={handleMarksheetUpload}
       />
+
+      {editing && (
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button onClick={handleCancel} data-testid="student-profile-cancel-btn-bottom" className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors" disabled={saving}>
+            <X className="h-4 w-4" />Cancel
+          </button>
+          <button onClick={handleSave} data-testid="student-profile-save-btn-bottom" className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-green-400" disabled={saving}>
+            <Save className="h-4 w-4" />{saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      )}
 
       <AccountStats profile={profile} />
 

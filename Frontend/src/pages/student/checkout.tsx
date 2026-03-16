@@ -3,15 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/apiClient';
 import { createDemoBooking } from '../../services/bookingsService';
 
-type BookableSlot = { startTime: string; endTime: string };
-
 export default function CheckoutPage() {
   const [sp] = useSearchParams();
   const navigate = useNavigate();
   const tutorId = sp.get('tutorId') || '';
   const [confirming, setConfirming] = useState(false);
   const [booked, setBooked] = useState(false); // Track if already booked
-  const [msg, setMsg] = useState<string>('');
   const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
 
   useEffect(() => {
@@ -21,26 +18,7 @@ export default function CheckoutPage() {
   }, [tutorId, navigate]);
 
   async function afterConfirm() {
-    const from = new Date().toISOString();
-    const to = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
-
-    let slots: BookableSlot[] = [];
-    try {
-      const { data } = await api.get(`/availability/tutor/${tutorId}/bookable`, { params: { from, to } });
-      const arr = Array.isArray(data?.slices) ? data.slices : Array.isArray(data) ? data : [];
-      slots = arr as any;
-    } catch {
-      try {
-        const { data } = await api.get(`/availability/bookable/${tutorId}`, { params: { from, to } });
-        slots = Array.isArray(data) ? data : [];
-      } catch { /* ignore */ }
-    }
-
-    if (slots.length > 0) {
-      navigate(`/tutors/${tutorId}?demo=1#slots`, { replace: true, state: { toast: 'Demo booked! Pick any available slot.' } });
-    } else {
-      setMsg("Booking successfully booked. The tutor has been notified to add slots. You'll be notified in the app when slots are available.");
-    }
+    navigate('/student/bookings', { replace: true, state: { toast: 'Demo booked! You\'ll be able to join once a slot is confirmed.' } });
   }
 
   async function confirmDemo() {
@@ -137,11 +115,6 @@ export default function CheckoutPage() {
             {confirming ? 'Confirming...' : booked ? 'Booked' : 'Confirm Booking'}
           </button>
         </div>
-        {msg && <div className="mt-4 rounded bg-green-50 p-3 text-sm text-green-700" data-testid="student-checkout-success-alert">{msg}</div>}
-      </div>
-
-      <div className="mt-6 text-sm text-slate-600">
-        After confirming, you'll select a slot on the tutor's page. If no slots are currently available, the tutor will be notified to add availability and you'll be notified in the app when it's ready.
       </div>
 
       {/* Error Modal */}

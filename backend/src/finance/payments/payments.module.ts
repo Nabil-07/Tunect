@@ -5,9 +5,10 @@ import { PaymentsService } from './payments.service';
 import { PaymentsPublicController } from './payments.public.controller';
 import { PaymentsPublicService } from './payments-public.service';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { NotificationsModule } from '../../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, ConfigModule],
+  imports: [PrismaModule, ConfigModule, NotificationsModule],
   controllers: [PaymentsController, PaymentsPublicController],
   providers: [PaymentsService, PaymentsPublicService],
   exports: [PaymentsService, PaymentsPublicService],

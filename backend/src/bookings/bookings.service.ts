@@ -502,13 +502,70 @@ export class BookingsService {
       }
       }).then(async (booking) => {
         // After transaction commits, trigger side effects
+        const logger = new Logger(BookingsService.name);
         if (booking.status === BookingStatus.CONFIRMED && booking.startTime) {
-          await this.ensureLivekitMeeting(booking.id);
-          await this.chatTriggers.onDirectBookingCreated(
-            booking.studentId,
-            booking.tutorId,
-            booking.id,
-          );
+          try {
+            await this.ensureLivekitMeeting(booking.id);
+          } catch (error) {
+            logger.error('Failed to ensure LiveKit meeting for demo:', error);
+          }
+          try {
+            await this.chatTriggers.onDirectBookingCreated(
+              booking.studentId,
+              booking.tutorId,
+              booking.id,
+            );
+          } catch (error) {
+            logger.error('Failed to create chat for demo:', error);
+          }
+
+          // Send booking confirmation notifications
+          try {
+            const participants = await this.prisma.booking.findUnique({
+              where: { id: booking.id },
+              select: {
+                startTime: true,
+                endTime: true,
+                notes: true,
+                subject: true,
+                student: { select: { user: { select: { id: true, email: true, name: true } } } },
+                tutor: { select: { user: { select: { id: true, email: true, name: true } } } },
+              },
+            });
+            if (participants) {
+              const startIso = participants.startTime?.toISOString() ?? '';
+              const endIso = participants.endTime?.toISOString() ?? '';
+              const tutorName = participants.tutor.user.name || 'your tutor';
+              const studentName = participants.student.user.name || 'A student';
+
+              this.notifications.createBookingNotification(
+                participants.student.user.id,
+                booking.id,
+                'Demo Class Confirmed',
+                `Your free demo with ${tutorName} has been confirmed.`,
+              ).catch(() => {});
+              this.notifications.createBookingNotification(
+                participants.tutor.user.id,
+                booking.id,
+                'New Demo Booking',
+                `${studentName} has booked a free demo class with you.`,
+              ).catch(() => {});
+              this.notifications.bookingConfirmation({
+                studentEmail: participants.student.user.email,
+                tutorEmail: participants.tutor.user.email,
+                studentName: participants.student.user.name ?? undefined,
+                tutorName: participants.tutor.user.name ?? undefined,
+                bookingId: booking.id,
+                startIso,
+                endIso,
+                isDemo: true,
+                subject: participants.subject ?? undefined,
+                notes: participants.notes,
+              }).catch(() => {});
+            }
+          } catch (error) {
+            logger.error('Failed to send demo booking notifications:', error);
+          }
         }
         return booking;
       });
@@ -677,6 +734,57 @@ export class BookingsService {
         logger.error('Failed to create chat conversation:', error);
       }
 
+      try {
+        // Send booking confirmation notifications to student and tutor
+        const participants = await this.prisma.booking.findUnique({
+          where: { id: booking.id },
+          select: {
+            startTime: true,
+            endTime: true,
+            notes: true,
+            subject: true,
+            isDemo: true,
+            student: { select: { user: { select: { id: true, email: true, name: true } } } },
+            tutor: { select: { user: { select: { id: true, email: true, name: true } } } },
+          },
+        });
+        if (participants) {
+          const startIso = participants.startTime?.toISOString() ?? '';
+          const endIso = participants.endTime?.toISOString() ?? '';
+          const tutorName = participants.tutor.user.name || 'your tutor';
+          const studentName = participants.student.user.name || 'A student';
+          // In-app notification for student
+          this.notifications.createBookingNotification(
+            participants.student.user.id,
+            booking.id,
+            'Booking Confirmed',
+            `Your session with ${tutorName} has been confirmed.`,
+          ).catch(() => {/* non-critical */});
+          // In-app notification for tutor
+          this.notifications.createBookingNotification(
+            participants.tutor.user.id,
+            booking.id,
+            'New Booking',
+            `${studentName} has booked a session with you.`,
+          ).catch(() => {/* non-critical */});
+          // Confirmation emails
+          this.notifications.bookingConfirmation({
+            studentEmail: participants.student.user.email,
+            tutorEmail: participants.tutor.user.email,
+            studentName: participants.student.user.name ?? undefined,
+            tutorName: participants.tutor.user.name ?? undefined,
+            bookingId: booking.id,
+            startIso,
+            endIso,
+            isDemo: participants.isDemo,
+            subject: participants.subject ?? undefined,
+            notes: participants.notes,
+          }).catch(() => {/* non-critical */});
+        }
+      } catch (error) {
+        logger.error('Failed to send booking confirmation notifications:', error);
+      }
+
       return booking;
     });
   }
@@ -762,7 +870,7 @@ export class BookingsService {
     const now = new Date();
     const logger = this.logger;
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id: bookingId },
         include: {
@@ -876,6 +984,32 @@ export class BookingsService {
 
       return { message: 'Tutor no-show processed', refunded };
     });
+
+    if (result.refunded) {
+      const bk = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        select: {
+          startTime: true,
+          student: { select: { user: { select: { email: true, name: true } } } },
+          tutor: { select: { user: { select: { name: true } } } },
+        },
+      });
+      if (bk?.student?.user?.email) {
+        this.notifications
+          .bookingCancellationEmail({
+            studentEmail: bk.student.user.email,
+            studentName: bk.student.user.name ?? undefined,
+            tutorName: bk.tutor?.user?.name ?? undefined,
+            bookingId,
+            startIso: bk.startTime?.toISOString(),
+            reason: 'TUTOR_NO_SHOW',
+            tokensRefunded: 1,
+          })
+          .catch(() => {});
+      }
+    }
+
+    return result;
   }
 
   // ---------- attendance (DB-backed) ----------
@@ -1730,14 +1864,57 @@ export class BookingsService {
       timeout: 15_000,
     }).then(async (booking) => {
       // After transaction commits, trigger side effects
-      await this.ensureLivekitMeeting(bookingId);
+      const logger = new Logger(BookingsService.name);
+      try {
+        await this.ensureLivekitMeeting(bookingId);
+      } catch (error) {
+        logger.error('Failed to ensure LiveKit meeting on assignSlot:', error);
+      }
 
-      // Trigger conversation creation when slot is assigned
-      await this.chatTriggers.onDirectBookingCreated(
-        booking.studentId,
-        booking.tutorId,
-        bookingId,
-      );
+      try {
+        await this.chatTriggers.onDirectBookingCreated(
+          booking.studentId,
+          booking.tutorId,
+          bookingId,
+        );
+      } catch (error) {
+        logger.error('Failed to create chat on assignSlot:', error);
+      }
+
+      // Send booking confirmation notifications
+      try {
+        const startIso = booking.startTime?.toISOString() ?? '';
+        const endIso = booking.endTime?.toISOString() ?? '';
+        const tutorName = booking.tutor?.user?.name || 'your tutor';
+        const studentName = booking.student?.user?.name || 'A student';
+
+        this.notifications.createBookingNotification(
+          booking.student.user.id,
+          booking.id,
+          booking.isDemo ? 'Demo Class Confirmed' : 'Booking Confirmed',
+          `Your ${booking.isDemo ? 'free demo' : 'session'} with ${tutorName} has been confirmed.`,
+        ).catch(() => {});
+        this.notifications.createBookingNotification(
+          booking.tutor.user.id,
+          booking.id,
+          booking.isDemo ? 'New Demo Booking' : 'New Booking',
+          `${studentName} has booked a ${booking.isDemo ? 'demo ' : ''}session with you.`,
+        ).catch(() => {});
+        this.notifications.bookingConfirmation({
+          studentEmail: booking.student.user.email,
+          tutorEmail: booking.tutor.user.email,
+          studentName: booking.student.user.name ?? undefined,
+          tutorName: booking.tutor.user.name ?? undefined,
+          bookingId: booking.id,
+          startIso,
+          endIso,
+          isDemo: booking.isDemo,
+          subject: booking.subject ?? undefined,
+          notes: booking.notes,
+        }).catch(() => {});
+      } catch (error) {
+        logger.error('Failed to send assignSlot notifications:', error);
+      }
 
       return booking;
     });
