@@ -507,7 +507,7 @@ export class NotificationsService implements OnModuleInit {
    * Send payment receipt with token validity details.
    */
   async paymentReceiptEmail(payload: PaymentReceiptPayload): Promise<void> {
-    const baseUrl = process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'https://tunectnow.com';
+    const baseUrl = process.env.APP_BASE_URL ?? 'https://tunectnow.com';
     const currency = payload.currency ?? 'INR';
     const amountFormatted = (payload.amountPaid / 100).toLocaleString('en-IN', {
       style: 'currency',
@@ -601,7 +601,7 @@ export class NotificationsService implements OnModuleInit {
    * Notify tutor that a student purchased tokens for them.
    */
   async tutorTokenPurchaseEmail(payload: TutorTokenPurchasePayload): Promise<void> {
-    const baseUrl = process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'https://tunectnow.com';
+    const baseUrl = process.env.APP_BASE_URL ?? 'https://tunectnow.com';
     const subject = `${payload.studentName} purchased ${payload.tokensPurchased} token${payload.tokensPurchased === 1 ? '' : 's'} for your sessions`;
 
     const html = emailShell(
@@ -628,7 +628,7 @@ export class NotificationsService implements OnModuleInit {
    * Remind tutor they have low availability and students with remaining tokens.
    */
   async lowAvailabilityReminderEmail(payload: LowAvailabilityReminderPayload): Promise<void> {
-    const baseUrl = process.env.FRONTEND_URL || process.env.APP_BASE_URL || 'https://tunectnow.com';
+    const baseUrl = process.env.APP_BASE_URL ?? 'https://tunectnow.com';
     const subject = `⚠️ Low availability — ${payload.students.length} student${payload.students.length === 1 ? '' : 's'} waiting to book`;
 
     const studentRows = payload.students.map((s) =>
