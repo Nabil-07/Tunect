@@ -989,7 +989,7 @@ export default function TutorPublicProfile() { // NOSONAR
               </svg>
               About {tutor.name?.split(' ')[0] || 'Tutor'}
             </h2>
-            <p className="text-slate-700 leading-relaxed">
+            <p className="text-slate-700 leading-relaxed whitespace-pre-line">
               {tutor.summary || tutor.bio || 'This tutor has not added a bio yet.'}
             </p>
           </div>

@@ -74,7 +74,7 @@ export class BookingsController {
     @Headers('x-timezone') tzHeader?: string,
     @Query('tz') tzQuery?: string,
   ) {
-    const tz = tzQuery || tzHeader;
+    const tz = tzQuery || tzHeader || 'UTC';
     dto.isDemo = false;
     return this.service.create(dto, tz, actorUserId);
   }

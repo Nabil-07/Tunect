@@ -1,6 +1,15 @@
 {
   "version": 2,
+  "functions": {
+    "api/tutor-og/[slug].ts": {
+      "includeFiles": "dist/index.html"
+    }
+  },
   "rewrites": [
+    {
+      "source": "/tutors/:slug",
+      "destination": "/api/tutor-og/:slug"
+    },
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"

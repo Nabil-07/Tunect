@@ -21,6 +21,7 @@ import { getBookingPerspective } from "../../utils/bookingPerspective";
 import { useAuth } from "../../contexts/AuthContext";
 import Whiteboard, { type WhiteboardHandle } from "../../components/Whiteboard/Whiteboard";
 import { whiteboardService } from "../../services/whiteboardService";
+import { useWhiteboardSocket } from "../../hooks/useWhiteboardSocket";
 import CallMaterials from "../../components/CallMaterials";
 import "@livekit/components-styles";
 
@@ -139,6 +140,42 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   const [openMaterialTitle, setOpenMaterialTitle] = useState<string>('Class Material');
   const [openingMaterial, setOpeningMaterial] = useState(false);
 
+  // ── Whiteboard permission state ──
+  // Student requests to edit → tutor approves/denies → tutor can revoke
+  const [studentEditAllowed, setStudentEditAllowed] = useState(false);
+  const [studentEditRequested, setStudentEditRequested] = useState(false); // tutor sees this
+  const [editRequestPending, setEditRequestPending] = useState(false);    // student sees this
+
+  // ── Whiteboard real-time sync via Socket.IO ──
+  const mergeRemoteRef = useRef<((data: { elements: any[]; appState?: any }) => void) | null>(null);
+  const pendingRemoteSnapshotsRef = useRef<Array<{ elements: any[]; appState?: any }>>([]);
+
+  const whiteboardSocket = useWhiteboardSocket(bookingId, {
+    onRemoteUpdate: (data) => {
+      const mergeFn = mergeRemoteRef.current;
+      const isMergeReady = !!mergeFn;
+      console.log('[WB-Call] onRemoteUpdate received —', data?.elements?.length ?? 0, 'elements, mergeRef ready:', isMergeReady);
+      if (!isMergeReady) {
+        pendingRemoteSnapshotsRef.current.push(data);
+        return;
+      }
+      mergeFn(data);
+    },
+  });
+
+  const handleMergeRemoteReady = useCallback((ref: { mergeRemote: (data: { elements: any[]; appState?: any }) => void }) => {
+    mergeRemoteRef.current = ref.mergeRemote;
+    const pending = pendingRemoteSnapshotsRef.current;
+    if (pending.length > 0) {
+      // Snapshots are full-scene updates; applying the latest is sufficient.
+      const latest = pending.at(-1);
+      pendingRemoteSnapshotsRef.current = [];
+      if (latest) {
+        mergeRemoteRef.current(latest);
+      }
+    }
+  }, []);
+
   const closeMaterialViewer = useCallback(() => {
     setOpenMaterialUrl((current) => {
       if (current?.startsWith('blob:')) {
@@ -147,6 +184,101 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
       return null;
     });
   }, []);
+
+  // ── Whiteboard permission signaling via LiveKit DataChannel ──
+  const WB_MSG = {
+    REQUEST_EDIT: 'wb:request-edit',
+    APPROVE_EDIT: 'wb:approve-edit',
+    DENY_EDIT: 'wb:deny-edit',
+    REVOKE_EDIT: 'wb:revoke-edit',
+    DONE_EDITING: 'wb:done-editing',
+  } as const;
+
+  const sendWbMessage = useCallback((type: string) => {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(JSON.stringify({ type }));
+      room.localParticipant.publishData(data, { reliable: true });
+    } catch (err) {
+      console.warn('Failed to send whiteboard message:', err);
+    }
+  }, [room]);
+
+  // Listen for incoming whiteboard messages
+  useEffect(() => {
+    const decoder = new TextDecoder();
+    const handleData = (payload: Uint8Array) => {
+      try {
+        const msg = JSON.parse(decoder.decode(payload));
+        switch (msg.type) {
+          case WB_MSG.REQUEST_EDIT:
+            // Tutor receives: student wants to edit
+            if (isTutor) setStudentEditRequested(true);
+            break;
+          case WB_MSG.APPROVE_EDIT:
+            // Student receives: tutor approved
+            if (!isTutor) {
+              setStudentEditAllowed(true);
+              setEditRequestPending(false);
+            }
+            break;
+          case WB_MSG.DENY_EDIT:
+          case WB_MSG.REVOKE_EDIT:
+            // Student receives: tutor denied or revoked access
+            if (!isTutor) {
+              setStudentEditAllowed(false);
+              setEditRequestPending(false);
+            }
+            break;
+          case WB_MSG.DONE_EDITING:
+            // Tutor receives: student is done
+            if (isTutor) {
+              setStudentEditAllowed(false);
+              setStudentEditRequested(false);
+            }
+            break;
+        }
+      } catch {
+        // Not a whiteboard message — ignore
+      }
+    };
+
+    room.on(RoomEvent.DataReceived, handleData);
+    return () => { room.off(RoomEvent.DataReceived, handleData); };
+  }, [room, isTutor]);
+
+  // Student: request edit access
+  const handleRequestEdit = useCallback(() => {
+    setEditRequestPending(true);
+    sendWbMessage(WB_MSG.REQUEST_EDIT);
+  }, [sendWbMessage]);
+
+  // Tutor: approve student edit
+  const handleApproveEdit = useCallback(() => {
+    setStudentEditAllowed(true);
+    setStudentEditRequested(false);
+    sendWbMessage(WB_MSG.APPROVE_EDIT);
+  }, [sendWbMessage]);
+
+  // Tutor: deny student edit
+  const handleDenyEdit = useCallback(() => {
+    setStudentEditRequested(false);
+    sendWbMessage(WB_MSG.DENY_EDIT);
+  }, [sendWbMessage]);
+
+  // Tutor: revoke student edit access
+  const handleRevokeEdit = useCallback(() => {
+    setStudentEditAllowed(false);
+    setStudentEditRequested(false);
+    sendWbMessage(WB_MSG.REVOKE_EDIT);
+  }, [sendWbMessage]);
+
+  // Student: done editing
+  const handleDoneEditing = useCallback(() => {
+    setStudentEditAllowed(false);
+    setEditRequestPending(false);
+    sendWbMessage(WB_MSG.DONE_EDITING);
+  }, [sendWbMessage]);
 
   useEffect(() => {
     return () => {
@@ -429,12 +561,115 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
             {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </button>
 
-          {/* Keep both Whiteboard and LivekitStage mounted to prevent data loss on tab switch */}
+          {/* Keep both Whiteboard and LivekitStage mounted to prevent data loss on tab switch.
+              IMPORTANT: Do NOT use display:none or visibility:hidden — both prevent
+              Excalidraw from initializing its canvas API. Use opacity:0 instead,
+              which keeps the element fully rendered (canvas paints, API initializes)
+              but invisible to the user. z-index controls which panel is on top. */}
           <div
             className="absolute inset-0 rounded-2xl border bg-white overflow-hidden"
-            style={{ display: isWhiteboardActive ? 'block' : 'none' }}
+            style={{
+              opacity: isWhiteboardActive ? 1 : 0,
+              pointerEvents: isWhiteboardActive ? 'auto' : 'none',
+              zIndex: isWhiteboardActive ? 10 : 0,
+            }}
           >
-            <Whiteboard ref={whiteboardRef} bookingId={bookingId} realtime className="w-full h-full" />
+            <Whiteboard
+              ref={whiteboardRef}
+              bookingId={bookingId}
+              realtime
+              className="w-full h-full"
+              isTutor={!!isTutor}
+              studentEditAllowed={studentEditAllowed}
+              socketEmit={whiteboardSocket.emitUpdate}
+              onMergeRemote={handleMergeRemoteReady}
+            />
+
+            {/* ── Whiteboard permission UI overlay ── */}
+
+            {/* Tutor: Incoming edit request from student */}
+            {isTutor && studentEditRequested && !studentEditAllowed && (
+              <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 shadow-lg px-4 py-2.5">
+                  <PenTool className="h-4 w-4 text-amber-600 shrink-0" />
+                  <span className="text-sm font-medium text-amber-800">
+                    {counterpartName || 'Student'} wants to edit the board
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleApproveEdit}
+                    className="ml-2 rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDenyEdit}
+                    className="rounded-lg bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-300"
+                  >
+                    Deny
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tutor: Revoke button when student has edit access */}
+            {isTutor && studentEditAllowed && (
+              <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30">
+                <div className="flex items-center gap-2 rounded-xl bg-blue-50 border border-blue-200 shadow-lg px-4 py-2">
+                  <span className="text-xs font-medium text-blue-700">
+                    {counterpartName || 'Student'} is editing
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRevokeEdit}
+                    className="rounded-lg bg-red-500 px-3 py-1 text-xs font-semibold text-white hover:bg-red-600"
+                  >
+                    Revoke Access
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Student: Request edit button */}
+            {!isTutor && !studentEditAllowed && !editRequestPending && isWhiteboardActive && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
+                <button
+                  type="button"
+                  onClick={handleRequestEdit}
+                  className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-slate-800 transition-colors"
+                >
+                  <PenTool className="h-4 w-4" />
+                  Request to Edit Board
+                </button>
+              </div>
+            )}
+
+            {/* Student: Pending request indicator */}
+            {!isTutor && editRequestPending && !studentEditAllowed && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
+                <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 shadow-lg px-4 py-2.5">
+                  <div className="h-3 w-3 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="text-sm font-medium text-amber-800">Waiting for tutor approval...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Student: Currently editing - done button */}
+            {!isTutor && studentEditAllowed && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
+                <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 shadow-lg px-4 py-2">
+                  <span className="text-xs font-medium text-emerald-700">You can edit the board</span>
+                  <button
+                    type="button"
+                    onClick={handleDoneEditing}
+                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                  >
+                    Done Editing
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           {openMaterialUrl ? (
             <div className="absolute inset-0 rounded-2xl border bg-white overflow-hidden">
@@ -461,7 +696,14 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
               )}
             </div>
           ) : (
-            <div style={{ display: isWhiteboardActive ? 'none' : 'contents' }}>
+            <div
+              className="absolute inset-0"
+              style={{
+                opacity: isWhiteboardActive ? 0 : 1,
+                pointerEvents: isWhiteboardActive ? 'none' : 'auto',
+                zIndex: isWhiteboardActive ? 0 : 10,
+              }}
+            >
               <LivekitStage />
             </div>
           )}

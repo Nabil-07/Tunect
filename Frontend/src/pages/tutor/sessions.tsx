@@ -181,7 +181,11 @@ export default function MySessions() {
         const upcomingSessions = sessions.filter((s) =>
           s.status === 'UPCOMING' || s.status === 'CONFIRMED' ||
           (s.status === 'PENDING_SLOT' && s.startTime && new Date(s.startTime) > now)
-        );
+        ).sort((a, b) => {
+          const aTime = a.startTime ? new Date(a.startTime).getTime() : Infinity;
+          const bTime = b.startTime ? new Date(b.startTime).getTime() : Infinity;
+          return aTime - bTime;
+        });
         const pastSessions = sessions.filter((s) =>
           s.status === 'COMPLETED' || s.status === 'EXPIRED' ||
           s.status === 'NO_SHOW' || s.status === 'CANCELED' ||

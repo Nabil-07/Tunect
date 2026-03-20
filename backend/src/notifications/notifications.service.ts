@@ -402,21 +402,36 @@ export class NotificationsService implements OnModuleInit {
     const studentDisplay = payload.studentName ?? 'Student';
     const subjectLine = payload.subject ? ` — ${payload.subject}` : '';
 
-    // Build ICS calendar attachment
-    const icsContent = generateIcs({
+    // Build separate ICS attachments per recipient to avoid exposing emails
+    const studentIcsContent = generateIcs({
       bookingId: payload.bookingId,
       summary: `${sessionType} with ${tutorDisplay}${subjectLine}`,
       description: `Join your Tunect session: ${bookingUrl}${payload.notes ? `\n\nNotes: ${payload.notes}` : ''}`,
       startIso: payload.startIso,
       endIso: payload.endIso,
       organizerEmail: 'no-reply@tunectnow.com',
-      attendeeEmails: [payload.studentEmail, ...(payload.tutorEmail ? [payload.tutorEmail] : [])],
+      attendeeEmails: [payload.studentEmail],
     });
-    const icsAttachment: EmailAttachment = {
+    const studentIcsAttachment: EmailAttachment = {
       filename: 'tunect-session.ics',
-      contentBase64: Buffer.from(icsContent).toString('base64'),
+      contentBase64: Buffer.from(studentIcsContent).toString('base64'),
       contentType: 'text/calendar; method=REQUEST',
     };
+
+    const tutorIcsContent = payload.tutorEmail ? generateIcs({
+      bookingId: payload.bookingId,
+      summary: `Session with ${studentDisplay}${subjectLine}`,
+      description: `Join your Tunect session: ${bookingUrl}${payload.notes ? `\n\nNotes: ${payload.notes}` : ''}`,
+      startIso: payload.startIso,
+      endIso: payload.endIso,
+      organizerEmail: 'no-reply@tunectnow.com',
+      attendeeEmails: [payload.tutorEmail],
+    }) : null;
+    const tutorIcsAttachment: EmailAttachment | null = tutorIcsContent ? {
+      filename: 'tunect-session.ics',
+      contentBase64: Buffer.from(tutorIcsContent).toString('base64'),
+      contentType: 'text/calendar; method=REQUEST',
+    } : null;
 
     // Student confirmation email
     const studentSubject = payload.isDemo
@@ -444,7 +459,7 @@ export class NotificationsService implements OnModuleInit {
       </p>`,
     );
 
-    await this.sendNotificationEmail(payload.studentEmail, studentSubject, studentBody, [icsAttachment]);
+    await this.sendNotificationEmail(payload.studentEmail, studentSubject, studentBody, [studentIcsAttachment]);
 
     // Tutor notification email
     if (payload.tutorEmail) {
@@ -473,7 +488,7 @@ export class NotificationsService implements OnModuleInit {
         </p>`,
       );
 
-      await this.sendNotificationEmail(payload.tutorEmail, tutorSubject, tutorBody, [icsAttachment]);
+      await this.sendNotificationEmail(payload.tutorEmail, tutorSubject, tutorBody, tutorIcsAttachment ? [tutorIcsAttachment] : []);
     }
   }
 
