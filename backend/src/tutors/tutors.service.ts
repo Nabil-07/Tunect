@@ -1829,20 +1829,14 @@ export class TutorsService {
     }
 
     if (Array.isArray(body?.classesTeach)) {
-      updatesTutor.classesTeach = standardizeAndAutoCorrect(
-        body.classesTeach.map((c: any) => String(c || '')),
-        Array.from(gradeCorpus),
-        standardizeGradeText,
-      );
+      updatesTutor.classesTeach = body.classesTeach
+        .map((c: any) => standardizeGradeText(String(c || '')))
+        .filter(Boolean);
     }
 
     if (Array.isArray(body?.classSubjectMappings)) {
       const mappings = normalizeClassSubjectMappings(body.classSubjectMappings).map((mapping) => ({
-        classRange: standardizeAndAutoCorrect(
-          [mapping.classRange],
-          Array.from(gradeCorpus),
-          standardizeGradeText,
-        )[0] || '',
+        classRange: standardizeGradeText(mapping.classRange),
         subjects: standardizeAndAutoCorrect(
           mapping.subjects,
           Array.from(subjectCorpus),
@@ -1857,7 +1851,7 @@ export class TutorsService {
       updatesTutor.classesTeach = mergeUniqueStrings(
         updatesTutor.classesTeach,
         mappedClasses,
-        Array.isArray(t.classesTeach) ? t.classesTeach : [],
+        // Array.isArray(t.classesTeach) ? t.classesTeach : [],
       );
       updatesTutor.subjects = mergeUniqueStrings(
         updatesTutor.subjects,

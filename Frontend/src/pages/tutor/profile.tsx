@@ -301,12 +301,26 @@ export default function Profile() {
   };
 
   const updateClassSubjectMappingRange = (index: number, classRange: string) => {
-    setData((prev) => ({
-      ...prev,
-      classSubjectMappings: (prev.classSubjectMappings ?? []).map((row, idx) =>
-        idx === index ? { ...row, classRange } : row
-      ),
-    }));
+    setData((prev) => {
+      const oldMapping = (prev.classSubjectMappings ?? [])[index];
+      const oldRange = standardizeGrade(oldMapping?.classRange ?? '');
+      const newRange = standardizeGrade(classRange);
+
+      const withoutOld = (prev.classesTeach ?? []).filter(
+        (c) => !oldRange || c.toLowerCase() !== oldRange.toLowerCase(),
+      );
+      const finalClassesTeach = newRange
+        ? mergeUniqueCaseInsensitive(withoutOld, [newRange])
+        : withoutOld;
+
+      return {
+        ...prev,
+        classSubjectMappings: (prev.classSubjectMappings ?? []).map((row, idx) =>
+          idx === index ? { ...row, classRange } : row,
+        ),
+        classesTeach: finalClassesTeach,
+      };
+    });
   };
 
   const addSubjectToClassMapping = (index: number, subject: string) => {
