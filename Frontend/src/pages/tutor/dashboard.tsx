@@ -12,7 +12,8 @@ import {
   BarChart,
   Star,
   MessageSquare,
-  Award
+  Award,
+  ClipboardList
 } from 'lucide-react';
 import { getAvailability, type AvailabilitySlot, getMySessions, type TutorSession } from '../../services/tutorService';
 import api from '../../lib/apiClient';
@@ -542,6 +543,14 @@ export default function TutorDashboard() {
               title="Messages"
               description="Chat with students"
               testId="tutor-dashboard-tool-messages"
+            />
+            <ToolCard
+              to="/tutor/assignments"
+              icon={<ClipboardList className="h-7 w-7 text-violet-600" />}
+              emoji="📋"
+              title="Assignments"
+              description="Send and track homework"
+              testId="tutor-dashboard-tool-assignments"
             />
           </div>
         </section>

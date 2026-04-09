@@ -412,6 +412,29 @@ export class UploadsService {
       return;
     }
 
+    // Assignment & submission files: allow access for the tutor or student on the assignment
+    if (key.startsWith('assignments/') || key.startsWith('test/assignments/') || key.startsWith('submissions/') || key.startsWith('test/submissions/')) {
+      const student = await this.prisma.student.findUnique({ where: { userId }, select: { id: true } });
+      const tutor = await this.prisma.tutor.findUnique({ where: { userId }, select: { id: true } });
+      const profileId = student?.id || tutor?.id;
+      if (profileId) {
+        const hasAccess = await this.prisma.assignment.findFirst({
+          where: {
+            OR: [
+              { fileUrl: key },
+              { fileUrl: { endsWith: key } },
+              { assignmentSubmissions: { some: { OR: [{ fileUrl: key }, { fileUrl: { endsWith: key } }] } } },
+            ],
+            ...(student ? { studentId: student.id } : {}),
+            ...(tutor ? { tutorId: tutor.id } : {}),
+          },
+          select: { id: true },
+        });
+        if (hasAccess) return;
+      }
+      throw new ForbiddenException('Not authorized to access this assignment file');
+    }
+
     if (key.startsWith('study-materials/')) {
       const student = await this.prisma.student.findUnique({
         where: { userId },

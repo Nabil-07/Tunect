@@ -185,6 +185,7 @@ const PaymentSuccess = lazy(() => import('./pages/student/payment-success'));   
 const PaymentFailure = lazy(() => import('./pages/student/payment-failure'));    // NEW
 const TokenBalance = lazy(() => import('./pages/student/token-balance'));        // NEW
 const StudentTransactions = lazy(() => import('./pages/student/transactions'));  // NEW
+const StudentAssignments = lazy(() => import('./pages/student/assignments'));
 /** Phase 4: Student Features */
 const StudentManageAccount = lazy(() => import('./pages/student/manage-account'));
 const ClassPage = lazy(() => import('./pages/class'));
@@ -205,6 +206,7 @@ const ContentLibrary = lazy(() => import('./pages/tutor/content-library'));
 const RecurringTemplates = lazy(() => import('./pages/tutor/recurring-templates'));
 const PerformanceTracking = lazy(() => import('./pages/tutor/performance-tracking'));
 const TutorNotifications = lazy(() => import('./pages/tutor/notifications'));
+const TutorAssignments = lazy(() => import('./pages/tutor/assignments'));
 /** Phase 4: Tutor Features */
 const TutorManageAccount = lazy(() => import('./pages/tutor/manage-account'));
 
@@ -413,6 +415,7 @@ function App() {
           <Route path="/student/reviews" element={<StudentReviews />} />
           <Route path="/student/cart" element={<Cart />} />
           <Route path="/student/waitlist" element={<StudentWaitlist />} />
+          <Route path="/student/assignments" element={<StudentAssignments />} />
 
           {/* Free DEMO checkout (existing) */}
           <Route path="/student/demo-checkout" element={<DemoCheckout />} />
@@ -451,6 +454,8 @@ function App() {
           <Route path="/tutor/recurring-templates" element={<RecurringTemplates />} />
           <Route path="/tutor/performance-tracking" element={<PerformanceTracking />} />
           
+          <Route path="/tutor/assignments" element={<TutorAssignments />} />
+
           {/* Phase 4: Tutor Routes */}
           <Route path="/tutor/manage-account" element={<TutorManageAccount />} />
         </Route>

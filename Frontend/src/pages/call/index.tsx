@@ -12,7 +12,7 @@ import {
   useRoomContext,
 } from "@livekit/components-react";
 import { Track, type Participant, DisconnectReason, RoomEvent } from "livekit-client";
-import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle, BookOpen, Maximize2, Minimize2 } from "lucide-react";
+import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle, BookOpen, Maximize2, Minimize2, ClipboardList } from "lucide-react";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
 import { useToast } from "../../contexts/ToastContext";
 import api, { getTokenPayload } from "../../lib/apiClient";
@@ -23,6 +23,7 @@ import Whiteboard, { type WhiteboardHandle } from "../../components/Whiteboard/W
 import { whiteboardService } from "../../services/whiteboardService";
 import { useWhiteboardSocket } from "../../hooks/useWhiteboardSocket";
 import CallMaterials from "../../components/CallMaterials";
+import CallAssignments from "../../components/CallAssignments";
 import "@livekit/components-styles";
 
 function getParticipantRole(p: Participant): string {
@@ -126,7 +127,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
   const room = useRoomContext();
   const navigate = useNavigate();
   const [callStartedAt, setCallStartedAt] = useState<Date | null>(null);
-  const [sideTab, setSideTab] = useState<"participants" | "whiteboard" | "materials">("participants");
+  const [sideTab, setSideTab] = useState<"participants" | "whiteboard" | "materials" | "assignments">("participants");
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
   const [isOvertime, setIsOvertime] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
@@ -760,7 +761,7 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
             </button>
           </div>
 
-          <div className="mb-2 grid grid-cols-3 gap-0.5 shrink-0">
+          <div className="mb-2 grid grid-cols-4 gap-0.5 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -808,6 +809,21 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
                 <span className="truncate">Materials</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                closeMaterialViewer();
+                setSideTab("assignments");
+              }}
+              className={`flex items-center justify-center gap-1 rounded-md px-1.5 py-1 transition-colors min-w-0 text-[11px] font-medium ${
+                sideTab === "assignments"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              <ClipboardList className="h-3 w-3 shrink-0" />
+              <span className="truncate">Tasks</span>
+            </button>
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
             {sideTab === "materials" && isTutor ? (
@@ -828,6 +844,28 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
                   } catch (err) {
                     console.error('Failed to open material in class:', err);
                     showToastError('Failed to open material in class.');
+                  } finally {
+                    setOpeningMaterial(false);
+                  }
+                }}
+              />
+            ) : sideTab === "assignments" ? (
+              <CallAssignments
+                isTutor={!!isTutor}
+                onOpenInClass={async (pdfUrl, title) => {
+                  try {
+                    setOpeningMaterial(true);
+                    setOpenMaterialTitle(title || 'Assignment');
+                    closeMaterialViewer();
+                    const resp = await fetch(pdfUrl);
+                    if (!resp.ok) throw new Error('Failed to fetch file');
+                    const blob = await resp.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    setOpenMaterialUrl(blobUrl);
+                    setSideTab('assignments');
+                  } catch (err) {
+                    console.error('Failed to open assignment in class:', err);
+                    showToastError('Failed to open assignment in class.');
                   } finally {
                     setOpeningMaterial(false);
                   }

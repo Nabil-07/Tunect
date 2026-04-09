@@ -764,12 +764,22 @@ export class StudentsService {
       distinct: ['studentId'],
     });
 
+    const studentIds = bookings.map((b) => b.student.id);
+
+    // Fetch token balances for all students with this tutor
+    const balances = await this.prisma.tutorTokenBalance.findMany({
+      where: { tutorId: tutor.id, studentId: { in: studentIds } },
+      select: { studentId: true, balance: true },
+    });
+    const balanceMap = new Map(balances.map((b) => [b.studentId, Number(b.balance)]));
+
     return bookings.map((b) => ({
       id: b.student.id,
       name: b.student.user?.name,
       email: b.student.user?.email,
       grade: b.student.grade,
       user: b.student.user,
+      tokenBalance: balanceMap.get(b.student.id) ?? 0,
     }));
   }
 

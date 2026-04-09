@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Target,
   FileText,
+  ClipboardList,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -643,6 +644,19 @@ export default function StudentDashboard() {
               </div>
               <h3 className="text-sm sm:text-lg font-bold text-slate-800 mb-1">Waitlist</h3>
               <p className="text-xs sm:text-sm text-slate-600 hidden sm:block">Track your tutor waitlist</p>
+            </Link>
+
+            <Link
+              to="/student/assignments"
+              data-testid="student-dashboard-assignments-link"
+              className="rounded-xl sm:rounded-2xl border bg-white p-4 sm:p-6 shadow-sm hover:shadow-md transition group active:scale-95"
+            >
+              <div className="flex items-center justify-between mb-2 sm:mb-3">
+                <ClipboardList className="h-6 w-6 sm:h-8 sm:w-8 text-violet-600 group-hover:scale-110 transition" />
+                <span className="text-xl sm:text-2xl">📋</span>
+              </div>
+              <h3 className="text-sm sm:text-lg font-bold text-slate-800 mb-1">Assignments</h3>
+              <p className="text-xs sm:text-sm text-slate-600 hidden sm:block">View and submit homework</p>
             </Link>
           </div>
         </section>

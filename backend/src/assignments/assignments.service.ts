@@ -26,6 +26,21 @@ export class AssignmentsService {
       throw new NotFoundException('Tutor profile not found');
     }
 
+    // Token eligibility gate: tutor can only assign to students with active tokens
+    const tokenBalance = await this.prisma.tutorTokenBalance.findUnique({
+      where: {
+        studentId_tutorId: {
+          studentId: dto.studentId,
+          tutorId: tutor.id,
+        },
+      },
+      select: { balance: true },
+    });
+
+    if (!tokenBalance || Number(tokenBalance.balance) <= 0) {
+      throw new BadRequestException('Student does not have active tokens with you');
+    }
+
     let fileUrl: string | null = null;
     let extractedText = dto.description || '';
 
@@ -293,13 +308,21 @@ export class AssignmentsService {
       throw new ForbiddenException('Only the tutor can grade this submission');
     }
 
-    return this.prisma.assignmentSubmission.update({
-      where: { id: submissionId },
-      data: {
-        grade: dto.grade,
-        feedback: dto.feedback,
-      },
-    });
+    const [updatedSubmission] = await this.prisma.$transaction([
+      this.prisma.assignmentSubmission.update({
+        where: { id: submissionId },
+        data: {
+          grade: dto.grade,
+          feedback: dto.feedback,
+        },
+      }),
+      this.prisma.assignment.update({
+        where: { id: submission.assignmentId },
+        data: { status: 'GRADED' },
+      }),
+    ]);
+
+    return updatedSubmission;
   }
 
   /**

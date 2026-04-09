@@ -16,7 +16,7 @@ export class S3Service {
   private readonly bucketName: string;
   private readonly region: string;
   private readonly isEnabled: boolean;
-  private readonly allowedTopLevelPrefixes = new Set(['avatars', 'kyc', 'certificates', 'study-materials', 'payouts', 'expenses', 'blogs', 'test']);
+  private readonly allowedTopLevelPrefixes = new Set(['avatars', 'kyc', 'certificates', 'study-materials', 'payouts', 'expenses', 'blogs', 'assignments', 'submissions', 'test']);
   /** Per-request timeout in ms for S3 operations */
   private readonly requestTimeoutMs = 30_000;
 

@@ -14,6 +14,7 @@ const routeNames: Record<string, string> = {
   'profile': 'Profile',
   'token-balance': 'Token Balance',
   'waitlist': 'My Waitlist',
+  'assignments': 'Assignments',
   'find-tutors': 'Find Tutor',
   'cart': 'Cart',
   'checkout': 'Checkout',
