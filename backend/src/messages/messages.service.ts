@@ -18,10 +18,6 @@ const CONVO_PAGE_SIZE_DEFAULT = 20;
 
 @Injectable()
 export class MessagesService {
-  // In-memory read tracking: Map<`${userId}:${conversationId}`, Date>
-  // Tracks when a user last read a conversation (no schema migration needed)
-  private readonly readReceipts = new Map<string, Date>();
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly ctx: RequestContext,
@@ -578,6 +574,13 @@ export class MessagesService {
       return { items: [], nextCursor: null };
     }
 
+    // Preload all read receipts for this user in one query
+    const receiptsRaw = await this.prisma.conversationReadReceipt.findMany({
+      where: { userId },
+      select: { conversationId: true, readAt: true },
+    });
+    const receiptMap = new Map<string, Date>(receiptsRaw.map((r) => [r.conversationId, r.readAt]));
+
     const where: any = { 
       OR: ors,
       isArchived: false, // Only show non-archived conversations
@@ -666,7 +669,7 @@ export class MessagesService {
       const lastMsg = c.messages[0] ?? null;
       let unreadCount = 0;
       if (lastMsg && lastMsg.senderId !== userId) {
-        const readAt = this.readReceipts.get(`${userId}:${c.id}`);
+        const readAt = receiptMap.get(c.id);
         if (!readAt || readAt < lastMsg.createdAt) {
           unreadCount = 1;
         }
@@ -939,9 +942,15 @@ export class MessagesService {
   async markThreadRead(conversationId: string, userId: string) {
     if (!userId) throw new ForbiddenException('Not authenticated');
     const now = new Date();
-    this.readReceipts.set(`${userId}:${conversationId}`, now);
 
-    // Also mark all sibling conversations (same student-tutor pair)
+    // Persist to DB: upsert read receipt for this conversation
+    await this.prisma.conversationReadReceipt.upsert({
+      where: { conversationId_userId: { conversationId, userId } },
+      create: { conversationId, userId, readAt: now },
+      update: { readAt: now },
+    });
+
+    // Also mark all sibling conversations (same student-tutor pair) as read
     try {
       const convo = await this.prisma.conversation.findUnique({
         where: { id: conversationId },
@@ -952,12 +961,20 @@ export class MessagesService {
           where: { studentId: convo.studentId, tutorId: convo.tutorId },
           select: { id: true },
         });
-        for (const s of siblings) {
-          this.readReceipts.set(`${userId}:${s.id}`, now);
-        }
+        await Promise.all(
+          siblings
+            .filter((s) => s.id !== conversationId)
+            .map((s) =>
+              this.prisma.conversationReadReceipt.upsert({
+                where: { conversationId_userId: { conversationId: s.id, userId } },
+                create: { conversationId: s.id, userId, readAt: now },
+                update: { readAt: now },
+              }),
+            ),
+        );
       }
     } catch {
-      // Non-critical: the primary receipt was already set
+      // Non-critical: the primary receipt was already persisted
     }
     return { success: true as const };
   }
@@ -985,9 +1002,15 @@ export class MessagesService {
     });
 
     const now = new Date();
-    for (const convo of convos) {
-      this.readReceipts.set(`${userId}:${convo.id}`, now);
-    }
+    await Promise.all(
+      convos.map((convo) =>
+        this.prisma.conversationReadReceipt.upsert({
+          where: { conversationId_userId: { conversationId: convo.id, userId } },
+          create: { conversationId: convo.id, userId, readAt: now },
+          update: { readAt: now },
+        }),
+      ),
+    );
 
     return { success: true as const };
   }
@@ -1011,17 +1034,26 @@ export class MessagesService {
     if (tutor) ors.push({ tutorId: tutor.id });
     if (ors.length === 0) return { count: 0 };
 
-    const convos = await this.prisma.conversation.findMany({
-      where: { OR: ors },
-      select: {
-        id: true,
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          select: { id: true, senderId: true, createdAt: true },
+    // Load last message + read receipt together
+    const [convos, receiptsRaw] = await Promise.all([
+      this.prisma.conversation.findMany({
+        where: { OR: ors },
+        select: {
+          id: true,
+          messages: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { id: true, senderId: true, createdAt: true },
+          },
         },
-      },
-    });
+      }),
+      this.prisma.conversationReadReceipt.findMany({
+        where: { userId },
+        select: { conversationId: true, readAt: true },
+      }),
+    ]);
+
+    const receiptMap = new Map<string, Date>(receiptsRaw.map((r) => [r.conversationId, r.readAt]));
 
     // Deduplicate by other participant (matches listConversations UI behavior)
     const seen = new Set<string>();
@@ -1030,7 +1062,7 @@ export class MessagesService {
       if (!last || last.senderId === userId) return acc;
 
       // Check if user has read this conversation after the last message
-      const readAt = this.readReceipts.get(`${userId}:${c.id}`);
+      const readAt = receiptMap.get(c.id);
       if (readAt && readAt >= last.createdAt) return acc;
 
       // Deduplicate: only count once per other participant

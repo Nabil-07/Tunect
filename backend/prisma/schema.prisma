@@ -227,6 +227,7 @@ model Conversation {
   student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   tutor     Tutor     @relation(fields: [tutorId], references: [id], onDelete: Cascade)
   messages  Message[]
+  readReceipts ConversationReadReceipt[]
 
   @@unique([studentId, tutorId, bookingId])
   @@index([studentId, tutorId, createdAt])
@@ -1046,10 +1047,23 @@ model User {
   adminBroadcasts                  AdminBroadcast[]        @relation("AdminBroadcasts")
   adminPrivateMessages             AdminPrivateMessage[]   @relation("AdminPrivateMessages")
   adminReceivedMessages            AdminPrivateMessage[]   @relation("AdminReceivedMessages")
+  conversationReadReceipts         ConversationReadReceipt[]
 
   @@index([email])
   @@index([role, hasChosenRole])
   @@index([isBanned])
+}
+
+model ConversationReadReceipt {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  readAt         DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
 }
 
 model AuditLog {

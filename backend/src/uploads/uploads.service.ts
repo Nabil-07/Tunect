@@ -193,6 +193,14 @@ export class UploadsService {
       return key;
     }
 
+    if (params.useCase === 'chat-attachments') {
+      const expectedPrefix = `chat-attachments/${params.userId}/`;
+      if (!key.startsWith(expectedPrefix)) {
+        throw new ForbiddenException('Chat attachment key does not belong to user');
+      }
+      return key;
+    }
+
     if (!tutor) {
       throw new ForbiddenException('Tutor profile not found');
     }
@@ -554,6 +562,10 @@ export class UploadsService {
 
     if (dto.useCase === 'marksheets') {
       return `marksheets/${userId}/${id}.${ext}`;
+    }
+
+    if (dto.useCase === 'chat-attachments') {
+      return `chat-attachments/${userId}/${id}.${ext}`;
     }
 
     const tutor = await this.prisma.tutor.findUnique({
