@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import NotificationBell from './NotificationBell';
 import { getUnreadCount } from '../services/messagesService';
 import { markAllThreadsRead } from '../services/chatService';
+import api from '../lib/apiClient';
 
 /* ---------------- helpers ---------------- */
 type RoleLower = 'student' | 'tutor' | 'admin';
@@ -89,6 +90,7 @@ export default function Navbar() {
   const [extraOpen, setExtraOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   // Track the backend count at the moment the user viewed messages.
   // Badge only reappears when backend count INCREASES (genuinely new message).
   const dismissedCountRef = useRef<number | null>(null);
@@ -116,6 +118,28 @@ export default function Navbar() {
     // Best-effort: tell backend to mark threads read
     markAllThreadsRead().catch(() => {});
   }, [isAuthed, location.pathname, isMessagesPath]);
+
+  // Poll notification unread count every 30s
+  useEffect(() => {
+    if (!isAuthed) return;
+    const fetchNotifCount = () => {
+      api.get('/notifications/my')
+        .then((res) => {
+          const items: Array<{ isRead?: boolean }> = res.data || [];
+          setUnreadNotifCount(items.filter((n) => !n.isRead).length);
+        })
+        .catch(() => {});
+    };
+    fetchNotifCount();
+    const interval = setInterval(fetchNotifCount, 30000);
+    // Clear count when user visits the notifications page
+    const handleNotifsUpdated = () => fetchNotifCount();
+    globalThis.addEventListener('notifications:updated', handleNotifsUpdated);
+    return () => {
+      clearInterval(interval);
+      globalThis.removeEventListener('notifications:updated', handleNotifsUpdated);
+    };
+  }, [isAuthed]);
 
   // Poll unread count every 30s
   useEffect(() => {
@@ -477,12 +501,18 @@ export default function Navbar() {
 
         {/* Mobile trigger */}
         <button
-          className="md:hidden ml-auto p-2 rounded-xl hover:bg-slate-100"
+          className="md:hidden ml-auto relative p-2 rounded-xl hover:bg-slate-100"
           onClick={() => setOpen((v) => !v)}
           aria-label="Toggle menu"
           data-testid="navbar-mobile-menu-btn"
         >
           {open ? <X /> : <Menu />}
+          {/* Combined unread badge — only when menu is closed */}
+          {!open && isAuthed && (unreadMsgCount + unreadNotifCount) > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow ring-2 ring-white">
+              {unreadMsgCount + unreadNotifCount > 99 ? '99+' : unreadMsgCount + unreadNotifCount}
+            </span>
+          )}
         </button>
       </nav>
 
@@ -509,12 +539,17 @@ export default function Navbar() {
 
                 <NavLink
                   to={roleNotifications(role)}
-                  className="btn-ghost inline-flex items-center gap-2"
-                  onClick={() => setOpen(false)}
+                  className="btn-ghost relative inline-flex items-center gap-2"
+                  onClick={() => { setUnreadNotifCount(0); setOpen(false); }}
                   aria-label="Open notifications"
                 >
                   <Bell className="h-5 w-5" />
                   <span>Notifications</span>
+                  {unreadNotifCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      {unreadNotifCount}
+                    </span>
+                  )}
                 </NavLink>
               </div>
             )}

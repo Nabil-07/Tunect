@@ -7,28 +7,30 @@ export class ChatTriggersService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Create or update conversation when a direct booking is created
+   * Create or reuse a conversation when a direct booking is created.
+   *
+   * Each student–tutor pair shares ONE persistent conversation thread.
+   * We never create a new conversation per booking because that would hide
+   * all messages exchanged before the new booking was made.
    */
   async onDirectBookingCreated(
     studentId: string,
     tutorId: string,
     bookingId: string,
   ): Promise<void> {
-    // Find or create conversation for this student-tutor pair
-    await this.prisma.conversation.upsert({
-      where: {
-        studentId_tutorId_bookingId: {
-          studentId,
-          tutorId,
-          bookingId,
-        },
-      },
-      create: {
-        studentId,
-        tutorId,
-        bookingId,
-      },
-      update: {},
+    // Check whether a conversation already exists for this student–tutor pair.
+    const existing = await this.prisma.conversation.findFirst({
+      where: { studentId, tutorId },
+      select: { id: true },
+    });
+
+    // If one already exists, reuse it — do not open a new (empty) thread.
+    if (existing) return;
+
+    // No conversation yet: create a single, persistent general conversation.
+    // bookingId is intentionally null so it is not re-created on future bookings.
+    await this.prisma.conversation.create({
+      data: { studentId, tutorId, bookingId: null },
     });
   }
 

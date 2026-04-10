@@ -7,6 +7,7 @@ import { ChatTriggersService } from './chat-triggers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RequestContext } from '../common/request-context';
 import { JwtModule } from '@nestjs/jwt';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { JwtModule } from '@nestjs/jwt';
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: '7d' },
     }),
+    UploadsModule,
   ],
   controllers: [MessagesController],
   providers: [

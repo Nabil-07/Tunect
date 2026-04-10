@@ -1,7 +1,7 @@
 // src/pages/student/chat.tsx
 import { useParams } from 'react-router-dom';
 import ChatList from '../../components/chat/ChatList';
-import { ChatWindow } from '../../components/chat/ChatWindow-Enhanced';
+import { ChatWindow } from '../../components/chat/ChatWindow';
 import AdminMessagesView from '../../components/chat/AdminMessagesView';
 
 export default function StudentChat() {

@@ -1,7 +1,7 @@
 // src/pages/admin/messages.tsx
 import { useParams, useNavigate } from 'react-router-dom';
 import ChatList from '../../components/chat/ChatList';
-import { ChatWindow } from '../../components/chat/ChatWindow-Enhanced';
+import { ChatWindow } from '../../components/chat/ChatWindow';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   sendSubjectBroadcast,

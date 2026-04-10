@@ -75,16 +75,49 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
         this.userSockets.delete(userId);
       }
     }
+
+    // Notify all conversation rooms this socket was in that the user went offline
+    const rooms: Set<string> = client.data.conversationRooms || new Set();
+    rooms.forEach((convId) => {
+      this.server.to(`conversation:${convId}`).emit('userPresence', {
+        userId,
+        conversationId: convId,
+        online: false,
+      });
+    });
+
     console.log(`Client disconnected: ${client.id}`);
   }
 
   @SubscribeMessage('joinConversation')
-  handleJoinConversation(
+  async handleJoinConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: string },
   ) {
-    client.join(`conversation:${data.conversationId}`);
+    const room = `conversation:${data.conversationId}`;
+    // Track which conversation rooms this socket has joined
+    if (!client.data.conversationRooms) client.data.conversationRooms = new Set<string>();
+    client.data.conversationRooms.add(data.conversationId);
+
+    client.join(room);
     console.log(`User ${client.data.userId} joined conversation ${data.conversationId}`);
+
+    // Tell everyone else in the room this user is online
+    client.to(room).emit('userPresence', {
+      userId: client.data.userId,
+      conversationId: data.conversationId,
+      online: true,
+    });
+
+    // Tell the joiner which other users are already in the room
+    const socketsInRoom = await this.server.in(room).fetchSockets();
+    const onlineUserIds = socketsInRoom
+      .filter((s) => s.data.userId && s.data.userId !== client.data.userId)
+      .map((s) => s.data.userId as string);
+    onlineUserIds.forEach((userId) => {
+      client.emit('userPresence', { userId, conversationId: data.conversationId, online: true });
+    });
+
     return { status: 'joined', conversationId: data.conversationId };
   }
 
@@ -93,8 +126,18 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: string },
   ) {
-    client.leave(`conversation:${data.conversationId}`);
+    const room = `conversation:${data.conversationId}`;
+    client.leave(room);
+    if (client.data.conversationRooms) client.data.conversationRooms.delete(data.conversationId);
     console.log(`User ${client.data.userId} left conversation ${data.conversationId}`);
+
+    // Tell others this user went offline
+    this.server.to(room).emit('userPresence', {
+      userId: client.data.userId,
+      conversationId: data.conversationId,
+      online: false,
+    });
+
     return { status: 'left', conversationId: data.conversationId };
   }
 

@@ -9,16 +9,22 @@ import {
   UseGuards,
   HttpCode,
   Header,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConsumes,
   ApiOperation,
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 
 import { MessagesService } from './messages.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { PostMessageDto } from './dto/post-message.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -38,7 +44,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'; // or
 @Throttle({ default: { ttl: 60, limit: 60 } })
 @Controller('chat')
 export class MessagesController {
-  constructor(private readonly svc: MessagesService) {}
+  constructor(
+    private readonly svc: MessagesService,
+    private readonly uploads: UploadsService,
+  ) {}
 
   @ApiOperation({
     summary: 'Post a message to a conversation (by booking/peer as defined in DTO)',
@@ -83,6 +92,22 @@ export class MessagesController {
       text: (content ?? text ?? '').toString(),
     };
     return this.svc.post(dto);
+  }
+
+  /** Upload a file attachment (image / PDF / Word / Excel) as a message */
+  @ApiOperation({ summary: 'Send a file attachment in a conversation' })
+  @ApiConsumes('multipart/form-data')
+  @Throttle({ default: { ttl: 60, limit: 10 } })
+  @Post('conversations/:id/files')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  postFile(
+    @Param('id') conversationId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('caption') caption?: string,
+    @CurrentUser('id') _userId?: string,
+  ) {
+    if (!file) throw new BadRequestException('No file provided');
+    return this.svc.postWithFile(conversationId, file, caption, this.uploads);
   }
 
   @ApiOperation({ summary: 'Mark a thread as read (no-op placeholder)' })

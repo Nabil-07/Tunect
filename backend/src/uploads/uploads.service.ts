@@ -75,6 +75,19 @@ export class UploadsService {
       maxBytes: 10 * 1024 * 1024,
       allowedMimeTypes: new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
     },
+    'chat-attachments': {
+      maxBytes: 20 * 1024 * 1024, // 20 MB
+      allowedMimeTypes: new Set([
+        'image/jpeg',
+        'image/png',
+        'image/jpg',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ]),
+    },
   };
 
   constructor(

@@ -18,7 +18,10 @@ export function useSocket(options: UseSocketOptions = {}) {
     if (!autoConnect) return;
 
     // Get token from the same key used by REST auth
-    const token = localStorage.getItem('access_token');
+    const token =
+      localStorage.getItem('tunect_access_token') ||
+      localStorage.getItem('accessToken') ||
+      localStorage.getItem('token');
     if (!token) {
       console.warn('No auth token found, cannot connect to WebSocket');
       return;

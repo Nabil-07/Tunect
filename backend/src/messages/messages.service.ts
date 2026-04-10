@@ -266,6 +266,126 @@ export class MessagesService {
     return payload;
   }
 
+  /** Post a message that carries a file attachment (image / PDF / Word / Excel). */
+  async postWithFile(
+    conversationId: string,
+    file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+    caption: string | undefined,
+    uploadsService: import('../uploads/uploads.service').UploadsService,
+  ) {
+    const userId = this.ctx.userId;
+    if (!userId) throw new ForbiddenException('Not authenticated');
+
+    // Ban check
+    const existingStrikes = await this.prisma.piiViolationLog.count({ where: { userId } });
+    if (existingStrikes >= 3) {
+      throw new ForbiddenException({
+        message: 'Your account is blocked from messaging due to repeated personal-info violations.',
+        code: 'PII_ACCOUNT_BLOCKED',
+      });
+    }
+
+    const me = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        isBanned: true,
+        bannedScope: true,
+        student: { select: { id: true } },
+        tutor: { select: { id: true } },
+      },
+    });
+    if (!me) throw new ForbiddenException('User not found');
+
+    if (me.isBanned && (me.bannedScope === 'ALL' || me.bannedScope === 'MESSAGING')) {
+      throw new ForbiddenException({ message: 'Your account is banned from messaging.', code: 'ACCOUNT_BANNED' });
+    }
+
+    // Verify the user is a participant of this conversation
+    const convo = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: {
+        id: true,
+        studentId: true,
+        tutorId: true,
+        student: { select: { userId: true } },
+        tutor: { select: { userId: true } },
+      },
+    });
+    if (!convo) throw new NotFoundException('Conversation not found');
+    if (convo.student?.userId !== userId && convo.tutor?.userId !== userId) {
+      throw new ForbiddenException('You are not a participant of this conversation');
+    }
+
+    // Token balance check
+    await this.validateTokenBalanceForMessaging(
+      convo.studentId,
+      convo.tutorId,
+      me.role as DbRole,
+    );
+
+    // Upload file to S3
+    const { key, downloadUrl } = await uploadsService.directUpload(
+      userId,
+      file,
+      'chat-attachments',
+    );
+
+    const safeCaption = (caption ?? '').trim().slice(0, 2000);
+
+    // Create the message and attachment in one transaction
+    const created = await this.prisma.message.create({
+      data: {
+        conversationId,
+        senderId: userId,
+        text: safeCaption || '',
+        messageAttachments: {
+          create: {
+            fileUrl: downloadUrl,
+            fileName: file.originalname,
+            fileSize: file.size,
+            fileType: file.mimetype,
+          },
+        },
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        senderId: true,
+        text: true,
+        createdAt: true,
+        user: { select: { id: true, name: true, email: true } },
+        messageAttachments: {
+          select: { id: true, fileUrl: true, fileName: true, fileSize: true, fileType: true },
+        },
+      },
+    });
+
+    const payload = {
+      id: created.id,
+      conversationId: created.conversationId,
+      senderId: created.senderId,
+      content: created.text,
+      isDeleted: false,
+      createdAt: created.createdAt.toISOString(),
+      sender: { id: created.user.id, name: created.user.name, email: created.user.email },
+      attachments: created.messageAttachments,
+    };
+
+    const participantUserIds = await this.getParticipantUserIds(conversationId);
+    await this.gateway.emitNewMessage(conversationId, payload);
+    participantUserIds.forEach((uid) => {
+      this.gateway.emitConversationUpdate(uid, {
+        conversationId,
+        lastMessage: payload,
+        fromUserId: userId,
+      });
+    });
+
+    return payload;
+  }
+
   async getThread(id: string, cursor?: string) {
     const userId = this.ctx.userId;
     if (!userId) throw new ForbiddenException('Not authenticated');
@@ -337,7 +457,16 @@ export class MessagesService {
             name: true,
             email: true,
           }
-        }
+        },
+        messageAttachments: {
+          select: {
+            id: true,
+            fileUrl: true,
+            fileName: true,
+            fileSize: true,
+            fileType: true,
+          },
+        },
       },
     });
 
@@ -419,6 +548,13 @@ export class MessagesService {
           name: msg.user.name,
           email: msg.user.email,
         },
+        attachments: msg.messageAttachments.map((a) => ({
+          id: a.id,
+          fileUrl: a.fileUrl,
+          fileName: a.fileName,
+          fileSize: a.fileSize,
+          fileType: a.fileType,
+        })),
       })),
       nextCursor,
     };
@@ -455,7 +591,12 @@ export class MessagesService {
 
     const rows = await this.prisma.conversation.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        // Sort by the most recent message first so conversations with activity
+        // always bubble to the top regardless of when the conversation was created.
+        { messages: { _count: 'desc' } },
+        { createdAt: 'desc' },
+      ],
       take: Math.max(1, Math.min(100, limit)) + 1,
       select: {
         id: true,
@@ -496,6 +637,16 @@ export class MessagesService {
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
+
+    // When multiple conversations exist for the same student–tutor pair (legacy
+    // per-booking conversations), prefer the one with the most recent message
+    // activity so that accumulated chat history is shown rather than a newer
+    // but empty booking-scoped conversation.
+    page.sort((a, b) => {
+      const aTime = (a.messages[0]?.createdAt as Date | undefined)?.getTime() ?? a.createdAt.getTime();
+      const bTime = (b.messages[0]?.createdAt as Date | undefined)?.getTime() ?? b.createdAt.getTime();
+      return bTime - aTime;
+    });
 
     const seenByOtherUser = new Set<string>();
     const items = page.reduce<Array<Record<string, any>>>((acc, c) => {
@@ -562,6 +713,7 @@ export class MessagesService {
     const since = new Date();
     since.setDate(since.getDate() - 180);
 
+    // Find all student-tutor pairs from recent confirmed/completed bookings
     const bookings = await this.prisma.booking.findMany({
       where: {
         OR: [
@@ -571,20 +723,36 @@ export class MessagesService {
         status: { in: ['CONFIRMED', 'COMPLETED'] },
         createdAt: { gte: since },
       },
-      select: { id: true, studentId: true, tutorId: true },
+      select: { studentId: true, tutorId: true },
       take: 200,
     });
 
     if (!bookings.length) return;
 
-    await this.prisma.conversation.createMany({
-      data: bookings.map((booking) => ({
-        studentId: booking.studentId,
-        tutorId: booking.tutorId,
-        bookingId: booking.id,
-      })),
-      skipDuplicates: true,
-    });
+    // Deduplicate pairs — one persistent general conversation per student-tutor pair,
+    // not per-booking. bookingId is intentionally null so it never conflicts with
+    // the per-booking unique index and is never duplicated on future bookings.
+    const seen = new Set<string>();
+    const pairs: Array<{ studentId: string; tutorId: string }> = [];
+    for (const b of bookings) {
+      const key = `${b.studentId}:${b.tutorId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        pairs.push({ studentId: b.studentId, tutorId: b.tutorId });
+      }
+    }
+
+    for (const pair of pairs) {
+      const existing = await this.prisma.conversation.findFirst({
+        where: { studentId: pair.studentId, tutorId: pair.tutorId },
+        select: { id: true },
+      });
+      if (!existing) {
+        await this.prisma.conversation.create({
+          data: { studentId: pair.studentId, tutorId: pair.tutorId, bookingId: null },
+        });
+      }
+    }
   }
 
   /**
