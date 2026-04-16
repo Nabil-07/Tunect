@@ -131,7 +131,7 @@ export function useWhiteboardSocket(
       const socket = socketRef.current;
       if (!socket?.connected || !bookingId) return;
 
-      const THROTTLE_MS = 100;
+      const THROTTLE_MS = 350;
       const now = Date.now();
       const elapsed = now - lastEmitRef.current;
 

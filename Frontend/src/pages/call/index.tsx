@@ -11,7 +11,7 @@ import {
   useTracks,
   useRoomContext,
 } from "@livekit/components-react";
-import { Track, type Participant, DisconnectReason, RoomEvent } from "livekit-client";
+import { Track, type Participant, DisconnectReason, RoomEvent, type RoomOptions } from "livekit-client";
 import { Clock, FileText, PanelRightOpen, Users, PenTool, X, AlertTriangle, BookOpen, Maximize2, Minimize2, ClipboardList } from "lucide-react";
 import { getBookingDetails, type BookingDetailsDto } from "../../services/bookingsService";
 import { useToast } from "../../contexts/ToastContext";
@@ -75,7 +75,6 @@ function LivekitStage({ compact }: { compact?: boolean } = {}) {
         <GridLayout tracks={cameraTracks}>
           <ParticipantTile />
         </GridLayout>
-        <RoomAudioRenderer />
       </div>
     );
   }
@@ -106,7 +105,6 @@ function LivekitStage({ compact }: { compact?: boolean } = {}) {
           </GridLayout>
         </div>
       )}
-      <RoomAudioRenderer />
     </div>
   );
 }
@@ -515,6 +513,8 @@ function CallRoomContent({ bookingId, endTime, isTutor, counterpartName, classDa
         ? 'fixed inset-0 z-50 bg-slate-50 p-1.5 gap-1.5'
         : 'h-[calc(100dvh-44px)] sm:h-[calc(100dvh-52px)] p-1.5 sm:p-3 lg:p-4 gap-1.5 sm:gap-3 lg:gap-4'
     }`}>
+      {/* Single audio renderer for entire call — must only be mounted once */}
+      <RoomAudioRenderer />
 
       {/* ── No-show countdown bar (student waiting for tutor only) ── */}
       {!isTutor && !hasBothJoined && noShowCountdown !== null && (
@@ -1293,6 +1293,17 @@ export default function CallPage() {
           token={token!}
           serverUrl={serverUrl!}
           connect={true}
+          audio={true}
+          video={true}
+          options={{
+            audioCaptureDefaults: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+            adaptiveStream: true,
+            dynacast: true,
+          } as RoomOptions}
           onDisconnected={(reason) => {
             console.log('LiveKit disconnected:', reason);
             // If no-show was triggered, don't show the Class Ended screen

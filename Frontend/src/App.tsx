@@ -161,6 +161,7 @@ const ForgotPassword = lazy(() => import('./pages/forgot-password'));
 const ResetPassword = ForgotPassword;
 
 const AuthCallback = lazy(() => import('./pages/auth-callback'));
+const VerifyEmail = lazy(() => import('./pages/verify-email'));
 const AccountSecurity = lazy(() => import('./pages/account/security'));
 
 /** Student */
@@ -339,6 +340,7 @@ function App() {
           <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/verify-email" element={<VerifyEmail />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/find-tutors" element={<FindTutors />} />

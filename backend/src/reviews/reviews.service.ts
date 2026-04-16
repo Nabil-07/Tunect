@@ -2,16 +2,23 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { QueryReviewsDto } from './dto/query-reviews.dto';
 import { BookingStatus } from '@prisma/client';
 
 @Injectable()
 export class ReviewsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ReviewsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notify: NotificationsService,
+  ) {}
 
   /** Student creates a review for a completed (or finished) booking they attended. */
   async create(studentUserId: string, dto: CreateReviewDto) {
@@ -68,6 +75,27 @@ export class ReviewsService {
           comment: dto.comment,
         },
       });
+
+      // Notify tutor of their new review (fire-and-forget)
+      const tutorUser = await this.prisma.tutor.findUnique({
+        where: { id: booking.tutorId },
+        select: { user: { select: { email: true, name: true } } },
+      });
+      if (tutorUser?.user?.email) {
+        const studentUser = await this.prisma.user.findUnique({
+          where: { id: studentUserId },
+          select: { name: true },
+        });
+        this.notify.sendReviewReceivedEmail({
+          to: tutorUser.user.email,
+          tutorName: tutorUser.user.name ?? undefined,
+          studentName: studentUser?.name ?? undefined,
+          rating: dto.rating,
+          comment: dto.comment,
+          sessionDate: booking.endTime?.toISOString(),
+        }).catch((e) => this.logger.warn(`Review notification email failed for ${tutorUser.user.email}: ${e?.message}`));
+      }
+
       return review;
     } catch (e: any) {
       // P2002 unique violation (one review per booking)

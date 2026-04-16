@@ -283,6 +283,16 @@ export class RefundsService {
         title: 'Token Transfer Approved',
         message: `Your request to transfer ${request.tokenAmount} tokens has been approved. New unscheduled bookings are now assigned to ${request.toTutor.user?.name || 'the selected tutor'}.`,
       });
+
+      // Send refund processed email (re-use method since token transfer = credit back to student for new tutor)
+      if (request.student.user?.email) {
+        this.notifications.sendRefundProcessedEmail({
+          to: request.student.user.email,
+          studentName: request.student.user.name ?? undefined,
+          tokensRefunded: Number(request.tokenAmount),
+          processedAt: new Date().toISOString(),
+        }).catch(() => {/* non-critical */});
+      }
     } else {
       // Notify student of rejection
       await this.notifications.create({
@@ -466,6 +476,16 @@ export class RefundsService {
         title: 'Refund Approved',
         message: `Your refund request for ${request.tokenAmount} tokens has been approved. Tokens have been added to your account.`,
       });
+
+      // Send refund processed email
+      if (request.student.user?.email) {
+        this.notifications.sendRefundProcessedEmail({
+          to: request.student.user.email,
+          studentName: request.student.user.name ?? undefined,
+          tokensRefunded: Number(request.tokenAmount),
+          processedAt: new Date().toISOString(),
+        }).catch(() => {/* non-critical */});
+      }
     } else {
       // Notify student of rejection
       await this.notifications.create({

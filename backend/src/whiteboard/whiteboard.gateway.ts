@@ -8,7 +8,7 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { WhiteboardService } from './whiteboard.service';
@@ -118,6 +118,12 @@ export class WhiteboardGateway
       this.logger.log(`[WB] Sending wb:state to ${client.id} — ${(currentData as any)?.elements?.length ?? 0} elements`);
       client.emit('wb:state', currentData);
     } catch (err) {
+      if (err instanceof ForbiddenException || err instanceof NotFoundException) {
+        this.logger.warn(`[WB] Access denied for user ${client.userId} to room ${bookingId}: ${(err as Error).message}`);
+        client.emit('error', { message: 'Access denied to this whiteboard' });
+        client.disconnect(true);
+        return;
+      }
       this.logger.warn(`[WB] Failed to load state for room ${bookingId}: ${(err as Error).message}`);
       client.emit('wb:state', { elements: [], appState: {} });
     }

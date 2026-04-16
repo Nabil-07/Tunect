@@ -131,6 +131,7 @@ function StudentPaymentsTab({
   formatINR: (paise: number) => string;
 }) {
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  const [viewingPayment, setViewingPayment] = useState<StudentPayment | null>(null);
 
   const sorted = useMemo(() => {
     const copy = [...payments];
@@ -206,21 +207,12 @@ function StudentPaymentsTab({
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
                         <button
+                          onClick={() => setViewingPayment(payment)}
                           title="View Details"
                           className="p-1 rounded hover:bg-slate-200 transition-colors"
                         >
                           <Eye className="w-4 h-4 text-slate-600" />
                         </button>
-                        {payment.receiptUrl && (
-                          <a
-                            href={payment.receiptUrl}
-                            download
-                            title="Download Receipt"
-                            className="p-1 rounded hover:bg-slate-200 transition-colors"
-                          >
-                            <Download className="w-4 h-4 text-slate-600" />
-                          </a>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -272,6 +264,95 @@ function StudentPaymentsTab({
       {!loading && regularPayments.length === 0 && bannedPayments.length === 0 && (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-12 text-center">
           <p className="text-slate-600">No student payments found</p>
+        </div>
+      )}
+
+      {/* Student Payment Detail Modal */}
+      {viewingPayment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Payment Details</h3>
+                <p className="text-xs text-slate-500">Student payment receipt</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const p = viewingPayment;
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Payment Receipt - ${p.orderId}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:40px;max-width:600px;margin:0 auto;color:#1e293b}
+@media print{body{padding:20px}@page{size:A4;margin:20mm}}</style></head><body>
+<div style="text-align:center;border-bottom:1px solid #e2e8f0;padding-bottom:16px;margin-bottom:20px">
+<h1 style="font-size:20px;font-weight:700">Tunect Private Limited</h1>
+<p style="font-size:12px;color:#64748b;margin-top:4px">Student Payment Receipt</p>
+<p style="font-size:12px;font-family:monospace;color:#4f46e5;margin-top:4px">${p.orderId}</p></div>
+<div style="text-align:center;margin-bottom:20px"><p style="font-size:11px;color:#64748b">Amount Paid</p>
+<p style="font-size:28px;font-weight:700;color:#16a34a">${formatINR(p.amount)}</p></div>
+<div style="background:#f8fafc;border-radius:8px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+<div><p style="font-size:11px;color:#64748b">Student</p><p style="font-weight:600;font-size:13px">${p.studentName || p.studentEmail}</p><p style="font-size:11px;color:#64748b">${p.studentEmail}</p></div>
+<div><p style="font-size:11px;color:#64748b">Tutor</p><p style="font-weight:600;font-size:13px">${p.tutorName}</p></div>
+<div><p style="font-size:11px;color:#64748b">Tokens</p><p style="font-weight:500;font-size:13px">${p.tokensPurchased ?? '—'}</p></div>
+<div><p style="font-size:11px;color:#64748b">Provider</p><p style="font-weight:500;font-size:13px;text-transform:capitalize">${p.provider || 'Razorpay'}</p></div>
+<div><p style="font-size:11px;color:#64748b">Paid Date</p><p style="font-weight:500;font-size:13px">${new Date(p.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p></div>
+<div><p style="font-size:11px;color:#64748b">Order ID</p><p style="font-family:monospace;font-size:11px">${p.orderId}</p></div></div>
+<div style="text-align:center;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:20px">
+<p style="font-size:10px;color:#94a3b8">Tunect Private Limited</p></div>
+</body></html>`;
+                    const printWindow = window.open('', '_blank', 'width=700,height=900');
+                    if (printWindow) {
+                      printWindow.document.write(html);
+                      printWindow.document.close();
+                      printWindow.onload = () => { printWindow.print(); };
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-800 font-medium"
+                  title="Print receipt"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+                <button onClick={() => setViewingPayment(null)} className="p-1 rounded hover:bg-slate-100">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Header */}
+              <div className="text-center">
+                <p className="text-xs text-slate-500">Amount Paid</p>
+                <p className="text-3xl font-bold text-green-600 mt-1">{formatINR(viewingPayment.amount)}</p>
+              </div>
+
+              {/* Details Grid */}
+              <div className="bg-slate-50 rounded-lg p-4 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-slate-500">Student</p>
+                  <p className="font-semibold text-slate-900 mt-0.5">{viewingPayment.studentName || viewingPayment.studentEmail}</p>
+                  <p className="text-xs text-slate-500">{viewingPayment.studentEmail}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Tutor</p>
+                  <p className="font-semibold text-slate-900 mt-0.5">{viewingPayment.tutorName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Order ID</p>
+                  <p className="font-mono text-xs text-slate-900 mt-0.5">{viewingPayment.orderId}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Tokens</p>
+                  <p className="font-medium text-slate-900 mt-0.5">{viewingPayment.tokensPurchased ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Paid Date</p>
+                  <p className="font-medium text-slate-900 mt-0.5">{new Date(viewingPayment.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Provider</p>
+                  <p className="font-medium text-slate-900 mt-0.5 capitalize">{viewingPayment.provider || 'Razorpay'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -891,7 +972,49 @@ function TutorDuesTab({
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    const r = viewingReceipt;
+                    const bankRows = [
+                      r.bankInfo?.bankAccountHolder ? `<tr><td style="color:#3b82f6;padding:2px 8px 2px 0;font-size:12px">Holder:</td><td style="font-weight:600;font-size:12px">${r.bankInfo.bankAccountHolder}</td></tr>` : '',
+                      r.bankInfo?.bankName ? `<tr><td style="color:#3b82f6;padding:2px 8px 2px 0;font-size:12px">Bank:</td><td style="font-weight:600;font-size:12px">${r.bankInfo.bankName}</td></tr>` : '',
+                      r.bankInfo?.accountNumber ? `<tr><td style="color:#3b82f6;padding:2px 8px 2px 0;font-size:12px">A/C:</td><td style="font-family:monospace;font-weight:600;font-size:12px">${r.bankInfo.accountNumber}</td></tr>` : '',
+                      r.bankInfo?.ifsc ? `<tr><td style="color:#3b82f6;padding:2px 8px 2px 0;font-size:12px">IFSC:</td><td style="font-family:monospace;font-weight:600;font-size:12px">${r.bankInfo.ifsc}</td></tr>` : '',
+                      r.bankInfo?.upiId ? `<tr><td style="color:#3b82f6;padding:2px 8px 2px 0;font-size:12px">UPI:</td><td style="font-family:monospace;font-weight:600;font-size:12px">${r.bankInfo.upiId}</td></tr>` : '',
+                    ].filter(Boolean).join('');
+                    const statusColor = r.status === 'PAID' ? '#15803d' : r.status === 'CANCELED' ? '#dc2626' : '#d97706';
+                    const statusBg = r.status === 'PAID' ? '#dcfce7' : r.status === 'CANCELED' ? '#fef2f2' : '#fef9c3';
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Receipt ${r.receiptId}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:40px;max-width:600px;margin:0 auto;color:#1e293b}
+@media print{body{padding:20px}@page{size:A4;margin:20mm}}</style></head><body>
+<div style="text-align:center;border-bottom:1px solid #e2e8f0;padding-bottom:16px;margin-bottom:20px">
+<h1 style="font-size:20px;font-weight:700">${r.companyName}</h1>
+<p style="font-size:12px;color:#64748b;margin-top:4px">Payment Receipt</p>
+<p style="font-size:12px;font-family:monospace;color:#4f46e5;margin-top:4px">${r.receiptId}</p></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:20px">
+<div><p style="font-size:11px;color:#64748b">Paid To</p><p style="font-weight:600;font-size:14px">${r.tutorName}</p><p style="font-size:12px;color:#475569">${r.tutorEmail}</p></div>
+<div style="text-align:right"><p style="font-size:11px;color:#64748b">Amount</p><p style="font-size:24px;font-weight:700;color:#16a34a">₹${r.amount.toFixed(2)}</p></div></div>
+<div style="background:#f8fafc;border-radius:8px;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+<div><p style="font-size:11px;color:#64748b">Status</p><span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:${statusBg};color:${statusColor}">${r.status}</span></div>
+<div><p style="font-size:11px;color:#64748b">Payment Method</p><p style="font-weight:500;font-size:13px;text-transform:capitalize">${(r.paymentMethod || '—').replace('_', ' ')}</p></div>
+<div><p style="font-size:11px;color:#64748b">Transaction ID</p><p style="font-family:monospace;font-size:12px">${r.transactionId || '—'}</p></div>
+<div><p style="font-size:11px;color:#64748b">Reference</p><p style="font-weight:500;font-size:13px">${r.reference || '—'}</p></div>
+<div><p style="font-size:11px;color:#64748b">Created</p><p style="font-weight:500;font-size:13px">${new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p></div>
+<div><p style="font-size:11px;color:#64748b">Paid At</p><p style="font-weight:500;font-size:13px">${r.paidAt ? new Date(r.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p></div></div>
+${r.bankInfo ? `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:12px;margin-bottom:20px">
+<p style="font-size:12px;font-weight:600;color:#1e40af;margin-bottom:8px">🏦 Bank Details</p>
+<table>${bankRows}</table></div>` : ''}
+${r.details ? `<div style="margin-bottom:20px"><p style="font-size:11px;color:#64748b;margin-bottom:4px">Notes</p><p style="font-size:13px;background:#f8fafc;border-radius:8px;padding:12px">${r.details}</p></div>` : ''}
+<div style="text-align:center;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:20px">
+<p style="font-size:10px;color:#94a3b8">Generated on ${new Date(r.generatedAt).toLocaleString('en-IN')}</p>
+<p style="font-size:10px;color:#94a3b8">${r.companyName} • Payout ID: ${r.payoutId}</p></div>
+</body></html>`;
+                    const printWindow = window.open('', '_blank', 'width=700,height=900');
+                    if (printWindow) {
+                      printWindow.document.write(html);
+                      printWindow.document.close();
+                      printWindow.onload = () => { printWindow.print(); };
+                    }
+                  }}
                   className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-800 font-medium"
                   title="Print receipt"
                 >
@@ -902,9 +1025,9 @@ function TutorDuesTab({
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto p-6 print:p-0">
+            <div className="flex-1 overflow-auto p-6">
               {/* Receipt Card */}
-              <div className="border border-slate-200 rounded-xl p-6 space-y-5 print:border-none">
+              <div className="border border-slate-200 rounded-xl p-6 space-y-5">
                 {/* Header */}
                 <div className="text-center border-b border-slate-100 pb-4">
                   <h4 className="text-xl font-bold text-slate-900">{viewingReceipt.companyName}</h4>

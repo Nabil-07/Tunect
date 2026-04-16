@@ -424,6 +424,7 @@ export class StudentsService {
         isDemo: true,
         tokensCharged: true,
         createdAt: true,
+        tutorId: true,
         subject: true,
         grade: true,
         module: true,
@@ -508,6 +509,7 @@ export class StudentsService {
         createdAt: b.createdAt,
         tokensCharged: toNum(b.tokensCharged),
         hasAttended, // Flag indicating if student joined/attended the session
+        tutorId: b.tutorId,
         subject: b.subject ?? null,
         grade: b.grade ?? null,
         module: b.module ?? null,

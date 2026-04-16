@@ -40,6 +40,7 @@ import { SupportModule } from './support/support.module';
 import { StatsModule } from './stats/stats.module';
 import { BlogsModule } from './blogs/blogs.module';
 import { RefundsModule } from './refunds/refunds.module';
+import { DisputesModule } from './disputes/disputes.module';
 
 import { AppController } from './app.controller';
 import { ReadyController } from './health/ready.controller';
@@ -112,6 +113,7 @@ import { AdminControlsModule } from './admin-controls/admin-controls.module';
     StatsModule,
     BlogsModule,
     RefundsModule,
+    DisputesModule,
 
     FinanceDashboardModule,
     TokenLedgerModule,

@@ -12,6 +12,7 @@ import { Request } from 'express';
 import { PolicyConfigService } from '../policy-config/policy-config.service';
 import type { PolicyConfig } from '../policy-config/default-policy-config';
 import { UploadsService } from '../uploads/uploads.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
@@ -33,6 +34,7 @@ export class AdminService {
     private readonly audit: AuditService,
     private readonly policyConfig: PolicyConfigService,
     private readonly uploads: UploadsService,
+    private readonly notify: NotificationsService,
   ) {}
 
   private getFromCache<T>(key: string): T | undefined {
@@ -234,7 +236,7 @@ export class AdminService {
     const updated = await this.prisma.tutor.update({
       where: { id: tutorId },
       data: { status: dto.status },
-      select: { id: true, status: true, updatedAt: true },
+      select: { id: true, status: true, updatedAt: true, userId: true },
     });
     
     const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
@@ -248,7 +250,30 @@ export class AdminService {
       endpoint: auditInfo.endpoint,
       ipAddress: auditInfo.ipAddress,
     });
-    return updated;
+
+    // Send approval / rejection email
+    if (dto.status === TutorStatus.APPROVED || dto.status === TutorStatus.REJECTED) {
+      const tutorUser = await this.prisma.user.findUnique({
+        where: { id: updated.userId },
+        select: { email: true, name: true },
+      });
+      if (tutorUser) {
+        if (dto.status === TutorStatus.APPROVED) {
+          this.notify.sendTutorApprovedEmail({
+            to: tutorUser.email,
+            tutorName: tutorUser.name ?? undefined,
+          }).catch((e) => this.logger.warn(`Tutor approved email failed: ${e?.message}`));
+        } else {
+          this.notify.sendTutorRejectedEmail({
+            to: tutorUser.email,
+            tutorName: tutorUser.name ?? undefined,
+            reason: (dto as any).rejectionReason ?? undefined,
+          }).catch((e) => this.logger.warn(`Tutor rejected email failed: ${e?.message}`));
+        }
+      }
+    }
+
+    return { id: updated.id, status: updated.status, updatedAt: updated.updatedAt };
   }
 
   async setTutorTrending(tutorId: string, isTrending: boolean, adminId: string, req?: Request) {
@@ -1206,5 +1231,199 @@ export class AdminService {
     this.cache.delete('GET /admin/dashboard');
 
     return { ok: true, message: 'Admin account deleted successfully' };
+  }
+
+  // ─── Admin Booking Actions ───
+
+  /**
+   * Admin reschedule: reset a COMPLETED / AUTO_CANCELLED / NO_SHOW booking
+   * to CONFIRMED with a new timeslot. The rescheduled-already limit does NOT
+   * apply when an admin performs the action.
+   */
+  async adminRescheduleBooking(
+    bookingId: string,
+    dto: { startTime: string; endTime: string; notes?: string },
+    adminUserId: string,
+    req?: Request,
+  ) {
+    const start = new Date(dto.startTime);
+    const end = new Date(dto.endTime);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()))
+      throw new BadRequestException('Invalid startTime or endTime');
+    if (start >= end)
+      throw new BadRequestException('startTime must be before endTime');
+
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        tutor: { select: { id: true, user: { select: { email: true, name: true } } } },
+        student: { select: { id: true, user: { select: { email: true, name: true } } } },
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    // Demo classes are capped at 30 minutes
+    if (booking.isDemo) {
+      const durationMs = end.getTime() - start.getTime();
+      if (durationMs > 30 * 60 * 1000)
+        throw new BadRequestException('Demo class duration cannot exceed 30 minutes');
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        startTime: start,
+        endTime: end,
+        status: 'CONFIRMED',
+        notes: dto.notes ?? `Admin rescheduled from ${booking.status}`,
+        demeritApplied: false,
+      },
+    });
+
+    // Send rescheduled booking confirmation emails to both parties
+    this.notify.bookingConfirmation({
+      studentEmail: booking.student.user.email,
+      tutorEmail: booking.tutor.user.email ?? undefined,
+      studentName: booking.student.user.name ?? undefined,
+      tutorName: booking.tutor.user.name ?? undefined,
+      bookingId: booking.id,
+      startIso: start.toISOString(),
+      endIso: end.toISOString(),
+      isDemo: booking.isDemo,
+      notes: dto.notes ?? `Admin rescheduled — new time confirmed`,
+    }).catch(() => {/* non-critical */});
+
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
+    this.audit.log({
+      adminId: adminUserId,
+      action: 'ADMIN_RESCHEDULE_BOOKING',
+      entityType: AuditEntityType.BOOKING,
+      entityId: bookingId,
+      beforeData: { status: booking.status, startTime: booking.startTime, endTime: booking.endTime },
+      afterData: { status: 'CONFIRMED', startTime: start, endTime: end },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
+    });
+
+    return updated;
+  }
+
+  /**
+   * Reverse a demerit point that was applied against a specific booking.
+   * Decrements tutor.demeritPoints (floored at 0) and deletes any
+   * DEMERIT_PENALTY wallet-ledger entry for this booking.
+   */
+  async reverseDemeritForBooking(bookingId: string, adminUserId: string, req?: Request) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        tutorId: true,
+        demeritApplied: true,
+        tutor: { select: { id: true, demeritPoints: true, user: { select: { email: true, name: true } } } },
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Decrement demerit — min 0
+      const current = booking.tutor.demeritPoints ?? 0;
+      const newPoints = Math.max(0, current - 1);
+      await tx.tutor.update({
+        where: { id: booking.tutorId },
+        data: { demeritPoints: newPoints },
+      });
+
+      // Delete any DEMERIT_PENALTY ledger entry for this booking and credit back to wallet
+      const penaltyEntry = await tx.tutorWalletLedger.findFirst({
+        where: { bookingId, reason: 'DEMERIT_PENALTY' },
+      });
+      if (penaltyEntry) {
+        const creditBack = Math.abs(Number(penaltyEntry.delta));
+        await tx.tutorWalletLedger.delete({ where: { id: penaltyEntry.id } });
+        if (creditBack > 0) {
+          await tx.tutorWallet.upsert({
+            where: { tutorId: booking.tutorId },
+            update: { balance: { increment: creditBack } },
+            create: { tutorId: booking.tutorId, balance: new Prisma.Decimal(creditBack) },
+          });
+        }
+      }
+
+      // Clear flag on booking
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: { demeritApplied: false },
+      });
+
+      return { demeritPointsBefore: current, demeritPointsAfter: newPoints, penaltyReversed: !!penaltyEntry };
+    });
+
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
+    this.audit.log({
+      adminId: adminUserId,
+      action: 'REVERSE_DEMERIT',
+      entityType: AuditEntityType.BOOKING,
+      entityId: bookingId,
+      beforeData: { demeritPoints: result.demeritPointsBefore },
+      afterData: { demeritPoints: result.demeritPointsAfter, penaltyReversed: result.penaltyReversed },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
+    });
+
+    return { ok: true, ...result };
+  }
+
+  /**
+   * Reverse the tutor earning (BOOKING_EARNED) for a specific booking.
+   * Deletes the ledger entry and decrements the wallet balance.
+   */
+  async reverseEarningForBooking(bookingId: string, adminUserId: string, req?: Request) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        tutorId: true,
+        isDemo: true,
+        tutor: { select: { id: true, user: { select: { email: true, name: true } } } },
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+    if (booking.isDemo) throw new BadRequestException('Cannot reverse earning for a demo class');
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const earningEntry = await tx.tutorWalletLedger.findFirst({
+        where: { bookingId, reason: 'BOOKING_EARNED' },
+      });
+      if (!earningEntry) throw new BadRequestException('No earning found for this booking');
+
+      const amount = Number(earningEntry.delta);
+      await tx.tutorWalletLedger.delete({ where: { id: earningEntry.id } });
+
+      // Deduct from wallet
+      if (amount > 0) {
+        await tx.tutorWallet.upsert({
+          where: { tutorId: booking.tutorId },
+          update: { balance: { decrement: amount } },
+          create: { tutorId: booking.tutorId, balance: new Prisma.Decimal(0) },
+        });
+      }
+
+      return { amountReversed: amount };
+    });
+
+    const auditInfo = req ? extractAuditInfo(req) : { endpoint: undefined, ipAddress: undefined };
+    this.audit.log({
+      adminId: adminUserId,
+      action: 'REVERSE_EARNING',
+      entityType: AuditEntityType.BOOKING,
+      entityId: bookingId,
+      beforeData: { earning: result.amountReversed },
+      afterData: { earning: 0 },
+      endpoint: auditInfo.endpoint,
+      ipAddress: auditInfo.ipAddress,
+    });
+
+    return { ok: true, ...result };
   }
 }

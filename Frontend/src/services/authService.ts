@@ -262,6 +262,26 @@ export async function requestPasswordResetResend(payload: ResendPayload): Promis
   }
 }
 
+export async function verifyEmail(token: string): Promise<{ message: string }> {
+  try {
+    const { data } = await api.get<{ message: string }>(`/auth/verify-email?token=${encodeURIComponent(token)}`);
+    return data;
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || "Email verification failed";
+    throw new Error(Array.isArray(msg) ? msg.join(", ") : String(msg));
+  }
+}
+
+export async function resendVerificationEmail(): Promise<{ message: string }> {
+  try {
+    const { data } = await api.post<{ message: string }>("/auth/resend-verification");
+    return data;
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || "Could not resend verification email";
+    throw new Error(Array.isArray(msg) ? msg.join(", ") : String(msg));
+  }
+}
+
 export async function requestPasswordResetFinalize(payload: FinalizePayload): Promise<{ ok: boolean }> {
   try {
     const data = await postFirstAvailable<{ ok: boolean }>(

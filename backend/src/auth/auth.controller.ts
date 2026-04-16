@@ -178,4 +178,22 @@ export class AuthController {
     
     return { ok: true, access_token, next };
   }
+
+  @ApiOperation({ summary: 'Verify email address using token from welcome email' })
+  @HttpCode(HttpStatus.OK)
+  @Get('verify-email')
+  async verifyEmail(@Req() req: any) {
+    const token = req.query?.token as string | undefined;
+    if (!token) throw new BadRequestException('token query parameter is required');
+    return this.auth.verifyEmail(token);
+  }
+
+  @ApiOperation({ summary: 'Resend email verification link (authenticated users)' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('resend-verification')
+  async resendVerification(@Req() req: any) {
+    return this.auth.resendVerificationEmail(req.user.id);
+  }
 }

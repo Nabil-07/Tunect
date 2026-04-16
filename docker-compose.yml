@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
     ports:
       - "7880:7880"      # HTTP/WebSocket port
-      - "40000-40020:40000-40020/udp"  # RTC UDP ports (matches livekit.yaml)
+      - "50000-60000:50000-60000/udp"  # RTC UDP ports (matches livekit.yaml)
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml
     command: --config /etc/livekit.yaml

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, Prisma, OtpPurpose, OtpChannel } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -101,6 +102,26 @@ export class AuthService {
         });
       }
 
+      // Send welcome + verification email (fire-and-forget)
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          emailVerificationToken: verificationToken,
+          emailVerificationTokenExpiry: tokenExpiry,
+        },
+      });
+      this.notify.sendWelcomeVerificationEmail({
+        to: user.email,
+        name: user.email.split('@')[0], // name not yet set at registration
+        verificationToken,
+        role: role as 'STUDENT' | 'TUTOR',
+      }).then((sent) => {
+        if (sent === false) this.logger.error(`Welcome email NOT sent to ${user.email} — check Graph/SMTP config in notifications.service`);
+        else this.logger.log(`Welcome email sent → ${user.email}`);
+      }).catch((e) => this.logger.error(`Welcome email threw for ${user.email}: ${e?.message}`));
+
       return { id: user.id, email: user.email, role: user.role };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -108,6 +129,61 @@ export class AuthService {
       }
       throw err;
     }
+  }
+
+  async verifyEmail(token: string) {
+    if (!token) throw new BadRequestException('Verification token is required');
+
+    const user = await this.prisma.user.findUnique({
+      where: { emailVerificationToken: token },
+      select: { id: true, email: true, name: true, role: true, emailVerificationTokenExpiry: true, emailVerifiedAt: true },
+    });
+
+    if (!user) throw new BadRequestException('Invalid or already used verification token');
+    if (user.emailVerifiedAt) return { message: 'Email already verified' };
+    if (user.emailVerificationTokenExpiry && user.emailVerificationTokenExpiry < new Date()) {
+      throw new BadRequestException('Verification token has expired. Please request a new one.');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerifiedAt: new Date(),
+        emailVerificationToken: null,
+        emailVerificationTokenExpiry: null,
+      },
+    });
+
+    this.notify.sendEmailVerifiedConfirmation({ to: user.email, name: user.name ?? user.email.split('@')[0], role: user.role as 'STUDENT' | 'TUTOR' })
+      .catch((e) => this.logger.warn(`Email verified confirmation failed: ${e?.message}`));
+
+    return { message: 'Email verified successfully' };
+  }
+
+  async resendVerificationEmail(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, role: true, emailVerifiedAt: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.emailVerifiedAt) throw new BadRequestException('Email is already verified');
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { emailVerificationToken: verificationToken, emailVerificationTokenExpiry: tokenExpiry },
+    });
+
+    await this.notify.sendWelcomeVerificationEmail({
+      to: user.email,
+      name: user.name ?? user.email.split('@')[0],
+      verificationToken,
+      role: user.role as 'STUDENT' | 'TUTOR',
+    });
+
+    return { message: 'Verification email sent' };
   }
 
   private async validateUser(email: string, plain: string) {
@@ -346,6 +422,7 @@ export class AuthService {
     const isNew = !user;
     if (!user) {
       // Create only the User row with hasChosenRole: false
+      // Mark email as verified immediately — Google has already verified it
       user = await this.prisma.user.create({
         data: {
           email: p.email.toLowerCase(),
@@ -354,6 +431,7 @@ export class AuthService {
           password: '',       // OAuth user (no password)
           role: null,         // No default role assigned
           hasChosenRole: false, // New users must choose a role
+          emailVerifiedAt: p.emailVerified ? new Date() : null,
         },
       });
     } else {
@@ -426,7 +504,7 @@ export class AuthService {
       throw new ForbiddenException('Tutor registration is currently disabled');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Ensure the corresponding profile exists using upsert
       if (role === 'STUDENT') {
         await tx.student.upsert({
@@ -461,6 +539,15 @@ export class AuthService {
       const next = role === 'TUTOR' ? '/tutor/dashboard' : '/student/dashboard';
       return { user, next };
     });
+
+    // Send welcome email now that we know the chosen role (Google OAuth path only)
+    this.notify.sendEmailVerifiedConfirmation({
+      to: result.user.email,
+      name: result.user.name ?? result.user.email.split('@')[0],
+      role,
+    }).catch((e) => this.logger.warn(`Welcome email failed (OAuth choose-role) for ${result.user.email}: ${e?.message}`));
+
+    return result;
   }
 
   // ======== Forgot/Reset OTP ========

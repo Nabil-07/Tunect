@@ -32,4 +32,14 @@ export class PaymentsPublicController {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;
     return this.paymentsService.verifyPayment(userId, dto);
   }
+
+  @ApiOperation({ summary: 'Report Razorpay payment failure (called by frontend on checkout error)' })
+  @Post('failed')
+  async reportFailed(
+    @Req() req: any,
+    @Body() dto: { razorpay_order_id: string; error_reason?: string },
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    return this.paymentsService.reportPaymentFailed(userId, dto);
+  }
 }

@@ -152,6 +152,22 @@ export class PaymentsPublicService {
         where: { id: payment.id },
         data: { status: 'FAILED' },
       });
+
+      // Notify student of the failure (fire-and-forget)
+      const studentUser = await this.prisma.user.findUnique({
+        where: { id: studentId },
+        select: { email: true, name: true },
+      }).catch(() => null);
+      if (studentUser?.email) {
+        this.notifications.sendPaymentFailedEmail({
+          to: studentUser.email,
+          studentName: studentUser.name ?? undefined,
+          amountInMinor: amountInPaise,
+          paymentId: payment.id,
+          reason: 'Could not initiate payment with provider. Please try again.',
+        }).catch((err) => this.logger.warn(`Payment failed email error: ${err?.message}`));
+      }
+
       throw e;
     }
   }
@@ -385,5 +401,45 @@ export class PaymentsPublicService {
       upcomingSlotCount,
       students,
     }).catch((err) => this.logger.error(`Low-availability reminder email FAILED: ${err?.message ?? err}`));
+  }
+
+  /**
+   * Called by the frontend when Razorpay checkout returns an error (payment.failed).
+   * Marks the payment as FAILED and sends a failure notification email.
+   */
+  async reportPaymentFailed(
+    userId: string,
+    dto: { razorpay_order_id: string; error_reason?: string },
+  ): Promise<{ ok: boolean }> {
+    const payment = await this.prisma.payment.findFirst({
+      where: { providerOrderId: dto.razorpay_order_id, userId },
+      select: { id: true, amountInMinor: true, status: true },
+    });
+
+    if (!payment || payment.status === 'SUCCEEDED') {
+      return { ok: true }; // Nothing to do
+    }
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: 'FAILED' },
+    });
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
+
+    if (user?.email) {
+      this.notifications.sendPaymentFailedEmail({
+        to: user.email,
+        studentName: user.name ?? undefined,
+        amountInMinor: Number(payment.amountInMinor ?? 0),
+        paymentId: payment.id,
+        reason: dto.error_reason ?? 'Payment was declined or cancelled.',
+      }).catch((err) => this.logger.warn(`Payment failed email error: ${err?.message}`));
+    }
+
+    return { ok: true };
   }
 }

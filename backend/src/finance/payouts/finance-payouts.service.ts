@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 /** CONFIG */
 const IST_TZ = 'Asia/Kolkata';
@@ -23,7 +24,10 @@ type BatchLine = {
 
 @Injectable()
 export class FinancePayoutsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notify: NotificationsService,
+  ) {}
 
   /** -------- Utilities (timezone-safe) -------- */
 
@@ -167,6 +171,8 @@ export class FinancePayoutsService {
     // - Map event → payout row(s)
     // - Update payout + token-ledger status to PAID/FAILED
     // - Write audit log
+    // - On PAID: call this.notify.sendPayoutProcessedEmail({ to, tutorName, amount, referenceId, paidAt })
+    // - On FAILED: call this.notify.sendPayoutFailedEmail({ to, tutorName, amount, reason, referenceId })
     return { provider, ok: true };
   }
 

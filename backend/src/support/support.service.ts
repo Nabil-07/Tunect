@@ -1,15 +1,26 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSupportTicketDto } from './dto/create-support-ticket.dto';
 import { SupportMessageDto } from './dto/support-message.dto';
 import { SupportTicketStatus } from '@prisma/client';
 import { Role } from '../auth/role.enum';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SupportService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(SupportService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async createTicket(userId: string, dto: CreateSupportTicketDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+
     const ticket = await this.prisma.supportTicket.create({
       data: {
         userId,
@@ -27,6 +38,24 @@ export class SupportService {
         messages: { orderBy: { createdAt: 'asc' } },
       },
     });
+
+    // Send confirmation email to the user
+    if (user?.email) {
+      this.notifications.sendSupportTicketOpenedEmail({
+        to: user.email,
+        userName: user.name ?? 'there',
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        message: dto.message,
+      }).catch(err => this.logger.error(`Support ticket confirm email failed: ${err?.message}`));
+    }
+
+    // Record that confirmation email was sent (prevents duplicate if bg job finds this)
+    await this.prisma.supportTicketEmailLog.create({
+      data: { ticketId: ticket.id, kind: 'OPEN_CONFIRM' },
+    }).catch(() => {/* ignore */});
+
     return ticket;
   }
 
@@ -76,6 +105,14 @@ export class SupportService {
 
     if (role !== Role.ADMIN && ticket.userId !== userId) {
       throw new ForbiddenException('Access denied');
+    }
+
+    // Mark userLastViewedAt when the ticket owner reads it — stops follow-up emails
+    if (role !== Role.ADMIN && ticket.userId === userId) {
+      await this.prisma.supportTicket.update({
+        where: { id: ticketId },
+        data: { userLastViewedAt: new Date() },
+      }).catch(() => {/* non-critical */});
     }
 
     return ticket;
@@ -134,9 +171,33 @@ export class SupportService {
   }
 
   async updateStatus(ticketId: string, status: SupportTicketStatus) {
-    return this.prisma.supportTicket.update({
+    const ticket = await this.prisma.supportTicket.update({
       where: { id: ticketId },
       data: { status },
+      include: {
+        user: { select: { name: true, email: true } },
+        emailLogs: { select: { kind: true } },
+      },
     });
+
+    // Send closed email to the user (once only)
+    if (status === SupportTicketStatus.CLOSED) {
+      const alreadySent = ticket.emailLogs.some(l => l.kind === 'CLOSED');
+      if (!alreadySent && ticket.user.email) {
+        this.notifications.sendSupportTicketClosedEmail({
+          to: ticket.user.email,
+          userName: ticket.user.name ?? 'there',
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          subject: ticket.subject,
+        }).catch(err => this.logger.error(`Support ticket close email failed: ${err?.message}`));
+
+        await this.prisma.supportTicketEmailLog.create({
+          data: { ticketId: ticket.id, kind: 'CLOSED' },
+        }).catch(() => {/* ignore */});
+      }
+    }
+
+    return ticket;
   }
 }

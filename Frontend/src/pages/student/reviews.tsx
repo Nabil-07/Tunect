@@ -38,21 +38,23 @@ export default function StudentReviews() {
 
         const latestByTutor = new Map<string, BookingDto>();
         completed.forEach((b) => {
-          const current = latestByTutor.get(b.tutorId);
+          const tid = b.tutorId || b.tutor?.id;
+          if (!tid) return;
+          const current = latestByTutor.get(tid);
           const currentTime = current?.endTime ? new Date(current.endTime).getTime() : 0;
           const nextTime = b.endTime ? new Date(b.endTime).getTime() : 0;
           if (!current || nextTime > currentTime) {
-            latestByTutor.set(b.tutorId, b);
+            latestByTutor.set(tid, b);
           }
         });
 
         const reviewByTutor = new Map<string, ReviewDto>();
         reviews.forEach((r) => reviewByTutor.set(r.tutorId, r));
 
-        const nextRows: TutorReviewRow[] = Array.from(latestByTutor.values()).map((b) => {
-          const review = reviewByTutor.get(b.tutorId);
+        const nextRows: TutorReviewRow[] = Array.from(latestByTutor.entries()).map(([tid, b]) => {
+          const review = reviewByTutor.get(tid);
           return {
-            tutorId: b.tutorId,
+            tutorId: tid,
             tutorName: b.tutor?.name || b.tutor?.email || 'Tutor',
             bookingId: b.id,
             review,

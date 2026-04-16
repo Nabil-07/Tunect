@@ -178,4 +178,31 @@ export class AdminController {
   ) {
     return this.svc.removeAdminUser(id, req.user!.id, req);
   }
+
+  // ─── Admin Booking Actions ───
+
+  @Post('bookings/:id/reschedule')
+  adminRescheduleBooking(
+    @Param('id') id: string,
+    @Body() dto: { startTime: string; endTime: string; notes?: string },
+    @Req() req: any,
+  ) {
+    return this.svc.adminRescheduleBooking(id, dto, req.user!.id, req);
+  }
+
+  @Post('bookings/:id/reverse-demerit')
+  reverseDemerit(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    return this.svc.reverseDemeritForBooking(id, req.user!.id, req);
+  }
+
+  @Post('bookings/:id/reverse-earning')
+  reverseEarning(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    return this.svc.reverseEarningForBooking(id, req.user!.id, req);
+  }
 }

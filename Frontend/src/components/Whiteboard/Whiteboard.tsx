@@ -237,7 +237,6 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
   mergeRemoteRef.current = (data: { elements: any[]; appState?: any }) => {
     const remoteElements = (data.elements || []) as ExcalidrawElement[];
     if (remoteElements.length === 0) return;
-    const remoteAppState = normalizeIncomingAppState(data.appState);
 
     const api = getExcalidrawApi();
     if (!api) {
@@ -268,10 +267,10 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
     isRemoteUpdateRef.current = true;
     api.updateScene({
       elements: merged as unknown as ExcalidrawElement[],
-      appState: remoteAppState as AppState,
+      // Do not apply remote appState (scroll/zoom) — viewport is local to each participant
     });
-    // Reset flag after a micro-task so Excalidraw's synchronous onChange sees it
-    requestAnimationFrame(() => { isRemoteUpdateRef.current = false; });
+    // Reset flag in a microtask — faster than rAF, runs before Excalidraw's async onChange
+    queueMicrotask(() => { isRemoteUpdateRef.current = false; });
   };
 
   // When excalidrawAPI becomes available, flush any queued remote updates
@@ -393,15 +392,18 @@ export const Whiteboard = forwardRef<WhiteboardHandle, WhiteboardProps>(({ booki
 
     const serializableAppState = toSerializableAppState(appState);
 
-    // Throttled HTTP auto-save (every 2s max) for persistence
-    throttledAutoSave({
-      elements,
-      appState: serializableAppState,
-    });
+    // HTTP auto-save: skip when realtime mode is active — the socket gateway handles persistence
+    if (!realtime || !socketEmit) {
+      throttledAutoSave({
+        elements,
+        appState: serializableAppState,
+      });
+    }
 
     // Real-time broadcast via Socket.IO (skip empty-element noise during init)
+    // Do not broadcast appState — viewport (scroll/zoom) is local to each participant
     if (realtime && socketEmit && elements.length > 0) {
-      socketEmit([...elements] as any[], serializableAppState);
+      socketEmit([...elements] as any[]);
     }
   };
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Res, UseGuards, UseInterceptors, UploadedFile, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Res, UseGuards, UseInterceptors, UploadedFile, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../common/services/s3.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { toCsv } from '../common/csv.util';
 import { PayoutStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -18,9 +19,12 @@ import { Decimal } from '@prisma/client/runtime/library';
 @Roles(Role.ADMIN)
 @Controller('admin/payouts')
 export class PayoutsController {
+  private readonly logger = new Logger(PayoutsController.name);
+
   constructor(
     private prisma: PrismaService,
     private s3: S3Service,
+    private notify: NotificationsService,
   ) {}
 
   @ApiOperation({ summary: 'List payouts' })
@@ -218,7 +222,42 @@ export class PayoutsController {
     if (dto.transactionId) data.transactionId = dto.transactionId;
     if (dto.details) data.details = dto.details;
     if (dto.paymentMethod) data.paymentMethod = dto.paymentMethod;
-    return this.prisma.payout.update({ where: { id }, data });
+    const updated = await this.prisma.payout.update({
+      where: { id },
+      data,
+      include: {
+        tutor: { select: { user: { select: { email: true, name: true } } } },
+      },
+    });
+
+    if (dto.status === 'PAID' && updated.tutor?.user?.email) {
+      const receiptId = `TUN-PAY-${id.slice(-8).toUpperCase()}`;
+      this.notify.sendPayoutProcessedEmail({
+        to: updated.tutor.user.email,
+        tutorName: updated.tutor.user.name ?? undefined,
+        amount: Number(updated.amount),
+        paymentMethod: updated.paymentMethod ?? undefined,
+        referenceId: updated.reference ?? undefined,
+        transactionId: updated.transactionId ?? undefined,
+        receiptId,
+        paidAt: (updated.paidAt ?? new Date()).toISOString(),
+      }).then((sent) => {
+        if (!sent) this.logger.error(`Payout PAID email NOT sent to ${updated.tutor!.user!.email} — check Graph/SMTP config`);
+        else this.logger.log(`Payout PAID email sent → ${updated.tutor!.user!.email}`);
+      }).catch((e) => this.logger.error(`Payout PAID email threw for ${updated.tutor!.user!.email}: ${e?.message}`));
+    }
+
+    if (dto.status === 'CANCELED' && updated.tutor?.user?.email) {
+      this.notify.sendPayoutFailedEmail({
+        to: updated.tutor.user.email,
+        tutorName: updated.tutor.user.name ?? undefined,
+        amount: Number(updated.amount),
+        referenceId: updated.reference ?? undefined,
+        reason: updated.details ?? 'Payout was cancelled by admin.',
+      }).catch((e) => this.logger.error(`Payout CANCELED email threw for ${updated.tutor!.user!.email}: ${e?.message}`));
+    }
+
+    return updated;
   }
 
   @ApiOperation({ summary: 'Export payouts (CSV)' })

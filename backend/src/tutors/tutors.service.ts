@@ -2079,8 +2079,26 @@ export class TutorsService {
       })
       .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
+    // Fetch existing bookings in the window to exclude already-booked slots
+    const existingBookings = await this.prisma.booking.findMany({
+      where: {
+        tutorId,
+        status: { in: ['CONFIRMED', 'LIVE', 'WAITING_ROOM', 'PENDING_SLOT'] },
+        startTime: { gte: windowStart, lte: windowEnd },
+      },
+      select: { startTime: true, endTime: true },
+    });
+
+    // Filter out any availability slot that overlaps with an existing booking
+    const free = merged.filter((slot) =>
+      !existingBookings.some((b) => {
+        if (!b.startTime || !b.endTime) return false;
+        return b.startTime < slot.endTime && b.endTime > slot.startTime;
+      })
+    );
+
     // Ensure plain ISO strings (Nest/JSON would serialize Dates anyway, but be explicit)
-    return merged.map((s) => ({
+    return free.map((s) => ({
       id: 'id' in s ? (s as any).id : undefined,
       startTime: s.startTime.toISOString(),
       endTime: s.endTime.toISOString(),

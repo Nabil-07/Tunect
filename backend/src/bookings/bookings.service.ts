@@ -1167,7 +1167,20 @@ export class BookingsService {
     actorStudentId?: string,
     actorRole?: Role,
   ) {
-    return this.prisma.$transaction(async (tx) => { // NOSONAR
+    // Capture cancellation context for post-transaction email (fetch outside tx for email data)
+    const bookingForEmail = await this.prisma.booking.findUnique({
+      where: { id },
+      select: {
+        startTime: true,
+        subject: true,
+        notes: true,
+        isDemo: true,
+        student: { select: { userId: true, user: { select: { email: true, name: true } } } },
+        tutor: { select: { userId: true, user: { select: { email: true, name: true } } } },
+      },
+    });
+
+    const cancelled = await this.prisma.$transaction(async (tx) => { // NOSONAR
       const booking = await tx.booking.findUnique({
         where: { id },
         include: {
@@ -1368,6 +1381,77 @@ export class BookingsService {
 
       return updated;
     }, { maxWait: 10000, timeout: 30000 });
+
+    // Send dual-party cancellation emails after transaction commits
+    if (bookingForEmail && bookingForEmail.student.user.email) {
+      const now = new Date();
+      const startIso = bookingForEmail.startTime?.toISOString() ?? now.toISOString();
+      const minutesBeforeStart = bookingForEmail.startTime
+        ? Math.floor((bookingForEmail.startTime.getTime() - now.getTime()) / 60000)
+        : null;
+
+      const isTutorCancelling =
+        actorUserId === bookingForEmail.tutor.userId ||
+        !!(actorTutorId && bookingForEmail.tutor.userId);
+
+      const cancelledBy: 'TUTOR' | 'ADMIN' | 'SYSTEM' =
+        actorRole === Role.ADMIN ? 'ADMIN' : isTutorCancelling ? 'TUTOR' : 'SYSTEM';
+
+      const cancelledByStudent: 'STUDENT' | 'ADMIN' | 'SYSTEM' =
+        actorRole === Role.ADMIN ? 'ADMIN' : !isTutorCancelling ? 'STUDENT' : 'SYSTEM';
+
+      // Send to student
+      this.notifications.sendSessionCancellationStudent({
+        to: bookingForEmail.student.user.email,
+        studentName: bookingForEmail.student.user.name ?? undefined,
+        tutorName: bookingForEmail.tutor.user.name ?? undefined,
+        bookingId: id,
+        startIso,
+        subject: bookingForEmail.subject ?? undefined,
+        cancelledBy,
+        tokensRefunded: 0, // actual refund amount determined by policy applied above in tx
+      }).catch(() => {/* non-critical */});
+
+      // Send to tutor
+      if (bookingForEmail.tutor.user.email) {
+        this.notifications.sendSessionCancellationTutor({
+          to: bookingForEmail.tutor.user.email,
+          tutorName: bookingForEmail.tutor.user.name ?? undefined,
+          studentName: bookingForEmail.student.user.name ?? undefined,
+          bookingId: id,
+          startIso,
+          subject: bookingForEmail.subject ?? undefined,
+          cancelledBy: cancelledByStudent,
+        }).catch(() => {/* non-critical */});
+      }
+
+      // Admin CC if cancelled within 2 hours of session start
+      if (minutesBeforeStart !== null && minutesBeforeStart >= 0 && minutesBeforeStart < 120) {
+        const adminUsers = await this.prisma.user.findMany({
+          where: { role: 'ADMIN' as any, deletedAt: null },
+          select: { email: true },
+        });
+        const adminEmailList = adminUsers.map(a => a.email).filter((e): e is string => !!e);
+        for (const adminEmail of adminEmailList) {
+          this.notifications.sendAdminCancellationCC({
+            adminEmail,
+            bookingId: id,
+            startIso,
+            cancelledBy: isTutorCancelling ? 'TUTOR' : 'STUDENT',
+            cancellerId: actorUserId ?? 'unknown',
+            cancellerName: isTutorCancelling
+              ? (bookingForEmail.tutor.user.name ?? undefined)
+              : (bookingForEmail.student.user.name ?? undefined),
+            otherPartyName: isTutorCancelling
+              ? (bookingForEmail.student.user.name ?? undefined)
+              : (bookingForEmail.tutor.user.name ?? undefined),
+            minutesBeforeStart,
+          }).catch(() => {/* non-critical */});
+        }
+      }
+    }
+
+    return cancelled;
   }
 
   /**
