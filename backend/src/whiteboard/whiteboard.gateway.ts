@@ -17,7 +17,15 @@ interface AuthenticatedSocket extends Socket {
   userId?: string;
 }
 
-@WebSocketGateway({ namespace: '/whiteboard', cors: true })
+@WebSocketGateway({
+  namespace: '/whiteboard',
+  cors: true,
+  // Keep the connection alive through nginx/ALB proxies
+  // (default pingInterval=25s, pingTimeout=20s can be too tight for slow networks
+  //  and proxy_read_timeout defaults)
+  pingInterval: 15000,   // send a ping every 15s
+  pingTimeout: 10000,    // wait 10s for pong before considering disconnected
+})
 export class WhiteboardGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {

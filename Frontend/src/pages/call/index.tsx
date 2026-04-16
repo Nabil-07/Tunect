@@ -922,6 +922,7 @@ export default function CallPage() {
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
   const [connectionLost, setConnectionLost] = useState<string | null>(null);
+  const [deviceError, setDeviceError] = useState<string | null>(null);
   const [rejoining, setRejoining] = useState(false);
   const [isTutor, setIsTutor] = useState(false);
   const [counterpartName, setCounterpartName] = useState("");
@@ -1186,6 +1187,35 @@ export default function CallPage() {
     );
   }
 
+  // Device not found / permission denied — permanent error, no rejoin loop
+  if (deviceError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 sm:p-8 text-center space-y-5">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-rose-100">
+            <AlertTriangle className="h-8 w-8 text-rose-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Device Not Available</h2>
+          <p className="text-sm text-slate-600">{deviceError}</p>
+          <div className="flex flex-col gap-3 pt-2">
+            <button
+              onClick={() => { setDeviceError(null); window.location.reload(); }}
+              className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+            >
+              Reload Page
+            </button>
+            <button
+              onClick={() => navigate(`/class/${bookingId}`)}
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Back to Class Details
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Connection lost — show reconnect UI instead of permanent error
   if (connectionLost) {
     return (
@@ -1323,8 +1353,17 @@ export default function CallPage() {
           }}
           onError={(error) => {
             console.error('LiveKit error:', error);
-            // Show as connection lost (rejoinable) rather than permanent access denied
-            setConnectionLost(`Connection error: ${error.message || 'Failed to connect to LiveKit server. Please check your network connection.'}`);
+            const name = (error as any)?.name || '';
+            if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+              setDeviceError('No camera or microphone was found on this device. Please connect your devices, reload the page, and try again.');
+              return;
+            }
+            if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+              setDeviceError('Camera and microphone access was denied. Please allow permissions in your browser settings and reload the page.');
+              return;
+            }
+            // Network/transport errors — show rejoin UI
+            setConnectionLost(`Connection error: ${error.message || 'Failed to connect to the call server. Please check your network connection.'}`);
             setToken(null);
           }}
           className="h-full"

@@ -37,6 +37,10 @@ export function useWhiteboardSocket(
   const cbRef = useRef(callbacks);
   cbRef.current = callbacks;
 
+  // Track when we last received a remote update; used for periodic state sync
+  const lastRemoteUpdateRef = useRef<number>(Date.now());
+  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     if (!bookingId) return;
     let disposed = false;
@@ -74,6 +78,9 @@ export function useWhiteboardSocket(
         console.log(WB_LOG, `Connected (id=${socket?.id}). Joining room ${bookingId}...`);
         setIsConnected(true);
         socket?.emit('wb:join', { bookingId });
+        // Reset the last-received timestamp so the periodic sync doesn't
+        // immediately fire a request-state right after we just got wb:state
+        lastRemoteUpdateRef.current = Date.now();
       });
 
       socket.on('disconnect', (reason) => {
@@ -100,6 +107,7 @@ export function useWhiteboardSocket(
 
       socket.on('wb:state', (data: { elements: any[]; appState?: any }) => {
         console.log(WB_LOG, `Received wb:state — ${data?.elements?.length ?? 0} elements`);
+        lastRemoteUpdateRef.current = Date.now();
         if (data) {
           cbRef.current.onRemoteUpdate(data);
         }
@@ -107,8 +115,21 @@ export function useWhiteboardSocket(
 
       socket.on('wb:remote-update', (data: { elements: any[]; appState?: any }) => {
         console.log(WB_LOG, `Received wb:remote-update — ${data?.elements?.length ?? 0} elements`);
+        lastRemoteUpdateRef.current = Date.now();
         cbRef.current.onRemoteUpdate(data);
       });
+
+      // Periodic state sync — every 30s, if the socket is connected but we
+      // haven't received any remote update in 30s, request a full state
+      // snapshot. This catches zombie connections and missed updates.
+      syncIntervalRef.current = setInterval(() => {
+        if (!socket?.connected) return;
+        const silentMs = Date.now() - lastRemoteUpdateRef.current;
+        if (silentMs >= 30_000) {
+          console.log(WB_LOG, `No remote updates in ${Math.round(silentMs / 1000)}s — requesting full state`);
+          socket.emit('wb:request-state', { bookingId });
+        }
+      }, 30_000);
     };
 
     void init();
@@ -116,6 +137,10 @@ export function useWhiteboardSocket(
     return () => {
       disposed = true;
       console.log(WB_LOG, 'Disconnecting (cleanup)...');
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
       socket?.disconnect();
       socketRef.current = null;
       setIsConnected(false);
