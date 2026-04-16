@@ -337,7 +337,7 @@ export default function AdminRefundRequests() {
 /* ─────────────── Booking Management Tab ─────────────── */
 
 function BookingManagementTab() {
-  const { showSuccess, showError } = useToast();
+  const { showError } = useToast();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
