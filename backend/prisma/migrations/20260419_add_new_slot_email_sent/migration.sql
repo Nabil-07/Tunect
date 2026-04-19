@@ -1,0 +1,1 @@
+ALTER TABLE "AvailabilitySlot" ADD COLUMN IF NOT EXISTS "newSlotEmailSent" BOOLEAN NOT NULL DEFAULT false;
