@@ -22,7 +22,6 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  LineChart,
   Line,
   AreaChart,
   Area,
@@ -212,7 +211,7 @@ export default function AdminRevenue() {
                   outerRadius={110}
                   dataKey="value"
                   label={({ name, percent }) =>
-                    `${name}: ${(percent * 100).toFixed(1)}%`
+                    `${name}: ${((percent ?? 0) * 100).toFixed(1)}%`
                   }
                   labelLine
                 >
@@ -220,7 +219,7 @@ export default function AdminRevenue() {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(val: number) => fmt(val)} />
+                <Tooltip formatter={(val: any) => fmt(Number(val))} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -255,7 +254,7 @@ export default function AdminRevenue() {
                   outerRadius={110}
                   dataKey="value"
                   label={({ name, percent }) =>
-                    `${name}: ${(percent * 100).toFixed(1)}%`
+                    `${name}: ${((percent ?? 0) * 100).toFixed(1)}%`
                   }
                   labelLine
                 >
@@ -264,8 +263,8 @@ export default function AdminRevenue() {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(val: number, _name: string, entry: any) =>
-                    [`${fmt(val)} (${entry.payload.count} sessions)`, entry.payload.name]
+                  formatter={(val: any, _name: any, entry: any) =>
+                    [`${fmt(Number(val))} (${entry.payload.count} sessions)`, entry.payload.name]
                   }
                 />
               </PieChart>
@@ -317,7 +316,7 @@ export default function AdminRevenue() {
                 }}
               />
               <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `₹${v}`} />
-              <Tooltip formatter={(val: number) => fmt(val)} />
+              <Tooltip formatter={(val: any) => fmt(Number(val))} />
               <Legend />
               <Area
                 type="monotone"
@@ -379,8 +378,8 @@ export default function AdminRevenue() {
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `₹${v}`} />
             <Tooltip
-              formatter={(val: number, name: string) => [
-                name === 'sessions' ? val : fmt(val),
+              formatter={(val: any, name: any) => [
+                name === 'sessions' ? val : fmt(Number(val)),
                 name === 'sessions' ? 'Sessions' : 'Commission',
               ]}
             />
@@ -539,8 +538,8 @@ export default function AdminRevenue() {
                   tick={{ fontSize: 11 }}
                 />
                 <Tooltip
-                  formatter={(val: number, name: string) => [
-                    name === 'sessions' ? val : fmt(val),
+                  formatter={(val: any, name: any) => [
+                    name === 'sessions' ? val : fmt(Number(val)),
                     name === 'sessions' ? 'Sessions' : 'Commission',
                   ]}
                 />
