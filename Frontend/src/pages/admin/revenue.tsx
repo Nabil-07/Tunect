@@ -58,6 +58,7 @@ interface RevenueData {
     commission: number;
     tutorEarnings: number;
   }[];
+  studentTokenBalance: number;
 }
 
 /* ═══════ Helpers ═══════ */
@@ -73,7 +74,7 @@ const COLORS = {
   bracket18: '#10b981',
 };
 
-const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981'];
+const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#94a3b8'];
 const BRACKET_COLORS = ['#ef4444', '#f59e0b', '#10b981'];
 
 export default function AdminRevenue() {
@@ -113,6 +114,7 @@ export default function AdminRevenue() {
     { name: "Tunect's Earnings", value: data.companyProfit },
     { name: 'Tutor Payable', value: data.tutorPayable.total },
     { name: 'Tutor Paid', value: data.tutorPaid.total },
+    { name: 'Student Tokens (Unearned)', value: data.studentTokenBalance },
   ].filter((d) => d.value > 0);
 
   /* Bracket pie data */
@@ -165,7 +167,7 @@ export default function AdminRevenue() {
       </div>
 
       {/* ═══════ Summary Cards ═══════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <SummaryCard
           icon={<BadgeDollarSign className="w-6 h-6 text-indigo-600" />}
           label="Total Revenue Collected"
@@ -194,6 +196,13 @@ export default function AdminRevenue() {
           color="purple"
           subtitle="Platform commission"
         />
+        <SummaryCard
+          icon={<BadgeDollarSign className="w-6 h-6 text-slate-500" />}
+          label="Student Tokens (Unearned)"
+          value={fmt(data.studentTokenBalance)}
+          color="slate"
+          subtitle="Tokens purchased, sessions not yet taken"
+        />
       </div>
 
       {/* ═══════ Revenue Split Pie Chart ═══════ */}
@@ -219,7 +228,7 @@ export default function AdminRevenue() {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(val: any) => fmt(Number(val))} />
+                <Tooltip formatter={(val) => fmt(val as number)} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -263,8 +272,8 @@ export default function AdminRevenue() {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(val: any, _name: any, entry: any) =>
-                    [`${fmt(Number(val))} (${entry.payload.count} sessions)`, entry.payload.name]
+                  formatter={(val, _name, entry: any) =>
+                    [`${fmt(val as number)} (${entry.payload.count} sessions)`, entry.payload.name]
                   }
                 />
               </PieChart>
@@ -316,7 +325,7 @@ export default function AdminRevenue() {
                 }}
               />
               <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `₹${v}`} />
-              <Tooltip formatter={(val: any) => fmt(Number(val))} />
+              <Tooltip formatter={(val) => fmt(val as number)} />
               <Legend />
               <Area
                 type="monotone"
@@ -378,8 +387,8 @@ export default function AdminRevenue() {
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `₹${v}`} />
             <Tooltip
-              formatter={(val: any, name: any) => [
-                name === 'sessions' ? val : fmt(Number(val)),
+              formatter={(val, name) => [
+                name === 'sessions' ? val : fmt(val as number),
                 name === 'sessions' ? 'Sessions' : 'Commission',
               ]}
             />
@@ -538,8 +547,8 @@ export default function AdminRevenue() {
                   tick={{ fontSize: 11 }}
                 />
                 <Tooltip
-                  formatter={(val: any, name: any) => [
-                    name === 'sessions' ? val : fmt(Number(val)),
+                  formatter={(val, name) => [
+                    name === 'sessions' ? val : fmt(val as number),
                     name === 'sessions' ? 'Sessions' : 'Commission',
                   ]}
                 />
@@ -616,6 +625,7 @@ function SummaryCard({
     amber: 'bg-amber-50 border-amber-200',
     emerald: 'bg-emerald-50 border-emerald-200',
     purple: 'bg-purple-50 border-purple-200',
+    slate: 'bg-slate-50 border-slate-200',
   };
 
   return (

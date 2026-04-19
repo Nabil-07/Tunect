@@ -1280,6 +1280,27 @@ export class AdminService {
       },
     });
 
+    // Reset attendance so the rescheduled session starts fresh
+    await this.prisma.bookingAttendance.updateMany({
+      where: { bookingId },
+      data: {
+        tutorWaitingRoomAttended: false,
+        studentWaitingRoomAttended: false,
+        tutorJoinCount: 0,
+        tutorLeaveCount: 0,
+        tutorFirstJoinedAt: null,
+        tutorLastJoinedAt: null,
+        tutorLastLeftAt: null,
+        studentJoinCount: 0,
+        studentLeaveCount: 0,
+        studentFirstJoinedAt: null,
+        studentLastJoinedAt: null,
+        studentLastLeftAt: null,
+        classStartedAt: null,
+        classEndedAt: null,
+      },
+    });
+
     // Send rescheduled booking confirmation emails to both parties
     this.notify.bookingConfirmation({
       studentEmail: booking.student.user.email,
@@ -1538,15 +1559,23 @@ export class AdminService {
       entry.bookingCount++;
     }
 
-    const tutorWallets = await this.prisma.tutorWallet.findMany({
-      select: {
-        tutorId: true,
-        balance: true,
-        tutor: { select: { user: { select: { email: true } } } },
-      },
-    });
+    const [tutorWallets, tokenBalances] = await Promise.all([
+      this.prisma.tutorWallet.findMany({
+        select: {
+          tutorId: true,
+          balance: true,
+          tutor: { select: { user: { select: { email: true } } } },
+        },
+      }),
+      this.prisma.tutorTokenBalance.findMany({
+        select: { balance: true, pricePerToken: true },
+      }),
+    ]);
 
     const tutorPayableTotal = tutorWallets.reduce((sum, w) => sum + toNum(w.balance), 0);
+    const studentTokenBalance = tokenBalances.reduce((sum, row) => {
+      return sum + toNum(row.balance) * toNum(row.pricePerToken);
+    }, 0);
     const tutorPayableList = tutorWallets
       .filter(w => toNum(w.balance) > 0)
       .map(w => ({
@@ -1640,6 +1669,7 @@ export class AdminService {
       },
       highPerformers,
       monthlyTrend,
+      studentTokenBalance: Math.round(studentTokenBalance * 100) / 100,
     };
   }
 }
