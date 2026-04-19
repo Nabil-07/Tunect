@@ -118,11 +118,12 @@ export class BookingsService {
     if (slot) return; // Found in explicit slots
     
     // Check recurring templates
-    const dayOfWeek = start.getDay();
-    const startHour = start.getHours();
-    const startMin = start.getMinutes();
-    const endHour = end.getHours();
-    const endMin = end.getMinutes();
+    // Templates store HH:MM as UTC strings, so compare using UTC hours/minutes.
+    const dayOfWeek = start.getUTCDay();
+    const startHour = start.getUTCHours();
+    const startMin = start.getUTCMinutes();
+    const endHour = end.getUTCHours();
+    const endMin = end.getUTCMinutes();
     
     const templates = await prisma.recurringTemplate.findMany({
       where: {
@@ -345,19 +346,19 @@ export class BookingsService {
     // First try exact match by full ID
     let tutor = await this.prisma.tutor.findUnique({
       where: { id: dto.tutorId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, hourlyRate: true },
     });
     
     // Then try by tutorTid
     tutor ??= await this.prisma.tutor.findUnique({
       where: { tutorTid: dto.tutorId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, hourlyRate: true },
     });
     
     // Finally try finding by ID ending with the provided string (for slug-based lookups)
     tutor ??= await this.prisma.tutor.findFirst({
       where: { id: { endsWith: dto.tutorId } },
-      select: { id: true, status: true },
+      select: { id: true, status: true, hourlyRate: true },
     });
     
     if (!tutor) throw new NotFoundException('Tutor not found');
@@ -677,6 +678,7 @@ export class BookingsService {
           startTime: start,
           endTime: end,
           tokensCharged: new Prisma.Decimal(cost),
+          priceAtBooking: tutor.hourlyRate ? new Prisma.Decimal(tutor.hourlyRate.toString()) : null,
           notes: dto.notes,
           subject: dto.subject,
           grade: dto.grade,
@@ -1659,7 +1661,9 @@ export class BookingsService {
       });
 
       if (!b.isDemo) {
-        const hourlyRate = Number(b.tutor.hourlyRate ?? 0);
+        // Use priceAtBooking (locked at purchase time) for accurate earnings
+        // Falls back to current hourlyRate for legacy bookings
+        const hourlyRate = Number(b.priceAtBooking ?? b.tutor.hourlyRate ?? 0);
         const hours = this.getBookingHours(b.startTime, b.endTime, Number(b.tokensCharged));
         if (!hours) return updated;
         const bookingAmount = hours * hourlyRate;
@@ -1688,7 +1692,7 @@ export class BookingsService {
               bookingId: b.id,
               delta: tutorShare,
               reason: 'BOOKING_EARNED',
-              note: `Completed booking ${b.id}`,
+              note: `Completed booking ${b.id} (rate: ₹${hourlyRate}/hr, fee: ${feePercent}%, earned: ₹${tutorShare.toFixed(2)})`,
             },
           });
         }

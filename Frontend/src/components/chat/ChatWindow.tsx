@@ -503,11 +503,28 @@ export function ChatWindow({ conversationId }: Readonly<ChatWindowProps>) {
 
   const getTokenWarning = () => {
     if (user?.role !== 'STUDENT' || !conversation?.tokenBalance) return null;
-    if (!conversation.tokenBalance.hasTokens)
+    if (!conversation.tokenBalance.hasTokens) {
+      // No tokens but chat is allowed because of future bookings
+      if (conversation.canPost && conversation.lastBookingEndTime) {
+        const endDate = new Date(conversation.lastBookingEndTime);
+        const formatted = endDate.toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        });
+        return {
+          type: 'exhausted' as const,
+          message: `You have no tokens remaining. Your last booked class ends on ${formatted}. Please purchase tokens to continue your learning and chat beyond that.`,
+        };
+      }
       return {
         type: 'exhausted' as const,
         message: 'Token balance exhausted. Purchase more tokens to continue messaging.',
       };
+    }
     if (conversation.tokenBalance.balance <= 2)
       return {
         type: 'low' as const,

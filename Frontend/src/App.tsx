@@ -228,6 +228,7 @@ const AdminFinancePayments = lazy(() => import('./pages/admin/finance/payments')
 const AdminPayoutDashboard = lazy(() => import('./pages/admin/finance/PayoutDashboard'));
 const AdminExpenseTracker = lazy(() => import('./pages/admin/finance/expenses'));
 const AdminBalanceSheet = lazy(() => import('./pages/admin/finance/balance-sheet'));
+const AdminRevenue = lazy(() => import('./pages/admin/revenue'));
 const AdminBlogs = lazy(() => import('./pages/admin/blogs'));
 const AdminRefundRequests = lazy(() => import('./pages/admin/refund-requests'));
 const AdminAudit = lazy(() => import('./pages/admin/audit'));
@@ -485,6 +486,7 @@ function App() {
           <Route path="/admin/chat/:conversationId" element={<AdminMessages />} />
           <Route path="/admin/reviews" element={<AdminReviews />} />
           <Route path="/admin/blogs" element={<AdminBlogs />} />
+          <Route path="/admin/revenue" element={<AdminRevenue />} />
           <Route path="/admin/finance" element={<AdminFinance />} />
           <Route path="/admin/finance/payments" element={<AdminFinancePayments />} />
           <Route path="/admin/finance/payouts" element={<AdminPayoutDashboard />} />

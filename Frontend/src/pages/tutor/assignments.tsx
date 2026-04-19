@@ -12,6 +12,7 @@ interface TutorStudent {
   email: string | null;
   grade: string | null;
   tokenBalance: number;
+  hasFutureBookings?: boolean;
 }
 
 interface Submission {
@@ -103,8 +104,8 @@ export default function TutorAssignments() {
     try {
       const { data } = await api.get('/students/tutor/my-students');
       const all: TutorStudent[] = Array.isArray(data) ? data : [];
-      // Only show students with active tokens
-      setStudents(all.filter((s) => s.tokenBalance > 0));
+      // Show students with active tokens or future bookings
+      setStudents(all.filter((s) => s.tokenBalance > 0 || s.hasFutureBookings));
     } catch {
       setError('Failed to load students');
     } finally {
@@ -258,7 +259,7 @@ export default function TutorAssignments() {
             {studentsLoading ? (
               <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading students…</div>
             ) : students.length === 0 ? (
-              <p className="text-sm text-amber-600">No students with active tokens found.</p>
+              <p className="text-sm text-amber-600">No students with active tokens or upcoming sessions found.</p>
             ) : (
               <select
                 value={createForm.studentId}

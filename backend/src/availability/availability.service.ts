@@ -276,12 +276,12 @@ export class AvailabilityService {
       for (const t of dayTemplates) {
         const [sh, sm] = t.startTime.split(':').map(Number);
         const [eh, em] = t.endTime.split(':').map(Number);
-        const start = new Date(d);
-        start.setHours(sh || 0, sm || 0, 0, 0);
-        const end = new Date(d);
-        end.setHours(eh || 0, em || 0, 0, 0);
+        // Combine LOCAL calendar date with UTC clock hours so the stored UTC
+        // HH:MM is interpreted correctly regardless of server timezone (IST/UTC).
+        const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), sh || 0, sm || 0, 0, 0));
+        const end   = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), eh || 0, em || 0, 0, 0));
         if (end.getTime() <= start.getTime()) {
-          end.setDate(end.getDate() + 1);
+          end.setUTCDate(end.getUTCDate() + 1);
         }
 
         if (end <= windowStart || start >= windowEnd) continue;

@@ -1426,4 +1426,220 @@ export class AdminService {
 
     return { ok: true, ...result };
   }
+
+  // ---------- Revenue Analytics ----------
+  private platformFeePercent(hourlyRate?: number | null): 25 | 22 | 18 {
+    const rate = Number(hourlyRate ?? 0);
+    if (!Number.isFinite(rate) || rate <= 0) return 25;
+    if (rate < 400) return 25;
+    if (rate < 700) return 22;
+    return 18;
+  }
+
+  async revenueAnalytics(month?: string) {
+    let periodStart: Date | undefined;
+    let periodEnd: Date | undefined;
+    if (month) {
+      const [y, m] = month.split('-').map(Number);
+      periodStart = new Date(y, m - 1, 1);
+      periodEnd = new Date(y, m, 0, 23, 59, 59, 999);
+    }
+
+    const dateFilter = periodStart && periodEnd
+      ? { gte: periodStart, lte: periodEnd }
+      : undefined;
+
+    const totalRevenueAgg = await this.prisma.payment.aggregate({
+      where: {
+        status: PaymentStatus.SUCCEEDED,
+        ...(dateFilter ? { createdAt: dateFilter } : {}),
+      },
+      _sum: { amountInMinor: true },
+    });
+    const totalRevenue = toNum(totalRevenueAgg._sum.amountInMinor) / 100;
+
+    const completedBookings = await this.prisma.booking.findMany({
+      where: {
+        isDemo: false,
+        endTime: { not: null, ...(dateFilter || {}) },
+        status: {
+          in: [BookingStatus.COMPLETED, BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW],
+        },
+      },
+      select: {
+        id: true,
+        tutorId: true,
+        status: true,
+        startTime: true,
+        endTime: true,
+        tokensCharged: true,
+        priceAtBooking: true,
+        tutor: {
+          select: {
+            id: true,
+            hourlyRate: true,
+            user: { select: { id: true, email: true } },
+          },
+        },
+      },
+    });
+
+    const tutorMap = new Map<string, {
+      tutorId: string;
+      email: string;
+      totalEarned: number;
+      totalCommission: number;
+      bracket: 25 | 22 | 18;
+      bookingCount: number;
+    }>();
+
+    let companyProfit = 0;
+    let bracket25Revenue = 0;
+    let bracket22Revenue = 0;
+    let bracket18Revenue = 0;
+    let bracket25Count = 0;
+    let bracket22Count = 0;
+    let bracket18Count = 0;
+
+    for (const b of completedBookings) {
+      const hourlyRate = toNum(b.priceAtBooking ?? b.tutor?.hourlyRate);
+      if (hourlyRate <= 0) continue;
+
+      const durationMs = b.startTime && b.endTime
+        ? b.endTime.getTime() - b.startTime.getTime()
+        : 0;
+      const durationHours = durationMs > 0
+        ? durationMs / 3_600_000
+        : toNum(b.tokensCharged);
+      if (durationHours <= 0) continue;
+
+      const bookingAmount = durationHours * hourlyRate;
+      const feePercent = this.platformFeePercent(hourlyRate);
+      const commission = (bookingAmount * feePercent) / 100;
+      const tutorEarning = bookingAmount - commission;
+
+      companyProfit += commission;
+
+      if (feePercent === 25) { bracket25Revenue += commission; bracket25Count++; }
+      if (feePercent === 22) { bracket22Revenue += commission; bracket22Count++; }
+      if (feePercent === 18) { bracket18Revenue += commission; bracket18Count++; }
+
+      const tutorId = b.tutorId;
+      const email = b.tutor?.user?.email ?? 'unknown';
+      if (!tutorMap.has(tutorId)) {
+        tutorMap.set(tutorId, {
+          tutorId, email, totalEarned: 0, totalCommission: 0,
+          bracket: feePercent, bookingCount: 0,
+        });
+      }
+      const entry = tutorMap.get(tutorId)!;
+      entry.totalEarned += tutorEarning;
+      entry.totalCommission += commission;
+      entry.bookingCount++;
+    }
+
+    const tutorWallets = await this.prisma.tutorWallet.findMany({
+      select: {
+        tutorId: true,
+        balance: true,
+        tutor: { select: { user: { select: { email: true } } } },
+      },
+    });
+
+    const tutorPayableTotal = tutorWallets.reduce((sum, w) => sum + toNum(w.balance), 0);
+    const tutorPayableList = tutorWallets
+      .filter(w => toNum(w.balance) > 0)
+      .map(w => ({
+        tutorId: w.tutorId,
+        email: w.tutor?.user?.email ?? 'unknown',
+        amountPayable: toNum(w.balance),
+      }))
+      .sort((a, b) => b.amountPayable - a.amountPayable);
+
+    const payouts = await this.prisma.payout.findMany({
+      where: {
+        status: 'PAID',
+        ...(dateFilter ? { paidAt: dateFilter } : {}),
+      },
+      select: {
+        id: true, tutorId: true, amount: true, paidAt: true, paymentMethod: true,
+        tutor: { select: { user: { select: { email: true } } } },
+      },
+      orderBy: { paidAt: 'desc' },
+    });
+
+    const tutorPaidTotal = payouts.reduce((sum, p) => sum + toNum(p.amount), 0);
+    const tutorPaidList = payouts.map(p => ({
+      tutorId: p.tutorId,
+      email: p.tutor?.user?.email ?? 'unknown',
+      amount: toNum(p.amount),
+      paidDate: p.paidAt?.toISOString() ?? null,
+      mode: p.paymentMethod ?? 'N/A',
+    }));
+
+    const highPerformers = Array.from(tutorMap.values())
+      .sort((a, b) => b.totalCommission - a.totalCommission)
+      .slice(0, 10)
+      .map(t => ({
+        tutorId: t.tutorId,
+        email: t.email,
+        commissionGenerated: Math.round(t.totalCommission * 100) / 100,
+        bookingCount: t.bookingCount,
+        bracket: t.bracket,
+      }));
+
+    const now = new Date();
+    const monthlyTrend: { month: string; revenue: number; commission: number; tutorEarnings: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
+      const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+      const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+      let mRevenue = 0;
+      let mCommission = 0;
+      let mTutorEarnings = 0;
+
+      for (const b of completedBookings) {
+        if (!b.endTime || b.endTime < mStart || b.endTime > mEnd) continue;
+        const hr = toNum(b.priceAtBooking ?? b.tutor?.hourlyRate);
+        if (hr <= 0) continue;
+        const dMs = b.startTime && b.endTime ? b.endTime.getTime() - b.startTime.getTime() : 0;
+        const dH = dMs > 0 ? dMs / 3_600_000 : toNum(b.tokensCharged);
+        if (dH <= 0) continue;
+        const amt = dH * hr;
+        const fee = (amt * this.platformFeePercent(hr)) / 100;
+        mRevenue += amt;
+        mCommission += fee;
+        mTutorEarnings += amt - fee;
+      }
+
+      monthlyTrend.push({
+        month: label,
+        revenue: Math.round(mRevenue * 100) / 100,
+        commission: Math.round(mCommission * 100) / 100,
+        tutorEarnings: Math.round(mTutorEarnings * 100) / 100,
+      });
+    }
+
+    return {
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      companyProfit: Math.round(companyProfit * 100) / 100,
+      tutorPayable: {
+        total: Math.round(tutorPayableTotal * 100) / 100,
+        tutors: tutorPayableList,
+      },
+      tutorPaid: {
+        total: Math.round(tutorPaidTotal * 100) / 100,
+        payouts: tutorPaidList,
+      },
+      bracketBreakdown: {
+        bracket25: { revenue: Math.round(bracket25Revenue * 100) / 100, count: bracket25Count },
+        bracket22: { revenue: Math.round(bracket22Revenue * 100) / 100, count: bracket22Count },
+        bracket18: { revenue: Math.round(bracket18Revenue * 100) / 100, count: bracket18Count },
+      },
+      highPerformers,
+      monthlyTrend,
+    };
+  }
 }

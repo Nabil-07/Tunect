@@ -1287,4 +1287,105 @@ export class NotificationsTasks implements OnModuleInit {
     });
     return admins.map(a => a.email).filter(Boolean);
   }
+
+  // ─── New slot availability email (15-min delay) ─────────────────────────
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async sendNewSlotEmails() {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000); // 15 min ago
+
+    // Find slots created more than 15 min ago that haven't had emails sent
+    const slots = await this.prisma.availabilitySlot.findMany({
+      where: {
+        createdAt: { lte: cutoff },
+        newSlotEmailSent: false,
+        startTime: { gt: new Date() }, // only future slots
+      },
+      select: {
+        id: true,
+        tutorId: true,
+        startTime: true,
+        endTime: true,
+        tutor: {
+          select: {
+            id: true,
+            user: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (!slots.length) return;
+
+    // Group slots by tutor so we send one email per tutor per student
+    const slotsByTutor = new Map<string, typeof slots>();
+    for (const slot of slots) {
+      const existing = slotsByTutor.get(slot.tutorId) || [];
+      existing.push(slot);
+      slotsByTutor.set(slot.tutorId, existing);
+    }
+
+    let sent = 0;
+
+    for (const [tutorId, tutorSlots] of slotsByTutor) {
+      const tutorName = tutorSlots[0].tutor.user?.name ?? 'Your tutor';
+
+      // Find students who have token balance > 0 or future bookings with this tutor
+      const [balanceStudents, bookingStudents] = await Promise.all([
+        this.prisma.tutorTokenBalance.findMany({
+          where: { tutorId, balance: { gt: 0 } },
+          select: { student: { select: { user: { select: { name: true, email: true } } } } },
+        }),
+        this.prisma.booking.findMany({
+          where: {
+            tutorId,
+            startTime: { gt: new Date() },
+            status: { in: ['CONFIRMED', 'PENDING'] },
+          },
+          select: { student: { select: { user: { select: { name: true, email: true } } } } },
+          distinct: ['studentId'],
+        }),
+      ]);
+
+      // Deduplicate by email
+      const emailsSeen = new Set<string>();
+      const students: { name?: string; email: string }[] = [];
+      for (const entry of [...balanceStudents, ...bookingStudents]) {
+        const email = entry.student.user?.email;
+        if (email && !emailsSeen.has(email)) {
+          emailsSeen.add(email);
+          students.push({ name: entry.student.user?.name ?? undefined, email });
+        }
+      }
+
+      // Use the earliest slot for the email content
+      const earliestSlot = tutorSlots.sort((a, b) => a.startTime.getTime() - b.startTime.getTime())[0];
+      const slotDate = earliestSlot.startTime.toLocaleDateString('en-IN', {
+        dateStyle: 'full',
+        timeZone: 'Asia/Kolkata',
+      });
+      const slotTime = `${earliestSlot.startTime.toLocaleTimeString('en-IN', { timeStyle: 'short', timeZone: 'Asia/Kolkata' })} – ${earliestSlot.endTime.toLocaleTimeString('en-IN', { timeStyle: 'short', timeZone: 'Asia/Kolkata' })} IST`;
+
+      for (const student of students) {
+        await this.notifications.sendNewSlotAvailableEmail({
+          studentEmail: student.email,
+          studentName: student.name,
+          tutorName,
+          slotDate,
+          slotTime,
+        }).catch((e) => this.logger.warn(`New slot email failed for ${student.email}: ${e?.message}`));
+        sent++;
+      }
+
+      // Mark all processed slots as email-sent
+      await this.prisma.availabilitySlot.updateMany({
+        where: { id: { in: tutorSlots.map((s) => s.id) } },
+        data: { newSlotEmailSent: true },
+      });
+    }
+
+    if (sent > 0) {
+      this.logger.log(`Sent ${sent} new-slot availability email(s).`);
+    }
+  }
 }

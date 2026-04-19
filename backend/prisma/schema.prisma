@@ -53,6 +53,7 @@ model AvailabilitySlot {
   endTime   DateTime
   title     String?
   createdAt DateTime @default(now())
+  newSlotEmailSent Boolean @default(false)
   tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
 
   @@unique([tutorId, startTime, endTime])
@@ -135,6 +136,7 @@ model Booking {
   maxStudents             Int                       @default(1)
   currentEnrollment       Int                       @default(1)
   pricePerStudent         Decimal?                  @db.Decimal(18, 2)
+  priceAtBooking          Decimal?                  @db.Decimal(18, 2) // Tutor hourly rate at time of booking, used for earnings calc
   meetingUrl              String?
   meetingProvider         String?                   @default("google_meet")
   recurringTemplateId     String?

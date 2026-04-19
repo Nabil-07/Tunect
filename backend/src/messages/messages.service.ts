@@ -519,6 +519,29 @@ export class MessagesService {
     const balance = tokenBalance?.balance.toNumber() ?? 0;
     const hasTokens = balance > 0;
 
+    // Even with 0 tokens, allow chat if student has future bookings
+    let canPost = hasTokens;
+    let lastBookingEndTime: string | null = null;
+
+    if (!hasTokens) {
+      const now = new Date();
+      const futureBooking = await this.prisma.booking.findFirst({
+        where: {
+          studentId: convo.student.id,
+          tutorId: convo.tutor.id,
+          status: { in: ['CONFIRMED', 'WAITING_ROOM', 'LIVE'] },
+          endTime: { gt: now },
+        },
+        orderBy: { endTime: 'desc' },
+        select: { endTime: true },
+      });
+
+      if (futureBooking?.endTime) {
+        canPost = true;
+        lastBookingEndTime = futureBooking.endTime.toISOString();
+      }
+    }
+
     return {
       id: convo.id,
       type: 'DIRECT' as const,
@@ -531,7 +554,8 @@ export class MessagesService {
         balance,
         hasTokens,
       },
-      canPost: hasTokens, // Only allow posting if tokens are available
+      canPost,
+      lastBookingEndTime,
       messages: messages.reverse().map((msg) => ({
         id: msg.id,
         conversationId: convo.id,
@@ -1080,6 +1104,7 @@ export class MessagesService {
   /**
    * Validates that the student has available tokens for the tutor before allowing messaging.
    * Both student and tutor can only send messages if the student has tokens allocated for that tutor.
+   * Exception: If the student has future confirmed bookings that haven't ended yet, allow messaging.
    */
   private async validateTokenBalanceForMessaging(
     studentId: string,
@@ -1099,22 +1124,42 @@ export class MessagesService {
       },
     });
 
-    // If no token balance record exists OR balance is 0 or negative, block messaging
-    if (!tokenBalance || tokenBalance.balance.toNumber() <= 0) {
-      const tutor = await this.prisma.tutor.findUnique({
-        where: { id: tutorId },
-        include: { user: { select: { name: true } } },
-      });
-      const tutorName = tutor?.user?.name || 'this tutor';
+    // If tokens are available, allow messaging
+    if (tokenBalance && tokenBalance.balance.toNumber() > 0) {
+      return;
+    }
 
-      throw new ForbiddenException({
-        message: `You cannot send messages to ${tutorName} because you don't have any available tokens. Please purchase tokens to continue messaging.`,
-        code: 'INSUFFICIENT_TOKENS',
+    // No tokens — check if student has future bookings with this tutor
+    const now = new Date();
+    const futureBooking = await this.prisma.booking.findFirst({
+      where: {
         studentId,
         tutorId,
-        balance: tokenBalance?.balance.toNumber() ?? 0,
-      });
+        status: { in: ['CONFIRMED', 'WAITING_ROOM', 'LIVE'] },
+        endTime: { gt: now },
+      },
+      select: { id: true },
+    });
+
+    // Allow messaging if there are future bookings (even with 0 tokens)
+    if (futureBooking) {
+      return;
     }
+
+    // No tokens AND no future bookings — block messaging
+    const tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      include: { user: { select: { name: true } } },
+    });
+    const tutorName = tutor?.user?.name || 'this tutor';
+
+    throw new ForbiddenException({
+      message: `You cannot send messages to ${tutorName} because you don't have any available tokens. Please purchase tokens to continue messaging.`,
+      code: 'INSUFFICIENT_TOKENS',
+      studentId,
+      tutorId,
+      balance: tokenBalance?.balance.toNumber() ?? 0,
+    });
   }
 
   private async resolveConversation(

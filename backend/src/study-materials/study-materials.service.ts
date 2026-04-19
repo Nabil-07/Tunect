@@ -1,17 +1,21 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../common/services/s3.service';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { FinalizeMaterialDto } from './dto/finalize-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { UploadsService } from '../uploads/uploads.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class StudyMaterialsService {
+  private readonly logger = new Logger(StudyMaterialsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3Service: S3Service,
     private readonly uploadsService: UploadsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(userId: string, dto: CreateMaterialDto, file?: Express.Multer.File) {
@@ -241,6 +245,7 @@ export class StudyMaterialsService {
       throw new NotFoundException('Tutor profile not found');
     }
 
+    // Get students with token balance > 0
     const balances = await this.prisma.tutorTokenBalance.findMany({
       where: { tutorId: tutor.id, balance: { gt: 0 } },
       select: {
@@ -261,15 +266,57 @@ export class StudyMaterialsService {
       },
     });
 
-    return balances
-      .map((entry) => ({
+    // Also get students with future confirmed bookings (even if balance is 0)
+    const futureBookings = await this.prisma.booking.findMany({
+      where: {
+        tutorId: tutor.id,
+        startTime: { gt: new Date() },
+        status: { in: ['CONFIRMED', 'PENDING'] },
+      },
+      select: {
+        studentId: true,
+        student: {
+          select: {
+            id: true,
+            grade: true,
+            user: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+      distinct: ['studentId'],
+    });
+
+    // Merge both sets of students (balance > 0 OR future bookings)
+    const studentMap = new Map<string, { id: string; name: string; email: string | null; grade: string | null; tokenBalance: number }>();
+
+    for (const entry of balances) {
+      studentMap.set(entry.student.id, {
         id: entry.student.id,
         name: entry.student.user?.name || entry.student.user?.email || 'Student',
         email: entry.student.user?.email || null,
         grade: entry.student.grade || null,
         tokenBalance: Number(entry.balance),
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      });
+    }
+
+    for (const booking of futureBookings) {
+      if (!studentMap.has(booking.student.id)) {
+        studentMap.set(booking.student.id, {
+          id: booking.student.id,
+          name: booking.student.user?.name || booking.student.user?.email || 'Student',
+          email: booking.student.user?.email || null,
+          grade: booking.student.grade || null,
+          tokenBalance: 0,
+        });
+      }
+    }
+
+    return Array.from(studentMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async getShareTargets(materialId: string, userId: string) {
@@ -303,7 +350,7 @@ export class StudyMaterialsService {
   async shareWithStudents(materialId: string, userId: string, studentIds: string[]) {
     const material = await this.prisma.studyMaterial.findUnique({
       where: { id: materialId },
-      include: { tutor: true },
+      include: { tutor: { include: { user: { select: { name: true } } } } },
     });
 
     if (!material) {
@@ -336,6 +383,26 @@ export class StudyMaterialsService {
         });
       }
     });
+
+    // Send email notifications to shared students
+    if (uniqueStudentIds.length > 0) {
+      const students = await this.prisma.student.findMany({
+        where: { id: { in: uniqueStudentIds } },
+        select: { user: { select: { name: true, email: true } } },
+      });
+
+      const tutorName = material.tutor.user?.name ?? undefined;
+      for (const student of students) {
+        if (student.user?.email) {
+          this.notificationsService.sendMaterialSharedEmail({
+            studentEmail: student.user.email,
+            studentName: student.user.name ?? undefined,
+            tutorName,
+            materialTitle: material.title,
+          }).catch((err) => this.logger.warn(`Failed to send material shared email: ${err?.message}`));
+        }
+      }
+    }
 
     return {
       success: true,

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestEx
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../common/services/s3.service';
 import { OpenAIService } from '../common/services/openai.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateAssignmentDto, UpdateAssignmentDto, SubmitAssignmentDto, GradeAssignmentDto } from './dto/assignment.dto';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class AssignmentsService {
     private prisma: PrismaService,
     private s3Service: S3Service,
     private openaiService: OpenAIService,
+    private notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -26,7 +28,7 @@ export class AssignmentsService {
       throw new NotFoundException('Tutor profile not found');
     }
 
-    // Token eligibility gate: tutor can only assign to students with active tokens
+    // Token eligibility gate: tutor can only assign to students with active tokens or future bookings
     const tokenBalance = await this.prisma.tutorTokenBalance.findUnique({
       where: {
         studentId_tutorId: {
@@ -37,8 +39,25 @@ export class AssignmentsService {
       select: { balance: true },
     });
 
-    if (!tokenBalance || Number(tokenBalance.balance) <= 0) {
-      throw new BadRequestException('Student does not have active tokens with you');
+    const hasTokens = tokenBalance && Number(tokenBalance.balance) > 0;
+
+    // Also check for future confirmed bookings
+    let hasFutureBookings = false;
+    if (!hasTokens) {
+      const futureBooking = await this.prisma.booking.findFirst({
+        where: {
+          tutorId: tutor.id,
+          studentId: dto.studentId,
+          startTime: { gt: new Date() },
+          status: { in: ['CONFIRMED', 'PENDING'] },
+        },
+        select: { id: true },
+      });
+      hasFutureBookings = !!futureBooking;
+    }
+
+    if (!hasTokens && !hasFutureBookings) {
+      throw new BadRequestException('Student does not have active tokens or upcoming sessions with you');
     }
 
     let fileUrl: string | null = null;
@@ -97,6 +116,16 @@ export class AssignmentsService {
       this.logger.warn(
         `Assignment ${assignment.id} flagged: ${scanResult.flaggedReasons.join(', ')}`,
       );
+    }
+
+    // Send email notification to student (only if assignment is visible)
+    if (scanResult.isClean && assignment.student?.user?.email) {
+      this.notificationsService.sendAssignmentEmail({
+        studentEmail: assignment.student.user.email,
+        studentName: assignment.student.user.name ?? undefined,
+        tutorName: assignment.tutor?.user?.name ?? undefined,
+        assignmentTitle: assignment.title,
+      }).catch((err) => this.logger.warn(`Failed to send assignment email: ${err?.message}`));
     }
 
     return assignment;

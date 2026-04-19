@@ -51,6 +51,11 @@ export class AdminController {
     }
   }
 
+  @Get('revenue')
+  revenueAnalytics(@Query('month') month?: string) {
+    return this.svc.revenueAnalytics(month);
+  }
+
   @Get('users')
   users(@Query() q: PaginationDto) {
     return this.svc.listUsers(q);

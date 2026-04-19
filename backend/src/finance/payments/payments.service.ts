@@ -122,7 +122,9 @@ export class PaymentsService {
 
       for (const booking of tutor.bookings) {
         const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
-        const hourlyRate = Number(tutor.hourlyRate || 0);
+        // Use priceAtBooking (locked at purchase time) for accurate payout calculation
+        // Falls back to current hourlyRate for legacy bookings
+        const hourlyRate = Number(booking.priceAtBooking ?? tutor.hourlyRate ?? 0);
         const bookingAmount = hours * hourlyRate;
         const commissionRate = this.getCommissionRate(hourlyRate);
         const tutorPaymentINR = bookingAmount * ((100 - commissionRate) / 100); // in INR

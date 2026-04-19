@@ -118,6 +118,7 @@ export class FinanceDashboardService {
             startTime: true,
             endTime: true,
             tokensCharged: true,
+            priceAtBooking: true,
             tutor: { select: { hourlyRate: true } },
             attendance: {
               select: {
@@ -149,7 +150,8 @@ export class FinanceDashboardService {
     let noAttendanceBookingCount = 0;
 
     for (const booking of bookingsForRevenueSplit) {
-      const hourlyRate = this.toNumber(booking.tutor?.hourlyRate);
+      // Use priceAtBooking (locked at purchase time) for accurate commission calculation
+      const hourlyRate = this.toNumber(booking.priceAtBooking ?? booking.tutor?.hourlyRate);
       if (hourlyRate <= 0) continue;
 
       const durationMs = booking.startTime && booking.endTime

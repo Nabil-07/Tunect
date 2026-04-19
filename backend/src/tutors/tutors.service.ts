@@ -2056,12 +2056,13 @@ export class TutorsService {
         for (const t of dayTemplates) {
           const [sh, sm] = t.startTime.split(':').map(Number);
           const [eh, em] = t.endTime.split(':').map(Number);
-          const start = new Date(d);
-          start.setHours(sh || 0, sm || 0, 0, 0);
-          const end = new Date(d);
-          end.setHours(eh || 0, em || 0, 0, 0);
+          // Combine LOCAL calendar date with UTC clock hours.
+          // Using Date.UTC(local y/m/d, utcH, utcM) avoids day-crossing when the
+          // server runs in a non-UTC timezone (e.g. IST dev machine).
+          const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), sh || 0, sm || 0, 0, 0));
+          const end   = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), eh || 0, em || 0, 0, 0));
           if (end.getTime() <= start.getTime()) {
-            end.setDate(end.getDate() + 1);
+            end.setUTCDate(end.getUTCDate() + 1);
           }
           if (end <= windowStart || start >= windowEnd) continue;
           templateSlots.push({ startTime: start, endTime: end });

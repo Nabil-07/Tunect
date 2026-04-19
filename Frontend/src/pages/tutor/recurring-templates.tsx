@@ -1,8 +1,9 @@
 // src/pages/tutor/recurring-templates.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Calendar, Clock, Plus, Edit, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import api from '../../lib/apiClient';
 import { useConfirm } from '../../hooks/useConfirm';
+import { getTimezoneAbbr } from '../../utils/timezone';
 
 type RecurringTemplate = {
   id: string;
@@ -17,8 +18,25 @@ type RecurringTemplate = {
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Templates are stored as UTC HH:MM on the backend (server interprets setHours as UTC)
+// Convert local browser time → UTC for saving, UTC → local for display/editing
+function localTimeToUtc(localHHMM: string): string {
+  const [h, m] = localHHMM.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+function utcTimeToLocal(utcHHMM: string): string {
+  const [h, m] = utcHHMM.split(':').map(Number);
+  const d = new Date();
+  d.setUTCHours(h, m, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 export default function RecurringTemplates() {
   const { confirm, ConfirmDialogComponent } = useConfirm();
+  const timezoneAbbr = useMemo(() => getTimezoneAbbr(), []);
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -69,11 +87,16 @@ export default function RecurringTemplates() {
     }
 
     try {
+      const payload = {
+        ...formData,
+        startTime: localTimeToUtc(formData.startTime),
+        endTime: localTimeToUtc(formData.endTime),
+      };
       if (editingId) {
-        await api.patch(`/recurring-templates/${editingId}`, formData);
+        await api.patch(`/recurring-templates/${editingId}`, payload);
         setSuccess('Template updated successfully!');
       } else {
-        await api.post('/recurring-templates', formData);
+        await api.post('/recurring-templates', payload);
         setSuccess('Template created successfully!');
       }
       
@@ -90,8 +113,8 @@ export default function RecurringTemplates() {
     setEditingId(template.id);
     setFormData({
       dayOfWeek: template.dayOfWeek,
-      startTime: template.startTime,
-      endTime: template.endTime,
+      startTime: utcTimeToLocal(template.startTime),
+      endTime: utcTimeToLocal(template.endTime),
       title: template.title || '',
       isActive: template.isActive,
     });
@@ -163,7 +186,15 @@ export default function RecurringTemplates() {
           </p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            // Always reset to create-new mode; don't just toggle (would re-open in edit mode)
+            if (showForm && !editingId) {
+              setShowForm(false);
+            } else {
+              resetForm();
+              setShowForm(true);
+            }
+          }}
           className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
           data-testid="tutor-recurring-templates-add-button"
         >
@@ -233,7 +264,19 @@ export default function RecurringTemplates() {
                   type="time"
                   required
                   value={formData.startTime}
-                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                  onChange={(e) => {
+                    const newStart = e.target.value;
+                    // Only auto-fill endTime when creating (not editing) so we don't
+                    // clobber a custom end time the tutor already set
+                    if (!editingId) {
+                      const [hours, minutes] = newStart.split(':').map(Number);
+                      const endDate = new Date(0, 0, 0, hours + 1, minutes);
+                      const newEnd = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
+                      setFormData({ ...formData, startTime: newStart, endTime: newEnd });
+                    } else {
+                      setFormData({ ...formData, startTime: newStart });
+                    }
+                  }}
                   className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                   data-testid="tutor-recurring-templates-start-time-input"
                 />
@@ -344,7 +387,8 @@ export default function RecurringTemplates() {
                                     </div>
                                   )}
                                   <div className="text-sm text-slate-600">
-                                    {template.startTime} - {template.endTime}
+                                    {utcTimeToLocal(template.startTime)} - {utcTimeToLocal(template.endTime)}
+                                    <span className="text-xs text-slate-400 ml-1">({timezoneAbbr})</span>
                                   </div>
                                 </div>
                               </div>

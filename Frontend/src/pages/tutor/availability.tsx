@@ -8,6 +8,20 @@ type SlotVM = { id?: string; start: string; end: string; title?: string; booked?
 type SlotsByDay = Record<string, SlotVM[]>;
 type ToastType = 'error' | 'success' | 'warning';
 
+// Templates are stored as UTC HH:MM on the backend
+function utcTimeToLocal(utcHHMM: string): string {
+  const [h, m] = utcHHMM.split(':').map(Number);
+  const d = new Date();
+  d.setUTCHours(h, m, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function localTimeToUtc(localHHMM: string): string {
+  const [h, m] = localHHMM.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
 type RecurringTemplate = {
   id: string;
   dayOfWeek: number; // 0-6 (Sunday to Saturday)
@@ -128,8 +142,8 @@ function buildTemplateSlots(month: Date, templates: RecurringTemplate[]): SlotsB
     out[dayKey] = matches.map((t) => ({
       id: `template:${t.id}`,
       templateId: t.id,
-      start: clampHHMM(t.startTime),
-      end: clampHHMM(t.endTime),
+      start: clampHHMM(utcTimeToLocal(t.startTime)),
+      end: clampHHMM(utcTimeToLocal(t.endTime)),
       title: t.title,
       booked: false,
     })).sort((a, b) => compareHHMM(a.start, b.start));
@@ -400,8 +414,8 @@ export default function TutorAvailability() {
     const template = templates.find((t) => t.id === templateId);
     if (!template) return;
     setEditingTemplate(template);
-    setTemplateStart(clampHHMM(template.startTime));
-    setTemplateEnd(clampHHMM(template.endTime));
+    setTemplateStart(clampHHMM(utcTimeToLocal(template.startTime)));
+    setTemplateEnd(clampHHMM(utcTimeToLocal(template.endTime)));
     setTemplateTitle(template.title || '');
     setTemplateActive(!!template.isActive);
     setTemplateEditorOpen(true);
@@ -416,8 +430,8 @@ export default function TutorAvailability() {
     try {
       setLoading(true);
       await api.patch(`/recurring-templates/${editingTemplate.id}`, {
-        startTime: templateStart,
-        endTime: templateEnd,
+        startTime: localTimeToUtc(templateStart),
+        endTime: localTimeToUtc(templateEnd),
         title: templateTitle?.trim() || undefined,
         isActive: templateActive,
       });

@@ -72,6 +72,7 @@ export interface ConversationDetail {
     balance: number;
     hasTokens: boolean;
   } | null;
+  lastBookingEndTime: string | null;
 }
 
 export interface CreateBroadcastDto {

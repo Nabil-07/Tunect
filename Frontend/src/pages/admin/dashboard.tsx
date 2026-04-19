@@ -102,10 +102,10 @@ export default function AdminDashboard() {
             <div className="text-3xl font-bold text-slate-900">{stats.totals.users}</div>
             <div className="text-sm text-slate-600 mt-1">Total Users</div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4" data-testid="dashboard-revenue-card">
-            <div className="text-3xl font-bold text-slate-900">{formatMoney(stats.totals.revenueInMinor)}</div>
-            <div className="text-sm text-slate-600 mt-1">Revenue</div>
-          </div>
+          <Link to="/admin/revenue" className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group" data-testid="dashboard-revenue-card">
+            <div className="text-3xl font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">{formatMoney(stats.totals.revenueInMinor)}</div>
+            <div className="text-sm text-slate-600 mt-1">Revenue <span className="text-indigo-500 text-xs">→ View Details</span></div>
+          </Link>
           <div className="bg-white rounded-xl border border-slate-200 p-4" data-testid="dashboard-kyc-pending-card">
             <div className="text-3xl font-bold text-indigo-600">{stats.pendingKyc}</div>
             <div className="text-sm text-slate-600 mt-1">KYC Pending</div>

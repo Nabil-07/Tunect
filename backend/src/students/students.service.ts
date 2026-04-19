@@ -775,6 +775,19 @@ export class StudentsService {
     });
     const balanceMap = new Map(balances.map((b) => [b.studentId, Number(b.balance)]));
 
+    // Check which students have future confirmed bookings
+    const futureBookings = await this.prisma.booking.findMany({
+      where: {
+        tutorId: tutor.id,
+        studentId: { in: studentIds },
+        startTime: { gt: new Date() },
+        status: { in: ['CONFIRMED', 'PENDING'] },
+      },
+      select: { studentId: true },
+      distinct: ['studentId'],
+    });
+    const futureBookingSet = new Set(futureBookings.map((b) => b.studentId));
+
     return bookings.map((b) => ({
       id: b.student.id,
       name: b.student.user?.name,
@@ -782,6 +795,7 @@ export class StudentsService {
       grade: b.student.grade,
       user: b.student.user,
       tokenBalance: balanceMap.get(b.student.id) ?? 0,
+      hasFutureBookings: futureBookingSet.has(b.student.id),
     }));
   }
 

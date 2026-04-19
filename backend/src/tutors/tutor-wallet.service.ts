@@ -65,6 +65,7 @@ export class TutorWalletService {
         tokensCharged: true,
         startTime: true,
         endTime: true,
+        priceAtBooking: true,
         tutor: { select: { hourlyRate: true } },
         attendance: {
           select: {
@@ -100,9 +101,10 @@ export class TutorWalletService {
       const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
       if (!hours) continue;
 
-      // Calculate earnings based on hourly rate and duration
-      // tokensCharged represents hours (TOKENS_PER_HOUR = 1)
-      const hourlyRate = Number(booking.tutor?.hourlyRate ?? 0);
+      // Calculate earnings based on hourly rate at time of booking
+      // Use priceAtBooking (locked at purchase time) for accurate earnings
+      // Falls back to current hourlyRate only for legacy bookings that pre-date this field
+      const hourlyRate = Number(booking.priceAtBooking ?? booking.tutor?.hourlyRate ?? 0);
       const bookingAmount = hours * hourlyRate; // Total amount for the booking
       
       const fee = this.platformFeePercent(hourlyRate);
@@ -123,7 +125,7 @@ export class TutorWalletService {
             bookingId: booking.id,
             delta: tutorShare,
             reason: 'BOOKING_EARNED',
-            note: 'Auto-credited for completed session',
+            note: `Auto-credited for completed session (rate: ₹${hourlyRate}/hr, fee: ${fee}%, earned: ₹${tutorShare.toFixed(2)})`,
           },
         });
       });

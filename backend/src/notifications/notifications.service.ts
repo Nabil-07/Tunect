@@ -960,7 +960,7 @@ export class NotificationsService implements OnModuleInit {
     createdAt: Date;
   }): Promise<void> {
     const baseUrl = process.env.APP_BASE_URL ?? 'https://tunectnow.com';
-    const link = `${baseUrl}/admin/support/${opts.ticketId}`;
+    const link = `${baseUrl}/support`;
     const emailSubject = `⚠️ Unassigned support ticket #${opts.ticketNumber} needs your attention`;
 
     const html = emailShell(
@@ -1909,5 +1909,93 @@ export class NotificationsService implements OnModuleInit {
     );
 
     await this.sendNotificationEmail(opts.to, `📋 Complete your Tunect profile (${opts.completionPercentage}% done)`, html);
+  }
+
+  // ─── Assignment email to student ────────────────────────────────────────
+
+  async sendAssignmentEmail(opts: {
+    studentEmail: string;
+    studentName?: string;
+    tutorName?: string;
+    assignmentTitle: string;
+  }): Promise<void> {
+    const baseUrl = process.env.APP_BASE_URL ?? 'https://tunectnow.com';
+    const link = `${baseUrl}/student/assignments`;
+
+    const html = emailShell(
+      `You have a new assignment from ${opts.tutorName ?? 'your tutor'}`,
+      `<h2 style="margin:0 0 4px;color:#1e293b;font-size:22px">New Assignment 📝</h2>
+      <p style="margin:0 0 20px;color:#64748b">Hi ${opts.studentName ?? 'there'}, your tutor <strong>${opts.tutorName ?? 'your tutor'}</strong> has sent you a new assignment.</p>
+
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:24px">
+        <p style="margin:0;font-size:16px;font-weight:700;color:#1e293b">📄 ${opts.assignmentTitle}</p>
+      </div>
+
+      <a href="${link}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px">View Assignment</a>
+
+      <p style="margin:16px 0 0;font-size:13px;color:#94a3b8">Log in to Tunect to view the details and submit your work.</p>`,
+    );
+
+    await this.sendNotificationEmail(opts.studentEmail, `📝 New assignment from ${opts.tutorName ?? 'your tutor'}: ${opts.assignmentTitle}`, html);
+  }
+
+  // ─── Study material shared email to student ─────────────────────────────
+
+  async sendMaterialSharedEmail(opts: {
+    studentEmail: string;
+    studentName?: string;
+    tutorName?: string;
+    materialTitle: string;
+  }): Promise<void> {
+    const baseUrl = process.env.APP_BASE_URL ?? 'https://tunectnow.com';
+    const link = `${baseUrl}/student/session-notes`;
+
+    const html = emailShell(
+      `${opts.tutorName ?? 'Your tutor'} shared study notes with you`,
+      `<h2 style="margin:0 0 4px;color:#1e293b;font-size:22px">New Study Notes 📚</h2>
+      <p style="margin:0 0 20px;color:#64748b">Hi ${opts.studentName ?? 'there'}, your tutor <strong>${opts.tutorName ?? 'your tutor'}</strong> has shared study notes with you.</p>
+
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:24px">
+        <p style="margin:0;font-size:16px;font-weight:700;color:#1e293b">📚 ${opts.materialTitle}</p>
+      </div>
+
+      <a href="${link}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px">View Notes</a>
+
+      <p style="margin:16px 0 0;font-size:13px;color:#94a3b8">Log in to Tunect to access and download the shared material.</p>`,
+    );
+
+    await this.sendNotificationEmail(opts.studentEmail, `📚 ${opts.tutorName ?? 'Your tutor'} shared notes with you: ${opts.materialTitle}`, html);
+  }
+
+  // ─── New tutor slot email to students ───────────────────────────────────
+
+  async sendNewSlotAvailableEmail(opts: {
+    studentEmail: string;
+    studentName?: string;
+    tutorName?: string;
+    slotDate: string;
+    slotTime: string;
+  }): Promise<void> {
+    const baseUrl = process.env.APP_BASE_URL ?? 'https://tunectnow.com';
+    const link = `${baseUrl}/student/sessions`;
+
+    const html = emailShell(
+      `${opts.tutorName ?? 'Your tutor'} has a new slot available — book before it's gone!`,
+      `<h2 style="margin:0 0 4px;color:#1e293b;font-size:22px">New Slot Available ⏰</h2>
+      <p style="margin:0 0 20px;color:#64748b">Hi ${opts.studentName ?? 'there'}, great news! Your tutor <strong>${opts.tutorName ?? 'your tutor'}</strong> has added a new availability slot.</p>
+
+      <div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:24px">
+        <p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#1e293b">📅 ${opts.slotDate}</p>
+        <p style="margin:0;font-size:14px;color:#475569">🕐 ${opts.slotTime}</p>
+      </div>
+
+      <p style="margin:0 0 20px;font-size:14px;color:#475569;font-weight:600">🔥 Book now before someone else grabs this slot!</p>
+
+      <a href="${link}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px">Book This Slot</a>
+
+      <p style="margin:16px 0 0;font-size:13px;color:#94a3b8">Slots are first-come, first-served. Don't miss out!</p>`,
+    );
+
+    await this.sendNotificationEmail(opts.studentEmail, `⏰ ${opts.tutorName ?? 'Your tutor'} has a new slot — book before it's gone!`, html);
   }
 }

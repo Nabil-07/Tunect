@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { addDays, addWeeks, startOfDay, endOfDay, setHours, setMinutes, isBefore } from 'date-fns';
+import { addDays, addWeeks, isBefore } from 'date-fns';
 import { Prisma, BookingStatus } from '@prisma/client';
 
 @Injectable()
@@ -208,12 +208,18 @@ export class RecurringTemplatesService {
 
     // Create bookings for each matching day
     for (const date of daysToGenerate) {
-      // Parse template times (format: "HH:mm")
+      // Parse template times (format: "HH:mm") — stored as UTC
       const [startHour, startMinute] = template.startTime.split(':').map(Number);
       const [endHour, endMinute] = template.endTime.split(':').map(Number);
 
-      const startTime = setMinutes(setHours(date, startHour), startMinute);
-      const endTime = setMinutes(setHours(date, endHour), endMinute);
+      // Combine LOCAL calendar date with UTC clock hours.
+      // Using Date.UTC(local y/m/d, utcH, utcM) avoids day-crossing when the
+      // server runs in a non-UTC timezone (e.g. IST dev machine).
+      const startTime = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), startHour, startMinute, 0, 0));
+      const endTime   = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), endHour, endMinute, 0, 0));
+      if (endTime.getTime() <= startTime.getTime()) {
+        endTime.setUTCDate(endTime.getUTCDate() + 1);
+      }
 
       // Check if booking already exists for this time slot
       const existing = await this.prisma.booking.findFirst({
