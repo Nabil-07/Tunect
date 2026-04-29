@@ -156,6 +156,7 @@ model Booking {
   walletLedger            TutorWalletLedger[]
   waitlist                Waitlist[]
   whiteboardSessions      WhiteboardSession[]
+  lotConsumptions         BookingLotConsumption[]
   attendance              BookingAttendance?
   demeritApplied          Boolean?                  @default(false)
   noShowCheckAt           DateTime?
@@ -543,6 +544,7 @@ model Payment {
   user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   refunds           Refund[]
   tokenLedger       TokenLedger[]
+  tokenLots         TutorTokenLot[]
 
   @@index([userId])
   @@index([userId, status, createdAt])
@@ -803,6 +805,7 @@ model Student {
   progress                              StudentProgress[]
   tokenLedger                           TokenLedger[]
   tutorTokenBalances                    TutorTokenBalance[]
+  tutorTokenLots                        TutorTokenLot[]
   waitlist                              Waitlist[]
   tokenTransferRequests                 TokenTransferRequest[]
   refundRequests                        RefundRequest[]
@@ -910,6 +913,7 @@ model Tutor {
   user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   kycApplications     TutorKycApplication[]
   balances            TutorTokenBalance[]
+  tokenLots           TutorTokenLot[]
   wallet              TutorWallet?
   walletLedger        TutorWalletLedger[]
   waitlist            Waitlist[]
@@ -980,6 +984,56 @@ model TutorTokenBalance {
   @@unique([studentId, tutorId])
   @@index([studentId, tutorId])
   @@index([studentId, balance(sort: Desc)])
+}
+
+// Per-purchase FIFO lot of tokens for a (student, tutor) pair.
+// Immutable pricePerToken — the price the student actually paid for those tokens.
+// Bookings drain lots oldest-first; tutor earnings derive from BookingLotConsumption.
+// NOTE: purely additive — does not modify TutorTokenBalance.
+model TutorTokenLot {
+  id            String    @id @default(cuid())
+  studentId     String
+  tutorId       String
+  pricePerToken Decimal   @db.Decimal(10, 2)
+  initialQty    Decimal   @db.Decimal(10, 2)
+  remainingQty  Decimal   @db.Decimal(10, 2)
+  paymentId     String?
+  sourceLotId   String?
+  purchasedAt   DateTime  @default(now())
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  student       Student                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  tutor         Tutor                   @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  payment       Payment?                @relation(fields: [paymentId], references: [id])
+  sourceLot     TutorTokenLot?          @relation("TutorTokenLotSource", fields: [sourceLotId], references: [id])
+  derivedLots   TutorTokenLot[]         @relation("TutorTokenLotSource")
+  consumptions  BookingLotConsumption[]
+
+  @@index([studentId, tutorId, purchasedAt])
+  @@index([studentId, tutorId, remainingQty])
+  @@index([expiresAt])
+  @@index([paymentId])
+}
+
+// Records that a booking consumed `qty` tokens from a specific lot at a snapshot price.
+// Source of truth for tutor earnings on completed bookings (replaces priceAtBooking math).
+model BookingLotConsumption {
+  id            String   @id @default(cuid())
+  bookingId     String
+  lotId         String
+  qty           Decimal  @db.Decimal(10, 2)
+  pricePerToken Decimal  @db.Decimal(10, 2)
+  reversed      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  booking       Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  lot           TutorTokenLot @relation(fields: [lotId], references: [id])
+
+  @@unique([bookingId, lotId])
+  @@index([bookingId])
+  @@index([lotId])
 }
 
 model TutorWallet {

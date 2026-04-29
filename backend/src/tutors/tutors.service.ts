@@ -3,6 +3,7 @@ import { BookingStatus, TutorStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TrendingTutorDto, TrendingTutorsResponse } from './dto/trending-tutor.dto';
 import { Cacheable } from '../common/cache.decorator';
+import { computeBookingEarnings } from '../common/earnings';
 import { UploadsService } from '../uploads/uploads.service';
 
 export type TutorPublic = {
@@ -1600,6 +1601,10 @@ export class TutorsService {
         tokensCharged: true,
         priceAtBooking: true,
         tutor: { select: { hourlyRate: true } },
+        lotConsumptions: {
+          where: { reversed: false },
+          select: { qty: true, pricePerToken: true, reversed: true },
+        },
         attendance: {
           select: {
             tutorJoinCount: true,
@@ -1625,12 +1630,6 @@ export class TutorsService {
 
     // ✅ Compute earnings from booking source data using priceAtBooking (locked at booking time).
     // This is accurate even if the tutor later changes their hourly rate.
-    const platformFee = (rate: number): number => {
-      if (!Number.isFinite(rate) || rate <= 0) return 25;
-      if (rate < 400) return 25;
-      if (rate < 700) return 22;
-      return 18;
-    };
     const bookingHours = (b: typeof completedBookingsForEarnings[0]): number => {
       if (b.startTime && b.endTime) {
         const ms = b.endTime.getTime() - b.startTime.getTime();
@@ -1643,13 +1642,17 @@ export class TutorsService {
     let monthlyEarnings = 0;
     for (const b of completedBookingsForEarnings) {
       if (!hasVerifiedAttendanceCombined(b.attendance, b.whiteboardSessions?.[0]?.data)) continue;
-      // Locked rate only — never fall back to current hourlyRate.
-      const rate = Number(b.priceAtBooking ?? 0);
-      if (rate <= 0) continue;
       const hours = bookingHours(b);
-      if (hours <= 0) continue;
-      const fee = platformFee(rate);
-      const tutorEarning = (hours * rate * (100 - fee)) / 100;
+      // Earnings precedence: BookingLotConsumption rows → priceAtBooking fallback.
+      // NEVER use tutor.hourlyRate — it may have changed since booking.
+      const earnings = computeBookingEarnings({
+        consumptions: (b as any).lotConsumptions,
+        fallbackPriceAtBooking: Number(b.priceAtBooking ?? 0),
+        hours,
+        tokensCharged: Number(b.tokensCharged ?? 0),
+      });
+      const tutorEarning = earnings.tutorShare;
+      if (tutorEarning <= 0) continue;
       totalEarnings += tutorEarning;
       if (b.endTime && b.endTime >= startOfMonth) {
         monthlyEarnings += tutorEarning;

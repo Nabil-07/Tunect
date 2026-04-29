@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BookingStatus, Prisma } from '@prisma/client';
+import { computeBookingEarnings } from '../../common/earnings';
 
 type Period = 'month' | 'quarter' | 'half' | 'year';
 type BalanceSheetLine = { label: string; amount: number; note?: string };
@@ -120,6 +121,10 @@ export class FinanceDashboardService {
             tokensCharged: true,
             priceAtBooking: true,
             tutor: { select: { hourlyRate: true } },
+            lotConsumptions: {
+              where: { reversed: false },
+              select: { qty: true, pricePerToken: true, reversed: true },
+            },
             attendance: {
               select: {
                 tutorJoinCount: true,
@@ -150,12 +155,6 @@ export class FinanceDashboardService {
     let noAttendanceBookingCount = 0;
 
     for (const booking of bookingsForRevenueSplit) {
-      // Use ONLY the locked priceAtBooking — see admin.service.ts for the
-      // full rationale. NULL legacy rows are backfilled via
-      // sql/backfill_price_at_booking_v2.sql.
-      const hourlyRate = this.toNumber(booking.priceAtBooking);
-      if (hourlyRate <= 0) continue;
-
       const durationMs = booking.startTime && booking.endTime
         ? booking.endTime.getTime() - booking.startTime.getTime()
         : 0;
@@ -164,8 +163,17 @@ export class FinanceDashboardService {
         : this.toNumber(booking.tokensCharged);
       if (durationHours <= 0) continue;
 
-      const bookingAmount = durationHours * hourlyRate;
+      // Earnings precedence: BookingLotConsumption rows → priceAtBooking fallback.
+      // NEVER use tutor.hourlyRate — it may have changed since booking.
+      const earn = computeBookingEarnings({
+        consumptions: (booking as any).lotConsumptions,
+        fallbackPriceAtBooking: this.toNumber(booking.priceAtBooking),
+        hours: durationHours,
+        tokensCharged: this.toNumber(booking.tokensCharged),
+      });
+      const bookingAmount = earn.gross;
       if (bookingAmount <= 0) continue;
+      const hourlyRate = earn.effectiveRate;
 
       const tutorJoined = !!booking.attendance?.tutorFirstJoinedAt || Number(booking.attendance?.tutorJoinCount ?? 0) > 0;
       const studentJoined = !!booking.attendance?.studentFirstJoinedAt || Number(booking.attendance?.studentJoinCount ?? 0) > 0;
@@ -181,7 +189,7 @@ export class FinanceDashboardService {
         booking.status === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW
       ) {
         const feePercent = this.platformFeePercent(hourlyRate);
-        const commission = (bookingAmount * feePercent) / 100;
+        const commission = earn.fee;
         commissionBookingCount += 1;
         if (feePercent === 25) platformCommission25 += commission;
         if (feePercent === 22) platformCommission22 += commission;

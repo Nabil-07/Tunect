@@ -11,6 +11,7 @@ import { PostMessageDto } from './dto/post-message.dto';
 import { PiiGuardService } from '../common/pii-guard.service';
 import { Role as DbRole } from '@prisma/client';
 import { MessagesGateway } from './messages.gateway';
+import { drainLotsWithoutConsumption } from '../tutors/token-lots.helper';
 
 const MAX_MESSAGE_LEN = 2000;
 const THREAD_PAGE_SIZE = 50;
@@ -156,6 +157,13 @@ export class MessagesService {
             if (tokenBalance.balance.toNumber() > 0) {
               const amountValue = tokenBalance.balance.mul(tokenBalance.pricePerToken);
               totalForfeited += amountValue.toNumber();
+
+              // Drain matching lots so TutorTokenLot stays in sync with the wallet.
+              await drainLotsWithoutConsumption(this.prisma, {
+                studentId: me.student.id,
+                tutorId: tokenBalance.tutorId,
+                qty: tokenBalance.balance.toNumber(),
+              });
 
               // Zero out token balance
               await this.prisma.tutorTokenBalance.update({

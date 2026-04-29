@@ -6,6 +6,7 @@ import { extractAuditInfo } from '../common/audit-helper';
 import { Request } from 'express';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
 import { BookingStatus } from '@prisma/client';
+import { drainLotsWithoutConsumption } from '../tutors/token-lots.helper';
 
 @Injectable()
 export class RefundsService {
@@ -456,6 +457,15 @@ export class RefundsService {
               decrement: request.tokenAmount,
             },
           },
+        });
+
+        // Drain matching qty FIFO from this student's lots for the tutor so
+        // lot.remainingQty stays in sync with TutorTokenBalance.balance.
+        // (No BookingLotConsumption row — these tokens are leaving the pool.)
+        await drainLotsWithoutConsumption(tx, {
+          studentId: request.studentId,
+          tutorId: request.tutorId,
+          qty: Number(request.tokenAmount),
         });
 
         // Add to student's overall token balance

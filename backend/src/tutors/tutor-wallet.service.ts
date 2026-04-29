@@ -2,6 +2,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingStatus, PayoutStatus } from '@prisma/client';
+import { computeBookingEarnings } from '../common/earnings';
 
 @Injectable()
 export class TutorWalletService {
@@ -67,6 +68,10 @@ export class TutorWalletService {
         endTime: true,
         priceAtBooking: true,
         tutor: { select: { hourlyRate: true } },
+        lotConsumptions: {
+          where: { reversed: false },
+          select: { qty: true, pricePerToken: true, reversed: true },
+        },
         attendance: {
           select: {
             tutorJoinCount: true,
@@ -102,15 +107,18 @@ export class TutorWalletService {
       const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
       if (!hours) continue;
 
-      // Use ONLY the rate locked at purchase time. Never fall back to the
-      // tutor's current hourlyRate or a rate change will retroactively alter
-      // historical credits. Legacy NULL rows are backfilled by
-      // sql/backfill_price_at_booking_v2.sql.
-      const hourlyRate = Number(booking.priceAtBooking ?? 0);
-      if (hourlyRate <= 0) continue;
-      const fee = this.platformFeePercent(hourlyRate);
-      const correctShare = Math.max(0, (hours * hourlyRate * (100 - fee)) / 100);
+      // Earnings precedence: BookingLotConsumption rows (FIFO lot-priced)
+      // → priceAtBooking fallback. Never use tutor.hourlyRate.
+      const earnings = computeBookingEarnings({
+        consumptions: (booking as any).lotConsumptions,
+        fallbackPriceAtBooking: Number(booking.priceAtBooking ?? 0),
+        hours,
+        tokensCharged: Number(booking.tokensCharged ?? 0),
+      });
+      const correctShare = earnings.tutorShare;
       if (correctShare <= 0) continue;
+      const hourlyRate = earnings.effectiveRate;
+      const fee = this.platformFeePercent(hourlyRate);
 
       const existing = creditedMap.get(booking.id);
 
@@ -129,7 +137,7 @@ export class TutorWalletService {
               bookingId: booking.id,
               delta: correctShare,
               reason: 'BOOKING_EARNED',
-              note: `Auto-credited for completed session (rate: ₹${hourlyRate}/hr, fee: ${fee}%, earned: ₹${correctShare.toFixed(2)})`,
+              note: `Auto-credited for completed session (rate: ₹${hourlyRate.toFixed(2)}/hr, fee: ${fee}%, earned: ₹${correctShare.toFixed(2)}${earnings.usedConsumptionRows ? ', source: lots' : ''})`,
             },
           });
         });
@@ -141,7 +149,7 @@ export class TutorWalletService {
             where: { id: existing.id },
             data: {
               delta: correctShare,
-              note: `Corrected: rate ₹${hourlyRate}/hr, fee ${fee}%, earned ₹${correctShare.toFixed(2)} (was ₹${existing.delta.toFixed(2)})`,
+              note: `Corrected: rate ₹${hourlyRate.toFixed(2)}/hr, fee ${fee}%, earned ₹${correctShare.toFixed(2)} (was ₹${existing.delta.toFixed(2)})`,
             },
           });
           await tx.tutorWallet.upsert({

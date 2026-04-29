@@ -260,6 +260,8 @@ export class PaymentsPublicService {
           },
           update: {
             balance: { increment: tokensPurchased },
+            // NOTE: pricePerToken on TutorTokenBalance is kept up-to-date for backward-compat
+            // (display, legacy fallback). Authoritative per-purchase price lives on TutorTokenLot.
             pricePerToken: new Prisma.Decimal(pricePerToken.toString()),
           },
           create: {
@@ -267,6 +269,21 @@ export class PaymentsPublicService {
             tutorId,
             balance: new Prisma.Decimal(tokensPurchased.toString()),
             pricePerToken: new Prisma.Decimal(pricePerToken.toString()),
+          },
+        });
+
+        // FIFO lot: append a new TutorTokenLot capturing the immutable price
+        // the student paid for THIS specific batch. Bookings drain lots oldest-first;
+        // earnings calc reads lot prices via BookingLotConsumption.
+        await tx.tutorTokenLot.create({
+          data: {
+            studentId,
+            tutorId,
+            pricePerToken: new Prisma.Decimal(pricePerToken.toString()),
+            initialQty: new Prisma.Decimal(tokensPurchased.toString()),
+            remainingQty: new Prisma.Decimal(tokensPurchased.toString()),
+            paymentId: payment.id,
+            expiresAt: expiryDate,
           },
         });
       }

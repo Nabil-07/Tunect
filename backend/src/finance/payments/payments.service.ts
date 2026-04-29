@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { computeBookingEarnings } from '../../common/earnings';
 
 @Injectable()
 export class PaymentsService {
@@ -90,6 +91,10 @@ export class PaymentsService {
           },
           include: {
             student: { include: { user: true } },
+            lotConsumptions: {
+              where: { reversed: false },
+              select: { qty: true, pricePerToken: true, reversed: true },
+            },
           },
         },
         payouts: {
@@ -133,15 +138,19 @@ export class PaymentsService {
 
       for (const booking of tutor.bookings) {
         const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
-        // Use ONLY the locked priceAtBooking. Never fall back to the tutor's
-        // current hourlyRate — doing so makes a rate change retroactively
-        // re-price every past session. Legacy NULL rows are backfilled by
-        // sql/backfill_price_at_booking_v2.sql.
-        const hourlyRate = Number(booking.priceAtBooking ?? 0);
-        if (hourlyRate <= 0) continue;
-        const bookingAmount = hours * hourlyRate;
+        // Earnings precedence: BookingLotConsumption rows → priceAtBooking fallback.
+        // NEVER use tutor.hourlyRate — it may have changed since booking.
+        const earn = computeBookingEarnings({
+          consumptions: (booking as any).lotConsumptions,
+          fallbackPriceAtBooking: Number(booking.priceAtBooking ?? 0),
+          hours,
+          tokensCharged: Number(booking.tokensCharged ?? 0),
+        });
+        if (earn.tutorShare <= 0) continue;
+        const hourlyRate = earn.effectiveRate;
+        const bookingAmount = earn.gross;
         const commissionRate = this.getCommissionRate(hourlyRate);
-        const tutorPaymentINR = bookingAmount * ((100 - commissionRate) / 100); // in INR
+        const tutorPaymentINR = earn.tutorShare; // in INR
         const tutorPayment = Math.round(tutorPaymentINR * 100); // Convert to paise for API
 
         const dueDate = this.calculatePaymentDueDate(booking.endTime || booking.createdAt);

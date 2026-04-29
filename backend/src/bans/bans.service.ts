@@ -3,6 +3,7 @@ import { Prisma, Role, BanScope, BanForfeitureType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BanUserDto } from './dto/ban-user.dto';
 import { UnbanDto } from './dto/unban.dto';
+import { drainLotsWithoutConsumption } from '../tutors/token-lots.helper';
 
 @Injectable()
 export class BansService {
@@ -71,12 +72,19 @@ export class BansService {
       if (user.student && (dto.scope === 'ALL' || dto.scope === 'BOOKINGS')) {
         const balances = await tx.tutorTokenBalance.findMany({
           where: { studentId: user.student.id, balance: { gt: new Prisma.Decimal(0) } },
-          select: { id: true, balance: true, pricePerToken: true },
+          select: { id: true, tutorId: true, balance: true, pricePerToken: true },
         });
 
         for (const bal of balances) {
           const amount = new Prisma.Decimal(bal.balance).mul(bal.pricePerToken);
           if (amount.lessThanOrEqualTo(0)) continue;
+
+          // Drain lots first so TutorTokenLot stays consistent with the wallet.
+          await drainLotsWithoutConsumption(tx, {
+            studentId: user.student.id,
+            tutorId: bal.tutorId,
+            qty: Number(bal.balance),
+          });
 
           await tx.tutorTokenBalance.update({
             where: { id: bal.id },

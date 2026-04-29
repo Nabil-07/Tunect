@@ -17,6 +17,11 @@ import { AttendanceEventDto } from './dto/attendance-event.dto';
 import { addMinutes, isBefore, differenceInMinutes, differenceInHours } from 'date-fns';
 import { Prisma, BookingStatus, TokenReason, Role } from '@prisma/client';
 import { toUtc, fromUtc } from '../common/time.util';
+import { computeBookingEarnings, platformFeePercent } from '../common/earnings';
+import {
+  drainTutorTokenLotsForBooking,
+  restoreTutorTokenLotsForBooking,
+} from '../tutors/token-lots.helper';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WaitlistService } from '../waitlist/waitlist.service';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
@@ -720,6 +725,22 @@ export class BookingsService {
         },
       });
 
+      // FIFO lot drain — authoritative price source for tutor earnings.
+      // Updates Booking.priceAtBooking to the weighted-average of the lots
+      // actually consumed (handles mixed-price wallets correctly).
+      const drain = await this.drainTutorTokenLots(tx, {
+        studentId,
+        tutorId: resolvedTutorId,
+        bookingId: booking.id,
+        qty: cost,
+      });
+      if (drain.weightedAvgPrice > 0) {
+        await tx.booking.update({
+          where: { id: booking.id },
+          data: { priceAtBooking: new Prisma.Decimal(drain.weightedAvgPrice.toFixed(2)) },
+        });
+      }
+
       // Note: ensureLivekitMeeting and chatTriggers are called outside transaction
       // to avoid long-running operations in transaction
       return booking;
@@ -977,6 +998,8 @@ export class BookingsService {
             where: { id: booking.studentId },
             data: { tokens: { increment: refundAmount } },
           });
+          // Restore lot consumptions so the refunded tokens keep their original price
+          await this.restoreTutorTokenLots(tx, { bookingId, qty: refundAmount });
           await tx.tokenLedger.create({
             data: {
               studentId: booking.studentId,
@@ -1386,6 +1409,10 @@ export class BookingsService {
                 bookingId: booking.id,
               },
             });
+
+            // Restore lot consumptions for the refunded portion so tokens
+            // keep their original purchase price (handles partial refunds).
+            await this.restoreTutorTokenLots(tx, { bookingId: booking.id, qty: refundAmount });
           }
         }
       }
@@ -1546,6 +1573,9 @@ export class BookingsService {
             reason: TokenReason.REFUND,
           },
         });
+
+        // Restore lot consumptions so refunded tokens keep their original price.
+        await this.restoreTutorTokenLots(tx, { bookingId: booking.id, qty: charged });
       }
 
       return updated;
@@ -1670,16 +1700,26 @@ export class BookingsService {
       });
 
       if (!b.isDemo) {
-        // Use ONLY the priceAtBooking locked at purchase time. New bookings
-        // always populate this at creation; legacy NULL rows must be fixed
-        // via sql/backfill_price_at_booking_v2.sql before completion so the
-        // tutor's earning is credited at the correct historical rate.
-        const hourlyRate = Number(b.priceAtBooking ?? 0);
+        // Earnings precedence:
+        //   1. BookingLotConsumption rows (FIFO lot pricing) — sums per-lot
+        //      qty * pricePerToken * (1 - fee%(lotPrice)).
+        //   2. Fallback: Booking.priceAtBooking * hours * (1 - fee%(price)).
+        // NEVER use tutor.hourlyRate — it may have changed since booking.
+        const consumptions = await tx.bookingLotConsumption.findMany({
+          where: { bookingId: b.id, reversed: false },
+          select: { qty: true, pricePerToken: true, reversed: true },
+        });
         const hours = this.getBookingHours(b.startTime, b.endTime, Number(b.tokensCharged));
-        if (!hours || hourlyRate <= 0) return updated;
-        const bookingAmount = hours * hourlyRate;
-        const feePercent = this.platformFeePercent(hourlyRate);
-        const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
+        const earnings = computeBookingEarnings({
+          consumptions,
+          fallbackPriceAtBooking: Number(b.priceAtBooking ?? 0),
+          hours,
+          tokensCharged: Number(b.tokensCharged ?? 0),
+        });
+        if (earnings.tutorShare <= 0) return updated;
+        const tutorShare = earnings.tutorShare;
+        const feePercent = platformFeePercent(earnings.effectiveRate);
+        const hourlyRate = earnings.effectiveRate;
 
         // Check if ledger entry already exists for this booking to prevent duplicates
         const existingLedger = await tx.tutorWalletLedger.findFirst({
@@ -1703,7 +1743,7 @@ export class BookingsService {
               bookingId: b.id,
               delta: tutorShare,
               reason: 'BOOKING_EARNED',
-              note: `Completed booking ${b.id} (rate: ₹${hourlyRate}/hr, fee: ${feePercent}%, earned: ₹${tutorShare.toFixed(2)})`,
+              note: `Completed booking ${b.id} (rate: ₹${hourlyRate.toFixed(2)}/hr, fee: ${feePercent}%, earned: ₹${tutorShare.toFixed(2)}${earnings.usedConsumptionRows ? ', source: lots' : ''})`,
             },
           });
         }
@@ -1775,6 +1815,25 @@ export class BookingsService {
     const minutes = differenceInMinutes(end, start);
     const hours = minutes / 60;
     return Math.ceil(hours * tokensPerHour);
+  }
+
+  /**
+   * Thin delegating wrappers around the shared FIFO lot helpers in
+   * `tutors/token-lots.helper.ts`. Kept on this service only so existing call
+   * sites inside this class don't need to change.
+   */
+  private async drainTutorTokenLots(
+    tx: Prisma.TransactionClient,
+    args: { studentId: string; tutorId: string; bookingId: string; qty: number },
+  ): Promise<{ consumed: number; weightedAvgPrice: number }> {
+    return drainTutorTokenLotsForBooking(tx, args);
+  }
+
+  private async restoreTutorTokenLots(
+    tx: Prisma.TransactionClient,
+    args: { bookingId: string; qty: number },
+  ): Promise<{ restored: number }> {
+    return restoreTutorTokenLotsForBooking(tx, args);
   }
 
   // ---------- assign slot ----------
@@ -1936,6 +1995,20 @@ export class BookingsService {
           });
         }
 
+        // FIFO lot drain for the incremental tokens charged at slot assignment.
+        // (When tokensToCharge === 0 the booking was already fully charged at
+        // creation time — its consumption rows already exist.)
+        let drainAvgPrice = 0;
+        if (tokensToCharge > 0) {
+          const drain = await this.drainTutorTokenLots(tx, {
+            studentId: booking.studentId,
+            tutorId: booking.tutorId,
+            bookingId: booking.id,
+            qty: tokensToCharge,
+          });
+          drainAvgPrice = drain.weightedAvgPrice;
+        }
+
         await tx.booking.update({
           where: { id: bookingId },
           data: {
@@ -1943,18 +2016,20 @@ export class BookingsService {
             endTime: end,
             status: BookingStatus.CONFIRMED,
             tokensCharged: new Prisma.Decimal(cost),
-            // Lock priceAtBooking from the wallet's pricePerToken (what the
-            // student actually paid). Only set if not already locked, so a
-            // re-schedule can never silently re-price a booking. Falls back
-            // to current hourlyRate only if the wallet has no price recorded.
+            // Lock priceAtBooking. Prefer the FIFO drain weighted-average from
+            // this call (most accurate). Fall back to wallet pricePerToken if
+            // nothing was drained now (e.g. tokens already charged earlier),
+            // and finally to the tutor's hourlyRate as last resort.
             ...(booking.priceAtBooking == null
               ? {
                   priceAtBooking:
-                    Number(tutorBalance?.pricePerToken ?? 0) > 0
-                      ? new Prisma.Decimal(tutorBalance!.pricePerToken.toString())
-                      : (booking.tutor?.hourlyRate
-                          ? new Prisma.Decimal(booking.tutor.hourlyRate.toString())
-                          : null),
+                    drainAvgPrice > 0
+                      ? new Prisma.Decimal(drainAvgPrice.toFixed(2))
+                      : Number(tutorBalance?.pricePerToken ?? 0) > 0
+                        ? new Prisma.Decimal(tutorBalance!.pricePerToken.toString())
+                        : (booking.tutor?.hourlyRate
+                            ? new Prisma.Decimal(booking.tutor.hourlyRate.toString())
+                            : null),
                 }
               : {}),
             notes: dto.notes ?? booking.notes,

@@ -7,6 +7,7 @@ import { AdjustTokensDto } from './dto/adjust-tokens.dto';
 import { TokenLedgerService } from '../tokens/token-ledger.service';
 import { AuditService } from '../audit/audit.service';
 import { extractAuditInfo } from '../common/audit-helper';
+import { computeBookingEarnings } from '../common/earnings';
 import { checkTutorProfileCompletion, checkStudentProfileCompletion } from '../users/profile-completion';
 import { Request } from 'express';
 import { PolicyConfigService } from '../policy-config/policy-config.service';
@@ -1517,6 +1518,10 @@ export class AdminService implements OnApplicationBootstrap {
             user: { select: { id: true, email: true } },
           },
         },
+        lotConsumptions: {
+          where: { reversed: false },
+          select: { qty: true, pricePerToken: true, reversed: true },
+        },
       },
     });
 
@@ -1538,13 +1543,6 @@ export class AdminService implements OnApplicationBootstrap {
     let bracket18Count = 0;
 
     for (const b of completedBookings) {
-      // Use ONLY the locked-in priceAtBooking. Never fall back to the tutor's
-      // current hourlyRate — doing so retroactively re-prices past sessions
-      // whenever the tutor changes their rate. NULL rows are skipped and
-      // should be backfilled via sql/backfill_price_at_booking_v2.sql.
-      const hourlyRate = toNum(b.priceAtBooking);
-      if (hourlyRate <= 0) continue;
-
       const durationMs = b.startTime && b.endTime
         ? b.endTime.getTime() - b.startTime.getTime()
         : 0;
@@ -1553,10 +1551,21 @@ export class AdminService implements OnApplicationBootstrap {
         : toNum(b.tokensCharged);
       if (durationHours <= 0) continue;
 
-      const bookingAmount = durationHours * hourlyRate;
+      // Earnings precedence: BookingLotConsumption rows → priceAtBooking fallback.
+      // NEVER use tutor.hourlyRate — it may have changed since booking.
+      const earnings = computeBookingEarnings({
+        consumptions: (b as any).lotConsumptions,
+        fallbackPriceAtBooking: toNum(b.priceAtBooking),
+        hours: durationHours,
+        tokensCharged: toNum(b.tokensCharged),
+      });
+      if (earnings.gross <= 0) continue;
+
+      const hourlyRate = earnings.effectiveRate;
+      const bookingAmount = earnings.gross;
       const feePercent = this.platformFeePercent(hourlyRate);
-      const commission = (bookingAmount * feePercent) / 100;
-      const tutorEarning = bookingAmount - commission;
+      const commission = earnings.fee;
+      const tutorEarning = earnings.tutorShare;
 
       companyProfit += commission;
 
@@ -1679,17 +1688,19 @@ export class AdminService implements OnApplicationBootstrap {
 
       for (const b of completedBookings) {
         if (!b.endTime || b.endTime < mStart || b.endTime > mEnd) continue;
-        // Locked priceAtBooking only — see note above.
-        const hr = toNum(b.priceAtBooking);
-        if (hr <= 0) continue;
         const dMs = b.startTime && b.endTime ? b.endTime.getTime() - b.startTime.getTime() : 0;
         const dH = dMs > 0 ? dMs / 3_600_000 : toNum(b.tokensCharged);
         if (dH <= 0) continue;
-        const amt = dH * hr;
-        const fee = (amt * this.platformFeePercent(hr)) / 100;
-        mRevenue += amt;
-        mCommission += fee;
-        mTutorEarnings += amt - fee;
+        const earn = computeBookingEarnings({
+          consumptions: (b as any).lotConsumptions,
+          fallbackPriceAtBooking: toNum(b.priceAtBooking),
+          hours: dH,
+          tokensCharged: toNum(b.tokensCharged),
+        });
+        if (earn.gross <= 0) continue;
+        mRevenue += earn.gross;
+        mCommission += earn.fee;
+        mTutorEarnings += earn.tutorShare;
       }
 
       monthlyTrend.push({
@@ -1756,6 +1767,10 @@ export class AdminService implements OnApplicationBootstrap {
           tokensCharged: true,
           priceAtBooking: true,
           tutor: { select: { hourlyRate: true } },
+          lotConsumptions: {
+            where: { reversed: false },
+            select: { qty: true, pricePerToken: true, reversed: true },
+          },
           attendance: {
             select: { tutorJoinCount: true, studentJoinCount: true, tutorFirstJoinedAt: true, studentFirstJoinedAt: true },
           },
@@ -1773,17 +1788,21 @@ export class AdminService implements OnApplicationBootstrap {
       const ledgerMap = new Map(ledgerEntries.map((e) => [e.bookingId!, { id: e.id, delta: toNum(e.delta) }]));
 
       for (const b of bookings) {
-        // Locked priceAtBooking only. reconcileWallets must NEVER use the
-        // tutor's current hourlyRate or it will rewrite historical ledger
-        // entries with inflated earnings after a rate change.
-        const rate = toNum(b.priceAtBooking);
-        if (rate <= 0) continue;
         const dMs = b.startTime && b.endTime ? b.endTime.getTime() - b.startTime.getTime() : 0;
         const hours = dMs > 0 ? dMs / 3_600_000 : toNum(b.tokensCharged);
         if (hours <= 0) continue;
-        const fee = feePercent(rate);
-        const correctAmount = Math.round(((hours * rate * (100 - fee)) / 100) * 100) / 100;
+        // Earnings precedence: BookingLotConsumption rows → priceAtBooking fallback.
+        // NEVER use tutor.hourlyRate — reconcile must not rewrite history.
+        const earn = computeBookingEarnings({
+          consumptions: (b as any).lotConsumptions,
+          fallbackPriceAtBooking: toNum(b.priceAtBooking),
+          hours,
+          tokensCharged: toNum(b.tokensCharged),
+        });
+        const correctAmount = Math.round(earn.tutorShare * 100) / 100;
         if (correctAmount <= 0) continue;
+        const rate = earn.effectiveRate;
+        const fee = feePercent(rate);
 
         const existing = ledgerMap.get(b.id);
         if (!existing) continue; // missing entry — will be handled by ensureCompletedBookingsCredited on wallet load
@@ -1797,7 +1816,7 @@ export class AdminService implements OnApplicationBootstrap {
             where: { id: existing.id },
             data: {
               delta: correctAmount,
-              note: `Reconciled: rate ₹${rate}/hr, fee ${fee}%, correct ₹${correctAmount.toFixed(2)} (was ₹${existing.delta.toFixed(2)})`,
+              note: `Reconciled: rate ₹${rate.toFixed(2)}/hr, fee ${fee}%, correct ₹${correctAmount.toFixed(2)} (was ₹${existing.delta.toFixed(2)})`,
             },
           });
           await tx.tutorWallet.upsert({

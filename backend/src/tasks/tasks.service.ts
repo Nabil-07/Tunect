@@ -8,6 +8,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { fromUtc } from '../common/time.util';
 import { addMinutes } from 'date-fns';
 import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
+import { restoreTutorTokenLotsForBooking } from '../tutors/token-lots.helper';
 
 // Config: how many minutes before session we remind
 const REMIND_BEFORE_MIN = 30;
@@ -342,6 +343,10 @@ export class TasksService {
                     bookingId: booking.id,
                   },
                 });
+                await restoreTutorTokenLotsForBooking(tx, {
+                  bookingId: booking.id,
+                  qty: refundAmount,
+                });
               }
             }
           } else {
@@ -485,6 +490,11 @@ export class TasksService {
                   reason: TokenReason.REFUND,
                   bookingId: booking.id,
                 },
+              });
+
+              await restoreTutorTokenLotsForBooking(tx, {
+                bookingId: booking.id,
+                qty: refundAmount,
               });
 
               this.logger.log(
@@ -738,6 +748,11 @@ export class TasksService {
                     reason: TokenReason.REFUND,
                     bookingId: booking.id,
                   },
+                });
+
+                await restoreTutorTokenLotsForBooking(tx, {
+                  bookingId: booking.id,
+                  qty: refundAmount,
                 });
               }
             }
