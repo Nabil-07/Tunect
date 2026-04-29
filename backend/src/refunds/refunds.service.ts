@@ -5,7 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { extractAuditInfo } from '../common/audit-helper';
 import { Request } from 'express';
 import { NotificationType } from '../notifications/dto/create-notification.dto';
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
 import { drainLotsWithoutConsumption } from '../tutors/token-lots.helper';
 
 @Injectable()
@@ -168,8 +168,13 @@ export class RefundsService {
     }
 
     if (approved) {
-      // Transfer tokens
+      // Transfer tokens with FIFO lot splitting: each source lot is drained
+      // and a mirror lot is created on the destination tutor preserving the
+      // original pricePerToken and expiresAt. This keeps historical pricing
+      // intact for future earnings calculation.
       await this.prisma.$transaction(async (tx) => {
+        const transferQty = Number(request.tokenAmount);
+
         const fromBalance = await tx.tutorTokenBalance.findUnique({
           where: {
             studentId_tutorId: {
@@ -179,11 +184,10 @@ export class RefundsService {
           },
         });
 
-        if (!fromBalance || Number(fromBalance.balance) < Number(request.tokenAmount)) {
+        if (!fromBalance || Number(fromBalance.balance) < transferQty) {
           throw new BadRequestException('Insufficient source balance to process transfer');
         }
 
-        const purchasePricePerToken = Number(fromBalance.pricePerToken);
         const latestToTutor = await tx.tutor.findUnique({
           where: { id: request.toTutorId },
           select: { hourlyRate: true },
@@ -192,13 +196,92 @@ export class RefundsService {
         if (!Number.isFinite(latestToTutorRate) || latestToTutorRate <= 0) {
           throw new BadRequestException('Target tutor pricing is invalid');
         }
-        if (latestToTutorRate > purchasePricePerToken) {
+
+        // Pull source FIFO lots (non-expired, remainingQty > 0).
+        const now = new Date();
+        const sourceLots = await tx.tutorTokenLot.findMany({
+          where: {
+            studentId: request.studentId,
+            tutorId: request.fromTutorId,
+            remainingQty: { gt: 0 },
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+          orderBy: [{ purchasedAt: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            id: true,
+            remainingQty: true,
+            pricePerToken: true,
+            purchasedAt: true,
+            expiresAt: true,
+            paymentId: true,
+          },
+        });
+
+        const totalAvailable = sourceLots.reduce(
+          (acc, l) => acc + Number(l.remainingQty),
+          0,
+        );
+        if (totalAvailable + 1e-6 < transferQty) {
           throw new BadRequestException(
-            `Target tutor rate (₹${latestToTutorRate}) exceeds purchase rate cap (₹${purchasePricePerToken})`,
+            `Insufficient unexpired token lots to transfer (have ${totalAvailable}, need ${transferQty})`,
           );
         }
 
-        // Deduct from fromTutor balance
+        // Per-lot rate cap: destination tutor's hourlyRate must not exceed
+        // the price the student paid for any consumed lot.
+        let remaining = transferQty;
+        let valueTransferred = 0;
+        for (const lot of sourceLots) {
+          if (remaining <= 0) break;
+          const lotRemaining = Number(lot.remainingQty);
+          const take = Math.min(lotRemaining, remaining);
+          if (!(take > 0)) continue;
+
+          const lotPrice = Number(lot.pricePerToken);
+          if (latestToTutorRate > lotPrice) {
+            throw new BadRequestException(
+              `Target tutor rate (₹${latestToTutorRate}) exceeds purchase rate of source lot (₹${lotPrice})`,
+            );
+          }
+
+          // Drain the source lot.
+          await tx.tutorTokenLot.update({
+            where: { id: lot.id },
+            data: {
+              remainingQty: { decrement: new Prisma.Decimal(take.toString()) },
+            },
+          });
+
+          // Mint mirror lot on destination tutor preserving price/expiry/order.
+          await tx.tutorTokenLot.create({
+            data: {
+              studentId: request.studentId,
+              tutorId: request.toTutorId,
+              pricePerToken: lot.pricePerToken,
+              initialQty: new Prisma.Decimal(take.toString()),
+              remainingQty: new Prisma.Decimal(take.toString()),
+              paymentId: lot.paymentId ?? null,
+              sourceLotId: lot.id,
+              purchasedAt: lot.purchasedAt,
+              expiresAt: lot.expiresAt,
+            },
+          });
+
+          valueTransferred += take * lotPrice;
+          remaining -= take;
+        }
+
+        if (remaining > 0) {
+          // Should not happen given totalAvailable guard above.
+          throw new BadRequestException(
+            `Token lot pool exhausted mid-transfer (${remaining} of ${transferQty} could not be moved)`,
+          );
+        }
+
+        const weightedAvgPrice =
+          transferQty > 0 ? valueTransferred / transferQty : 0;
+
+        // Deduct from fromTutor balance.
         await tx.tutorTokenBalance.update({
           where: {
             studentId_tutorId: {
@@ -206,14 +289,10 @@ export class RefundsService {
               tutorId: request.fromTutorId,
             },
           },
-          data: {
-            balance: {
-              decrement: request.tokenAmount,
-            },
-          },
+          data: { balance: { decrement: transferQty } },
         });
 
-        // Add to toTutor balance (or create if doesn't exist)
+        // Add to toTutor balance, recomputing weighted avg pricePerToken.
         const toBalance = await tx.tutorTokenBalance.findUnique({
           where: {
             studentId_tutorId: {
@@ -224,6 +303,13 @@ export class RefundsService {
         });
 
         if (toBalance) {
+          const existingQty = Number(toBalance.balance);
+          const existingPrice = Number(toBalance.pricePerToken);
+          const newQty = existingQty + transferQty;
+          const newAvgPrice =
+            newQty > 0
+              ? (existingQty * existingPrice + valueTransferred) / newQty
+              : weightedAvgPrice;
           await tx.tutorTokenBalance.update({
             where: {
               studentId_tutorId: {
@@ -232,9 +318,8 @@ export class RefundsService {
               },
             },
             data: {
-              balance: {
-                increment: request.tokenAmount,
-              },
+              balance: { increment: transferQty },
+              pricePerToken: new Prisma.Decimal(newAvgPrice.toFixed(2)),
             },
           });
         } else {
@@ -242,11 +327,31 @@ export class RefundsService {
             data: {
               studentId: request.studentId,
               tutorId: request.toTutorId,
-              balance: request.tokenAmount,
-              pricePerToken: fromBalance?.pricePerToken || 0,
+              balance: new Prisma.Decimal(transferQty.toString()),
+              pricePerToken: new Prisma.Decimal(weightedAvgPrice.toFixed(2)),
             },
           });
         }
+
+        // Ledger entries for traceability (paired delta = 0 across the two rows).
+        await tx.tokenLedger.create({
+          data: {
+            studentId: request.studentId,
+            tutorId: request.fromTutorId,
+            delta: new Prisma.Decimal((-transferQty).toString()),
+            reason: TokenReason.ADMIN_ADJUSTMENT,
+            description: `Transfer OUT to tutor ${request.toTutorId} (request ${request.id})`,
+          },
+        });
+        await tx.tokenLedger.create({
+          data: {
+            studentId: request.studentId,
+            tutorId: request.toTutorId,
+            delta: new Prisma.Decimal(transferQty.toString()),
+            reason: TokenReason.ADMIN_ADJUSTMENT,
+            description: `Transfer IN from tutor ${request.fromTutorId} (request ${request.id})`,
+          },
+        });
 
         // Reassign any unscheduled bookings from old tutor to new tutor.
         // This ensures future slot assignment happens only with the new tutor.

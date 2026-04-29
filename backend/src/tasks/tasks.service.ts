@@ -873,4 +873,120 @@ export class TasksService {
       this.logger.error('Error syncing auto-trending:', error);
     }
   }
+
+  // 8) Daily at 01:00 UTC: Expire TutorTokenLot rows whose expiresAt has passed.
+  // For each expired lot with remainingQty > 0:
+  //   - decrement TutorTokenBalance.balance by remainingQty
+  //   - set lot.remainingQty = 0
+  //   - write TokenLedger row (negative delta) for traceability
+  // Idempotent: re-running is a no-op once remainingQty reaches 0.
+  @Cron(CronExpression.EVERY_DAY_AT_1AM)
+  async expireTokenLots() {
+    this.logger.log('Running token lot expiry sweep...');
+    const now = new Date();
+    const BATCH_SIZE = 500;
+    let totalExpiredLots = 0;
+    let totalExpiredTokens = 0;
+
+    try {
+      // Loop in batches to keep transactions short.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const expiredLots = await this.prisma.tutorTokenLot.findMany({
+          where: {
+            expiresAt: { lt: now, not: null },
+            remainingQty: { gt: 0 },
+          },
+          orderBy: { expiresAt: 'asc' },
+          take: BATCH_SIZE,
+          select: {
+            id: true,
+            studentId: true,
+            tutorId: true,
+            remainingQty: true,
+            expiresAt: true,
+          },
+        });
+
+        if (expiredLots.length === 0) break;
+
+        for (const lot of expiredLots) {
+          const qty = Number(lot.remainingQty);
+          if (!(qty > 0)) continue;
+          try {
+            await this.prisma.$transaction(async (tx) => {
+              // Re-read inside tx to guard against concurrent mutations.
+              const fresh = await tx.tutorTokenLot.findUnique({
+                where: { id: lot.id },
+                select: { remainingQty: true },
+              });
+              const freshQty = Number(fresh?.remainingQty ?? 0);
+              if (!(freshQty > 0)) return;
+
+              await tx.tutorTokenLot.update({
+                where: { id: lot.id },
+                data: { remainingQty: new Prisma.Decimal(0) },
+              });
+
+              // Decrement per-tutor balance, but never below zero.
+              const balance = await tx.tutorTokenBalance.findUnique({
+                where: {
+                  studentId_tutorId: {
+                    studentId: lot.studentId,
+                    tutorId: lot.tutorId,
+                  },
+                },
+                select: { balance: true },
+              });
+              if (balance) {
+                const currentBal = Number(balance.balance);
+                const decBy = Math.min(currentBal, freshQty);
+                if (decBy > 0) {
+                  await tx.tutorTokenBalance.update({
+                    where: {
+                      studentId_tutorId: {
+                        studentId: lot.studentId,
+                        tutorId: lot.tutorId,
+                      },
+                    },
+                    data: { balance: { decrement: decBy } },
+                  });
+                }
+              }
+
+              await tx.tokenLedger.create({
+                data: {
+                  studentId: lot.studentId,
+                  tutorId: lot.tutorId,
+                  delta: new Prisma.Decimal((-freshQty).toString()),
+                  reason: TokenReason.ADMIN_ADJUSTMENT,
+                  expiresAt: lot.expiresAt,
+                  description: `Token lot expired (lot ${lot.id})`,
+                },
+              });
+
+              totalExpiredLots += 1;
+              totalExpiredTokens += freshQty;
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to expire token lot ${lot.id}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+
+        if (expiredLots.length < BATCH_SIZE) break;
+      }
+
+      if (totalExpiredLots > 0) {
+        this.logger.log(
+          `Token lot expiry: expired ${totalExpiredLots} lot(s), ${totalExpiredTokens} token(s) total`,
+        );
+      }
+    } catch (error) {
+      this.logger.error('Error during token lot expiry sweep:', error);
+    }
+  }
 }
