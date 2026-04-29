@@ -1,5 +1,5 @@
 import { Prisma, PrismaPromise, AuditEntityType, BookingStatus, PaymentStatus, TutorStatus, TokenReason, KycStatus } from '@prisma/client';
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto } from './dto/pagination.dto';
 import { SetTutorStatusDto } from './dto/set-tutor-status.dto';
@@ -21,7 +21,7 @@ function toNum(v: unknown): number {
 }
 
 @Injectable()
-export class AdminService {
+export class AdminService implements OnApplicationBootstrap {
   private readonly logger = new Logger(AdminService.name);
   private readonly cache = new Map<string, { value: unknown; expiresAt: number }>();
   private readonly cacheTtlMs = 30_000;
@@ -36,6 +36,21 @@ export class AdminService {
     private readonly uploads: UploadsService,
     private readonly notify: NotificationsService,
   ) {}
+
+  async onApplicationBootstrap() {
+    try {
+      const result = await this.reconcileWallets();
+      if (result.entriesCorrected > 0) {
+        this.logger.warn(
+          `[WalletReconcile] Corrected ${result.entriesCorrected} wrong ledger entries across ${result.tutorsChecked} tutors. Total adjustment: ₹${result.totalAdjustment}`,
+        );
+      } else {
+        this.logger.log(`[WalletReconcile] All ${result.tutorsChecked} tutor wallets are correct.`);
+      }
+    } catch (err: any) {
+      this.logger.error('[WalletReconcile] Failed on startup:', err?.message);
+    }
+  }
 
   private getFromCache<T>(key: string): T | undefined {
     const entry = this.cache.get(key);
@@ -1559,31 +1574,41 @@ export class AdminService {
       entry.bookingCount++;
     }
 
-    const [tutorWallets, tokenBalances] = await Promise.all([
-      this.prisma.tutorWallet.findMany({
-        select: {
-          tutorId: true,
-          balance: true,
-          tutor: { select: { user: { select: { email: true } } } },
-        },
-      }),
-      this.prisma.tutorTokenBalance.findMany({
-        select: { balance: true, pricePerToken: true },
-      }),
-    ]);
+    // Compute tutor payable from booking data using priceAtBooking (the locked price),
+    // then subtract already-made PAID payouts per tutor.
+    // This matches the Finance/Payments page logic and is accurate even when a tutor
+    // later changes their hourly rate after bookings were made.
+    const allPaidPayouts = await this.prisma.payout.findMany({
+      where: { status: 'PAID' },
+      select: { tutorId: true, amount: true },
+    });
+    const paidByTutor = new Map<string, number>();
+    for (const p of allPaidPayouts) {
+      paidByTutor.set(p.tutorId, (paidByTutor.get(p.tutorId) ?? 0) + toNum(p.amount));
+    }
 
-    const tutorPayableTotal = tutorWallets.reduce((sum, w) => sum + toNum(w.balance), 0);
-    const studentTokenBalance = tokenBalances.reduce((sum, row) => {
-      return sum + toNum(row.balance) * toNum(row.pricePerToken);
-    }, 0);
-    const tutorPayableList = tutorWallets
-      .filter(w => toNum(w.balance) > 0)
-      .map(w => ({
-        tutorId: w.tutorId,
-        email: w.tutor?.user?.email ?? 'unknown',
-        amountPayable: toNum(w.balance),
-      }))
-      .sort((a, b) => b.amountPayable - a.amountPayable);
+    const tutorPayableMap = new Map<string, { email: string; totalEarned: number }>();
+    for (const entry of tutorMap.values()) {
+      tutorPayableMap.set(entry.tutorId, { email: entry.email, totalEarned: entry.totalEarned });
+    }
+
+    // Also include tutors with earnings but zero commission (edge case)
+    const tutorPayableList: { tutorId: string; email: string; amountPayable: number }[] = [];
+    let tutorPayableTotal = 0;
+    for (const [tutorId, info] of tutorPayableMap.entries()) {
+      const alreadyPaid = paidByTutor.get(tutorId) ?? 0;
+      const outstanding = Math.max(0, info.totalEarned - alreadyPaid);
+      if (outstanding > 0) {
+        tutorPayableList.push({
+          tutorId,
+          email: info.email,
+          amountPayable: Math.round(outstanding * 100) / 100,
+        });
+        tutorPayableTotal += outstanding;
+      }
+    }
+    tutorPayableList.sort((a, b) => b.amountPayable - a.amountPayable);
+    tutorPayableTotal = Math.round(tutorPayableTotal * 100) / 100;
 
     const payouts = await this.prisma.payout.findMany({
       where: {
@@ -1669,7 +1694,94 @@ export class AdminService {
       },
       highPerformers,
       monthlyTrend,
-      studentTokenBalance: Math.round(studentTokenBalance * 100) / 100,
+    };
+  }
+
+  // ---------- Wallet Reconciliation ----------
+  async reconcileWallets(): Promise<{ tutorsChecked: number; entriesCorrected: number; totalAdjustment: number }> {
+    const tutors = await this.prisma.tutor.findMany({ select: { id: true } });
+    let entriesCorrected = 0;
+    let totalAdjustment = 0;
+
+    const feePercent = (rate: number): number => {
+      if (!Number.isFinite(rate) || rate <= 0) return 25;
+      if (rate < 400) return 25;
+      if (rate < 700) return 22;
+      return 18;
+    };
+
+    for (const { id: tutorId } of tutors) {
+      const bookings = await this.prisma.booking.findMany({
+        where: {
+          tutorId,
+          isDemo: false,
+          status: { in: [BookingStatus.COMPLETED, BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW] },
+        },
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+          tokensCharged: true,
+          priceAtBooking: true,
+          tutor: { select: { hourlyRate: true } },
+          attendance: {
+            select: { tutorJoinCount: true, studentJoinCount: true, tutorFirstJoinedAt: true, studentFirstJoinedAt: true },
+          },
+          whiteboardSessions: { select: { data: true }, take: 1 },
+        },
+      });
+
+      if (!bookings.length) continue;
+
+      const bookingIds = bookings.map((b) => b.id);
+      const ledgerEntries = await this.prisma.tutorWalletLedger.findMany({
+        where: { bookingId: { in: bookingIds }, reason: 'BOOKING_EARNED' },
+        select: { id: true, bookingId: true, delta: true },
+      });
+      const ledgerMap = new Map(ledgerEntries.map((e) => [e.bookingId!, { id: e.id, delta: toNum(e.delta) }]));
+
+      for (const b of bookings) {
+        const rate = toNum(b.priceAtBooking ?? b.tutor?.hourlyRate);
+        if (rate <= 0) continue;
+        const dMs = b.startTime && b.endTime ? b.endTime.getTime() - b.startTime.getTime() : 0;
+        const hours = dMs > 0 ? dMs / 3_600_000 : toNum(b.tokensCharged);
+        if (hours <= 0) continue;
+        const fee = feePercent(rate);
+        const correctAmount = Math.round(((hours * rate * (100 - fee)) / 100) * 100) / 100;
+        if (correctAmount <= 0) continue;
+
+        const existing = ledgerMap.get(b.id);
+        if (!existing) continue; // missing entry — will be handled by ensureCompletedBookingsCredited on wallet load
+
+        const diff = Math.round((correctAmount - existing.delta) * 100) / 100;
+        if (Math.abs(diff) < 0.01) continue; // already correct
+
+        // Correct the ledger entry and wallet balance
+        await this.prisma.$transaction(async (tx) => {
+          await tx.tutorWalletLedger.update({
+            where: { id: existing.id },
+            data: {
+              delta: correctAmount,
+              note: `Reconciled: rate ₹${rate}/hr, fee ${fee}%, correct ₹${correctAmount.toFixed(2)} (was ₹${existing.delta.toFixed(2)})`,
+            },
+          });
+          await tx.tutorWallet.upsert({
+            where: { tutorId },
+            update: { balance: { increment: diff } },
+            create: { tutorId, balance: correctAmount },
+            select: { tutorId: true },
+          });
+        });
+
+        entriesCorrected++;
+        totalAdjustment += diff;
+      }
+    }
+
+    return {
+      tutorsChecked: tutors.length,
+      entriesCorrected,
+      totalAdjustment: Math.round(totalAdjustment * 100) / 100,
     };
   }
 }

@@ -56,6 +56,11 @@ export class AdminController {
     return this.svc.revenueAnalytics(month);
   }
 
+  @Post('wallets/reconcile')
+  reconcileWallets() {
+    return this.svc.reconcileWallets();
+  }
+
   @Get('users')
   users(@Query() q: PaginationDto) {
     return this.svc.listUsers(q);

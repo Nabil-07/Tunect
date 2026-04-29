@@ -1586,7 +1586,7 @@ export class TutorsService {
     ).size;
 
     // completedBookings query removed — sessionsCompleted below uses prisma.booking.count directly
-    await this.prisma.booking.findMany({
+    const completedBookingsForEarnings = await this.prisma.booking.findMany({
       where: {
         tutorId,
         status: BookingStatus.COMPLETED,
@@ -1598,6 +1598,7 @@ export class TutorsService {
         endTime: true,
         isDemo: true,
         tokensCharged: true,
+        priceAtBooking: true,
         tutor: { select: { hourlyRate: true } },
         attendance: {
           select: {
@@ -1622,36 +1623,45 @@ export class TutorsService {
       },
     });
 
-    // ✅ Get actual earnings from wallet + payouts (source of truth)
-    const wallet = await this.prisma.tutorWallet.findUnique({
-      where: { tutorId },
-    });
-    const unpaidAmount = wallet ? Number(wallet.balance) : 0;
+    // ✅ Compute earnings from booking source data using priceAtBooking (locked at booking time).
+    // This is accurate even if the tutor later changes their hourly rate.
+    const platformFee = (rate: number): number => {
+      if (!Number.isFinite(rate) || rate <= 0) return 25;
+      if (rate < 400) return 25;
+      if (rate < 700) return 22;
+      return 18;
+    };
+    const bookingHours = (b: typeof completedBookingsForEarnings[0]): number => {
+      if (b.startTime && b.endTime) {
+        const ms = b.endTime.getTime() - b.startTime.getTime();
+        if (ms > 0) return ms / 3_600_000;
+      }
+      return Number(b.tokensCharged ?? 0);
+    };
 
+    let totalEarnings = 0;
+    let monthlyEarnings = 0;
+    for (const b of completedBookingsForEarnings) {
+      if (!hasVerifiedAttendanceCombined(b.attendance, b.whiteboardSessions?.[0]?.data)) continue;
+      const rate = Number(b.priceAtBooking ?? b.tutor?.hourlyRate ?? 0);
+      if (rate <= 0) continue;
+      const hours = bookingHours(b);
+      if (hours <= 0) continue;
+      const fee = platformFee(rate);
+      const tutorEarning = (hours * rate * (100 - fee)) / 100;
+      totalEarnings += tutorEarning;
+      if (b.endTime && b.endTime >= startOfMonth) {
+        monthlyEarnings += tutorEarning;
+      }
+    }
+
+    // Add already-paid-out amounts (payouts already disbursed to tutor)
     const payouts = await this.prisma.payout.findMany({
       where: { tutorId },
     });
     const totalPaidOut = payouts.reduce((sum, p) => sum + Number(p.amount), 0);
-
-    // Total earnings = unpaid balance + already paid out
-    const totalEarnings = unpaidAmount + totalPaidOut;
-
-    // Monthly earnings = monthly wallet ledger entries + monthly payouts
-    const monthlyLedgerEntries = await this.prisma.tutorWalletLedger.findMany({
-      where: {
-        tutorId,
-        createdAt: { gte: startOfMonth },
-      },
-    });
-    const monthlyLedgerSum = monthlyLedgerEntries.reduce((sum, entry) => sum + Number(entry.delta), 0);
-
-    const monthlyPayouts = payouts.filter((p) => {
-      const paidAt = p.paidAt || p.createdAt;
-      return paidAt >= startOfMonth;
-    });
-    const monthlyPaidOut = monthlyPayouts.reduce((sum, p) => sum + Number(p.amount), 0);
-
-    const monthlyEarnings = monthlyLedgerSum + monthlyPaidOut;
+    const unpaidAmount = Math.max(0, totalEarnings - totalPaidOut);
+    // Note: totalEarnings already represents total earned; payouts are a subset of it
 
     // Get rating and reviews
     const reviews = await this.prisma.review.findMany({
