@@ -643,7 +643,7 @@ export class BookingsService {
             tutorId: resolvedTutorId,
           },
         },
-        select: { balance: true },
+        select: { balance: true, pricePerToken: true },
       });
 
       const availableTutorTokens = Number(tutorBalance?.balance ?? 0);
@@ -669,6 +669,12 @@ export class BookingsService {
         );
       }
 
+      // Lock priceAtBooking to the price the student actually paid for these
+      // tokens (TutorTokenBalance.pricePerToken). NEVER use tutor.hourlyRate —
+      // the tutor may have raised their rate after the student bought tokens,
+      // and using the current rate would over-pay the tutor relative to what
+      // the platform collected from the student.
+      const lockedPricePerToken = Number(tutorBalance?.pricePerToken ?? 0);
       const booking = await tx.booking.create({
         data: {
           tutorId: resolvedTutorId,
@@ -678,7 +684,10 @@ export class BookingsService {
           startTime: start,
           endTime: end,
           tokensCharged: new Prisma.Decimal(cost),
-          priceAtBooking: tutor.hourlyRate ? new Prisma.Decimal(tutor.hourlyRate.toString()) : null,
+          priceAtBooking:
+            lockedPricePerToken > 0
+              ? new Prisma.Decimal(lockedPricePerToken.toString())
+              : (tutor.hourlyRate ? new Prisma.Decimal(tutor.hourlyRate.toString()) : null),
           notes: dto.notes,
           subject: dto.subject,
           grade: dto.grade,
@@ -1661,11 +1670,13 @@ export class BookingsService {
       });
 
       if (!b.isDemo) {
-        // Use priceAtBooking (locked at purchase time) for accurate earnings
-        // Falls back to current hourlyRate for legacy bookings
-        const hourlyRate = Number(b.priceAtBooking ?? b.tutor.hourlyRate ?? 0);
+        // Use ONLY the priceAtBooking locked at purchase time. New bookings
+        // always populate this at creation; legacy NULL rows must be fixed
+        // via sql/backfill_price_at_booking_v2.sql before completion so the
+        // tutor's earning is credited at the correct historical rate.
+        const hourlyRate = Number(b.priceAtBooking ?? 0);
         const hours = this.getBookingHours(b.startTime, b.endTime, Number(b.tokensCharged));
-        if (!hours) return updated;
+        if (!hours || hourlyRate <= 0) return updated;
         const bookingAmount = hours * hourlyRate;
         const feePercent = this.platformFeePercent(hourlyRate);
         const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
@@ -1877,17 +1888,20 @@ export class BookingsService {
         const tokensAlreadyCharged = Number(booking.tokensCharged ?? 0);
         const tokensToCharge = Math.max(cost - tokensAlreadyCharged, 0);
 
-        if (tokensToCharge > 0) {
-          const tutorBalance = await tx.tutorTokenBalance.findUnique({
-            where: {
-              studentId_tutorId: {
-                studentId: booking.studentId,
-                tutorId: booking.tutorId,
-              },
+        // Read wallet up-front so we can lock priceAtBooking from
+        // pricePerToken below regardless of whether tokens are charged now or
+        // were already charged at PENDING_SLOT creation.
+        const tutorBalance = await tx.tutorTokenBalance.findUnique({
+          where: {
+            studentId_tutorId: {
+              studentId: booking.studentId,
+              tutorId: booking.tutorId,
             },
-            select: { balance: true },
-          });
+          },
+          select: { balance: true, pricePerToken: true },
+        });
 
+        if (tokensToCharge > 0) {
           const available = Number(tutorBalance?.balance ?? 0);
           if (!tutorBalance || available < tokensToCharge) {
             throw new BadRequestException(
@@ -1929,6 +1943,20 @@ export class BookingsService {
             endTime: end,
             status: BookingStatus.CONFIRMED,
             tokensCharged: new Prisma.Decimal(cost),
+            // Lock priceAtBooking from the wallet's pricePerToken (what the
+            // student actually paid). Only set if not already locked, so a
+            // re-schedule can never silently re-price a booking. Falls back
+            // to current hourlyRate only if the wallet has no price recorded.
+            ...(booking.priceAtBooking == null
+              ? {
+                  priceAtBooking:
+                    Number(tutorBalance?.pricePerToken ?? 0) > 0
+                      ? new Prisma.Decimal(tutorBalance!.pricePerToken.toString())
+                      : (booking.tutor?.hourlyRate
+                          ? new Prisma.Decimal(booking.tutor.hourlyRate.toString())
+                          : null),
+                }
+              : {}),
             notes: dto.notes ?? booking.notes,
             subject: dto.subject ?? booking.subject,
             grade: dto.grade ?? booking.grade,

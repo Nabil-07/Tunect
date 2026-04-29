@@ -1,3 +1,16 @@
+-- ⚠️  DEPRECATED — DO NOT RUN  ⚠️
+-- This script backfills priceAtBooking with the tutor's CURRENT hourlyRate.
+-- That is unsafe: if a tutor has raised their rate since a session was booked,
+-- this script silently re-prices the historical booking at the new rate,
+-- inflating the tutor's earnings/payout retroactively.
+--
+-- USE INSTEAD: backfill_price_at_booking_v2.sql, which derives each booking's
+-- historical rate from TutorWalletLedger BOOKING_EARNED notes.
+--
+-- The original content is kept below for reference only.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- STEP 1: Inspect — show bookings with NULL priceAtBooking for a given email
 -- Replace 'nabil.irshad07@gmail.com' with any tutor email you want to check.

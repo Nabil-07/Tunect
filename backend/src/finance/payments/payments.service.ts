@@ -97,6 +97,16 @@ export class PaymentsService {
             status: 'PAID', // Only count paid payouts as "paid"
           },
         },
+        // Pull all negative-delta wallet entries (penalties, ban forfeitures,
+        // manual adjustments) so they are subtracted from "Total Due". Without
+        // this, admin would over-pay any tutor who has been penalised.
+        walletLedger: {
+          where: {
+            delta: { lt: 0 },
+            reason: { in: ['DEMERIT_PENALTY', 'ADJUSTMENT'] },
+          },
+          select: { id: true, delta: true, reason: true, note: true, createdAt: true },
+        },
         kycApplications: {
           orderBy: { updatedAt: 'desc' },
           take: 1,
@@ -119,12 +129,16 @@ export class PaymentsService {
       const paymentSchedule: any[] = [];
       let totalDue = 0;
       let totalPaid = 0;
+      let penaltiesDeducted = 0; // paise
 
       for (const booking of tutor.bookings) {
         const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
-        // Use priceAtBooking (locked at purchase time) for accurate payout calculation
-        // Falls back to current hourlyRate for legacy bookings
-        const hourlyRate = Number(booking.priceAtBooking ?? tutor.hourlyRate ?? 0);
+        // Use ONLY the locked priceAtBooking. Never fall back to the tutor's
+        // current hourlyRate — doing so makes a rate change retroactively
+        // re-price every past session. Legacy NULL rows are backfilled by
+        // sql/backfill_price_at_booking_v2.sql.
+        const hourlyRate = Number(booking.priceAtBooking ?? 0);
+        if (hourlyRate <= 0) continue;
         const bookingAmount = hours * hourlyRate;
         const commissionRate = this.getCommissionRate(hourlyRate);
         const tutorPaymentINR = bookingAmount * ((100 - commissionRate) / 100); // in INR
@@ -160,6 +174,17 @@ export class PaymentsService {
         return sum + Math.round(Number(payout.amount) * 100); // Convert to paise
       }, 0);
 
+      // Subtract every negative-delta wallet ledger entry (DEMERIT_PENALTY,
+      // ADJUSTMENT/ban forfeiture, etc.) from the gross totalDue. The wallet
+      // ledger is the source of truth for amounts the tutor has had taken
+      // off their payable balance — without this step the admin would
+      // over-pay any penalised or partially-forfeited tutor.
+      penaltiesDeducted = tutor.walletLedger.reduce((sum, entry) => {
+        const amt = Math.abs(Number(entry.delta));
+        return sum + Math.round(amt * 100); // paise
+      }, 0);
+      totalDue = Math.max(0, totalDue - penaltiesDeducted);
+
       // Update schedule item statuses based on actual payouts
       // Sort by dueDate ascending so earliest bookings get marked paid first
       paymentSchedule.sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
@@ -189,6 +214,14 @@ export class PaymentsService {
         totalDue,
         totalPaid,
         remaining,
+        penaltiesDeducted,
+        penalties: tutor.walletLedger.map((e) => ({
+          id: e.id,
+          amount: Math.round(Math.abs(Number(e.delta)) * 100),
+          reason: e.reason,
+          note: e.note ?? null,
+          createdAt: e.createdAt.toISOString(),
+        })),
         paymentSchedule,
         commissionRate: this.getCommissionRate(Number(tutor.hourlyRate || 0)),
         isBanned: tutor.user?.isBanned || false,

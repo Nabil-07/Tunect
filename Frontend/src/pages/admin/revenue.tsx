@@ -62,8 +62,11 @@ interface RevenueData {
 }
 
 /* ═══════ Helpers ═══════ */
-const fmt = (n: number) =>
-  `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmt = (n: number | string | null | undefined) => {
+  const num = typeof n === 'number' ? n : Number(n ?? 0);
+  const safe = Number.isFinite(num) ? num : 0;
+  return `₹${safe.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 const COLORS = {
   profit: '#6366f1',
@@ -90,7 +93,36 @@ export default function AdminRevenue() {
     setError(null);
     try {
       const { data: res } = await api.get('/admin/revenue', { params: m ? { month: m } : {} });
-      setData(res);
+      const safe: RevenueData = {
+        totalRevenue: Number(res?.totalRevenue ?? 0),
+        companyProfit: Number(res?.companyProfit ?? 0),
+        tutorPayable: {
+          total: Number(res?.tutorPayable?.total ?? 0),
+          tutors: Array.isArray(res?.tutorPayable?.tutors) ? res.tutorPayable.tutors : [],
+        },
+        tutorPaid: {
+          total: Number(res?.tutorPaid?.total ?? 0),
+          payouts: Array.isArray(res?.tutorPaid?.payouts) ? res.tutorPaid.payouts : [],
+        },
+        bracketBreakdown: {
+          bracket25: {
+            revenue: Number(res?.bracketBreakdown?.bracket25?.revenue ?? 0),
+            count: Number(res?.bracketBreakdown?.bracket25?.count ?? 0),
+          },
+          bracket22: {
+            revenue: Number(res?.bracketBreakdown?.bracket22?.revenue ?? 0),
+            count: Number(res?.bracketBreakdown?.bracket22?.count ?? 0),
+          },
+          bracket18: {
+            revenue: Number(res?.bracketBreakdown?.bracket18?.revenue ?? 0),
+            count: Number(res?.bracketBreakdown?.bracket18?.count ?? 0),
+          },
+        },
+        highPerformers: Array.isArray(res?.highPerformers) ? res.highPerformers : [],
+        monthlyTrend: Array.isArray(res?.monthlyTrend) ? res.monthlyTrend : [],
+        studentTokenBalance: Number(res?.studentTokenBalance ?? 0),
+      };
+      setData(safe);
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to load revenue data');
     } finally {

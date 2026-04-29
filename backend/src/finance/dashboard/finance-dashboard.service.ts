@@ -150,8 +150,10 @@ export class FinanceDashboardService {
     let noAttendanceBookingCount = 0;
 
     for (const booking of bookingsForRevenueSplit) {
-      // Use priceAtBooking (locked at purchase time) for accurate commission calculation
-      const hourlyRate = this.toNumber(booking.priceAtBooking ?? booking.tutor?.hourlyRate);
+      // Use ONLY the locked priceAtBooking — see admin.service.ts for the
+      // full rationale. NULL legacy rows are backfilled via
+      // sql/backfill_price_at_booking_v2.sql.
+      const hourlyRate = this.toNumber(booking.priceAtBooking);
       if (hourlyRate <= 0) continue;
 
       const durationMs = booking.startTime && booking.endTime

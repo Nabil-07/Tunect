@@ -1643,7 +1643,8 @@ export class TutorsService {
     let monthlyEarnings = 0;
     for (const b of completedBookingsForEarnings) {
       if (!hasVerifiedAttendanceCombined(b.attendance, b.whiteboardSessions?.[0]?.data)) continue;
-      const rate = Number(b.priceAtBooking ?? b.tutor?.hourlyRate ?? 0);
+      // Locked rate only — never fall back to current hourlyRate.
+      const rate = Number(b.priceAtBooking ?? 0);
       if (rate <= 0) continue;
       const hours = bookingHours(b);
       if (hours <= 0) continue;
@@ -1893,9 +1894,25 @@ export class TutorsService {
       updatesUser.name = body.name;
     }
 
+    // If hourlyRate is being changed, lock the OLD rate into priceAtBooking
+    // for any existing bookings that don't yet have it set. This prevents the
+    // new rate from retroactively re-pricing past sessions and already-locked
+    // future bookings (earnings/payout calculations fall back to current
+    // hourlyRate when priceAtBooking is NULL).
+    const isHourlyRateChange =
+      updatesTutor.hourlyRate !== undefined &&
+      Number(updatesTutor.hourlyRate) !== Number(t.hourlyRate ?? NaN);
+    const oldHourlyRate = t.hourlyRate != null ? Number(t.hourlyRate) : null;
+
     await this.prisma.$transaction(async (tx) => {
       if (Object.keys(updatesUser).length) {
         await tx.user.update({ where: { id: userId }, data: updatesUser });
+      }
+      if (isHourlyRateChange && oldHourlyRate != null && Number.isFinite(oldHourlyRate)) {
+        await tx.booking.updateMany({
+          where: { tutorId: t.id, priceAtBooking: null },
+          data: { priceAtBooking: oldHourlyRate },
+        });
       }
       if (Object.keys(updatesTutor).length) {
         await tx.tutor.update({ where: { id: t.id }, data: updatesTutor });

@@ -1538,7 +1538,11 @@ export class AdminService implements OnApplicationBootstrap {
     let bracket18Count = 0;
 
     for (const b of completedBookings) {
-      const hourlyRate = toNum(b.priceAtBooking ?? b.tutor?.hourlyRate);
+      // Use ONLY the locked-in priceAtBooking. Never fall back to the tutor's
+      // current hourlyRate — doing so retroactively re-prices past sessions
+      // whenever the tutor changes their rate. NULL rows are skipped and
+      // should be backfilled via sql/backfill_price_at_booking_v2.sql.
+      const hourlyRate = toNum(b.priceAtBooking);
       if (hourlyRate <= 0) continue;
 
       const durationMs = b.startTime && b.endTime
@@ -1587,6 +1591,24 @@ export class AdminService implements OnApplicationBootstrap {
       paidByTutor.set(p.tutorId, (paidByTutor.get(p.tutorId) ?? 0) + toNum(p.amount));
     }
 
+    // Subtract negative-delta wallet ledger entries (DEMERIT_PENALTY, ADJUSTMENT
+    // / ban forfeitures, etc.) so the admin payable figure reflects what the
+    // tutor is actually owed after penalties — not the gross booking total.
+    const penaltyEntries = await this.prisma.tutorWalletLedger.findMany({
+      where: {
+        delta: { lt: 0 },
+        reason: { in: ['DEMERIT_PENALTY', 'ADJUSTMENT'] },
+      },
+      select: { tutorId: true, delta: true },
+    });
+    const penaltyByTutor = new Map<string, number>();
+    for (const e of penaltyEntries) {
+      penaltyByTutor.set(
+        e.tutorId,
+        (penaltyByTutor.get(e.tutorId) ?? 0) + Math.abs(toNum(e.delta)),
+      );
+    }
+
     const tutorPayableMap = new Map<string, { email: string; totalEarned: number }>();
     for (const entry of tutorMap.values()) {
       tutorPayableMap.set(entry.tutorId, { email: entry.email, totalEarned: entry.totalEarned });
@@ -1597,7 +1619,8 @@ export class AdminService implements OnApplicationBootstrap {
     let tutorPayableTotal = 0;
     for (const [tutorId, info] of tutorPayableMap.entries()) {
       const alreadyPaid = paidByTutor.get(tutorId) ?? 0;
-      const outstanding = Math.max(0, info.totalEarned - alreadyPaid);
+      const penalties = penaltyByTutor.get(tutorId) ?? 0;
+      const outstanding = Math.max(0, info.totalEarned - alreadyPaid - penalties);
       if (outstanding > 0) {
         tutorPayableList.push({
           tutorId,
@@ -1656,7 +1679,8 @@ export class AdminService implements OnApplicationBootstrap {
 
       for (const b of completedBookings) {
         if (!b.endTime || b.endTime < mStart || b.endTime > mEnd) continue;
-        const hr = toNum(b.priceAtBooking ?? b.tutor?.hourlyRate);
+        // Locked priceAtBooking only — see note above.
+        const hr = toNum(b.priceAtBooking);
         if (hr <= 0) continue;
         const dMs = b.startTime && b.endTime ? b.endTime.getTime() - b.startTime.getTime() : 0;
         const dH = dMs > 0 ? dMs / 3_600_000 : toNum(b.tokensCharged);
@@ -1676,6 +1700,13 @@ export class AdminService implements OnApplicationBootstrap {
       });
     }
 
+    // Unearned student tokens — money paid in by students that hasn't yet
+    // flowed out to commission, tutor payouts, or accrued tutor payables.
+    // Defined so the five summary cards (companyProfit + tutorPayable +
+    // tutorPaid + studentTokenBalance) reconcile back to totalRevenue.
+    const accountedFor = companyProfit + tutorPayableTotal + tutorPaidTotal;
+    const studentTokenBalance = Math.max(0, totalRevenue - accountedFor);
+
     return {
       totalRevenue: Math.round(totalRevenue * 100) / 100,
       companyProfit: Math.round(companyProfit * 100) / 100,
@@ -1687,6 +1718,7 @@ export class AdminService implements OnApplicationBootstrap {
         total: Math.round(tutorPaidTotal * 100) / 100,
         payouts: tutorPaidList,
       },
+      studentTokenBalance: Math.round(studentTokenBalance * 100) / 100,
       bracketBreakdown: {
         bracket25: { revenue: Math.round(bracket25Revenue * 100) / 100, count: bracket25Count },
         bracket22: { revenue: Math.round(bracket22Revenue * 100) / 100, count: bracket22Count },
@@ -1741,7 +1773,10 @@ export class AdminService implements OnApplicationBootstrap {
       const ledgerMap = new Map(ledgerEntries.map((e) => [e.bookingId!, { id: e.id, delta: toNum(e.delta) }]));
 
       for (const b of bookings) {
-        const rate = toNum(b.priceAtBooking ?? b.tutor?.hourlyRate);
+        // Locked priceAtBooking only. reconcileWallets must NEVER use the
+        // tutor's current hourlyRate or it will rewrite historical ledger
+        // entries with inflated earnings after a rate change.
+        const rate = toNum(b.priceAtBooking);
         if (rate <= 0) continue;
         const dMs = b.startTime && b.endTime ? b.endTime.getTime() - b.startTime.getTime() : 0;
         const hours = dMs > 0 ? dMs / 3_600_000 : toNum(b.tokensCharged);

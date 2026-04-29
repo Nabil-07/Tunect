@@ -102,9 +102,11 @@ export class TutorWalletService {
       const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
       if (!hours) continue;
 
-      // Always use priceAtBooking (rate locked at purchase time); fall back to current
-      // hourlyRate only if priceAtBooking is null (pre-dates the field)
-      const hourlyRate = Number(booking.priceAtBooking ?? booking.tutor?.hourlyRate ?? 0);
+      // Use ONLY the rate locked at purchase time. Never fall back to the
+      // tutor's current hourlyRate or a rate change will retroactively alter
+      // historical credits. Legacy NULL rows are backfilled by
+      // sql/backfill_price_at_booking_v2.sql.
+      const hourlyRate = Number(booking.priceAtBooking ?? 0);
       if (hourlyRate <= 0) continue;
       const fee = this.platformFeePercent(hourlyRate);
       const correctShare = Math.max(0, (hours * hourlyRate * (100 - fee)) / 100);
