@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, Put, Param, Body } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -17,19 +17,15 @@ export class PaymentsController {
   async getStudentPayments(
     @Query('page') page: string = '1',
     @Query('pageSize') pageSize: string = '100',
+    @Query('status') status?: string,
   ) {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const pageSizeNum = Math.max(1, parseInt(pageSize, 10) || 100);
-    return this.paymentsService.getStudentPayments(pageNum, pageSizeNum);
+    return this.paymentsService.getStudentPayments(pageNum, pageSizeNum, status);
   }
 
-  @Get('tutor-due')
-  async getTutorPaymentsDue(
-    @Query('page') page: string = '1',
-    @Query('pageSize') pageSize: string = '100',
-  ) {
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const pageSizeNum = Math.max(1, parseInt(pageSize, 10) || 100);
-    return this.paymentsService.getTutorPaymentsDue(pageNum, pageSizeNum);
+  @Put('student/:paymentId/mark-successful')
+  async markPaymentSuccessful(@Param('paymentId') paymentId: string) {
+    return this.paymentsService.markPaymentSuccessful(paymentId);
   }
 }

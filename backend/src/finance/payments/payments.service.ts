@@ -15,15 +15,32 @@ export class PaymentsService {
     return Number.isFinite(fallback) ? fallback : 0;
   }
 
-  async getStudentPayments(page: number = 1, pageSize: number = 100) {
+  async getStudentPayments(page: number = 1, pageSize: number = 100, status?: string) {
     const skip = (page - 1) * pageSize;
+
+    // Build where clause based on status filter
+    const whereClause: any = {};
+    if (status) {
+      if (status === 'successful') {
+        whereClause.status = 'SUCCEEDED';
+      } else if (status === 'failed') {
+        whereClause.status = 'FAILED';
+      } else if (status === 'pending') {
+        whereClause.status = 'PENDING';
+      } else if (status === 'all') {
+        // No status filter - show all
+      } else {
+        whereClause.status = status.toUpperCase(); // Allow direct status values
+      }
+    } else {
+      // Default behavior: only successful payments
+      whereClause.status = 'SUCCEEDED';
+    }
 
     // Query actual Payment model records (Razorpay transactions) — not bookings
     const [payments, total] = await this.prisma.$transaction([
       this.prisma.payment.findMany({
-        where: {
-          status: 'SUCCEEDED',
-        },
+        where: whereClause,
         include: {
           user: {
             select: {
@@ -42,9 +59,7 @@ export class PaymentsService {
         take: pageSize,
       }),
       this.prisma.payment.count({
-        where: {
-          status: 'SUCCEEDED',
-        },
+        where: whereClause,
       }),
     ]);
 
@@ -64,11 +79,136 @@ export class PaymentsService {
       isBanned: payment.user?.isBanned || false,
       tokensPurchased: payment.tokensPurchased,
       provider: payment.provider,
+      status: payment.status,
     }));
 
     return {
       payments: mapped,
       total,
+    };
+  }
+
+  async markPaymentSuccessful(paymentId: string) {
+    // Fetch payment and related user info
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            isBanned: true,
+            student: { select: { id: true } },
+          },
+        },
+      },
+    });
+    if (!payment) throw new Error('Payment not found');
+
+    // Only proceed if not already succeeded
+    if (payment.status === 'SUCCEEDED') {
+      return { status: 'already_succeeded' };
+    }
+
+    // Extract info
+    const studentId = payment.user?.student?.id;
+    const tokensPurchased = Number(payment.tokensPurchased ?? 0);
+    const amountInMinor = Number(payment.amountInMinor ?? 0);
+    const metadata = payment.metadata as any;
+    const tutorId = metadata?.tutorId || '';
+    const pricePerToken = tokensPurchased > 0 ? amountInMinor / 100 / tokensPurchased : 0;
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 60);
+
+    // Credit tokens, update ledgers, balances, lots, and set status
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { status: 'SUCCEEDED' },
+      });
+
+      if (studentId && tokensPurchased > 0) {
+        const existingLedger = await tx.tokenLedger.findFirst({
+          where: { paymentId, studentId },
+          select: { id: true },
+        });
+        if (!existingLedger) {
+          await tx.tokenLedger.create({
+            data: {
+              studentId,
+              tutorId,
+              delta: tokensPurchased,
+              reason: 'PURCHASED',
+              expiresAt: expiryDate,
+              paymentId,
+            },
+          });
+          await tx.student.update({
+            where: { id: studentId },
+            data: { tokens: { increment: tokensPurchased } },
+          });
+          await tx.tutorTokenBalance.upsert({
+            where: { studentId_tutorId: { studentId, tutorId } },
+            update: {
+              balance: { increment: tokensPurchased },
+              pricePerToken,
+            },
+            create: {
+              studentId,
+              tutorId,
+              balance: tokensPurchased,
+              pricePerToken,
+            },
+          });
+          await tx.tutorTokenLot.create({
+            data: {
+              studentId,
+              tutorId,
+              pricePerToken,
+              initialQty: tokensPurchased,
+              remainingQty: tokensPurchased,
+              paymentId,
+              expiresAt: expiryDate,
+            },
+          });
+        }
+      }
+    });
+
+    // Send notifications (fire-and-forget)
+    try {
+      if (studentId && payment.user?.email) {
+        // You may want to inject NotificationsService for richer notifications
+        // For now, just log
+        // TODO: Use notifications service if available
+        // e.g. this.notifications.createPaymentNotification(...)
+        // e.g. this.notifications.paymentReceiptEmail(...)
+        // For now, just log
+        // console.log(`Admin marked payment as successful: tokens credited to student ${studentId}`);
+      }
+    } catch (e) {
+      // Ignore notification errors
+    }
+
+    // Return updated payment info
+    return {
+      id: payment.id,
+      bookingId: payment.id,
+      orderId: payment.providerOrderId || payment.id,
+      studentId,
+      studentName: payment.user?.name || '',
+      studentEmail: payment.user?.email || '',
+      tutorId,
+      tutorName: '',
+      amount: payment.amountInMinor,
+      amountAtBooking: payment.amountInMinor,
+      paidAt: payment.createdAt.toISOString(),
+      receiptUrl: undefined,
+      isBanned: payment.user?.isBanned || false,
+      tokensPurchased: payment.tokensPurchased,
+      provider: payment.provider,
+      status: 'SUCCEEDED',
     };
   }
 

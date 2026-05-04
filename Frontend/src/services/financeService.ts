@@ -156,6 +156,7 @@ export type StudentPayment = {
   isBanned: boolean;
   tokensPurchased?: number;
   provider?: string;
+  status?: string;
 };
 
 export async function getStudentPayments(params?: {
@@ -164,11 +165,17 @@ export async function getStudentPayments(params?: {
   studentId?: string;
   tutorId?: string;
   isBanned?: boolean;
+  status?: string;
 }) {
   const { data } = await api.get<{ payments: StudentPayment[]; total: number }>(
     '/admin/finance/payments/student',
     { params }
   );
+  return data;
+}
+
+export async function markPaymentSuccessful(paymentId: string) {
+  const { data } = await api.put(`/admin/finance/payments/student/${paymentId}/mark-successful`);
   return data;
 }
 

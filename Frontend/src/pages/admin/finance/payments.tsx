@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Eye, Loader2, AlertCircle, TrendingUp, Users, CreditCard, X, Upload, Building2, Search, Filter, FileText, ExternalLink, ChevronDown, ChevronUp, Receipt, Printer } from 'lucide-react';
-import { getStudentPayments, getTutorPaymentsDue, createPayout, markPayoutPaid, uploadPayoutSlip, listPayouts, getPayoutReceipt } from '../../../services/financeService';
+import { Eye, Loader2, AlertCircle, TrendingUp, Users, CreditCard, X, Upload, Building2, Search, Filter, FileText, ExternalLink, ChevronDown, ChevronUp, Receipt, Printer, CheckCircle } from 'lucide-react';
+import { getStudentPayments, getTutorPaymentsDue, createPayout, markPayoutPaid, uploadPayoutSlip, listPayouts, getPayoutReceipt, markPaymentSuccessful } from '../../../services/financeService';
 import type { StudentPayment, TutorPaymentDue, PayoutRecord, PayoutReceipt } from '../../../services/financeService';
 
 export default function PaymentsPage() {
@@ -9,13 +9,14 @@ export default function PaymentsPage() {
   const [tutorDues, setTutorDues] = useState<TutorPaymentDue[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<'successful' | 'failed' | 'pending' | 'all'>('successful');
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
       const [paymentsRes, duesRes] = await Promise.all([
-        getStudentPayments({ page: 1, pageSize: 100 }),
+        getStudentPayments({ page: 1, pageSize: 100, status: paymentStatusFilter }),
         getTutorPaymentsDue({ page: 1, pageSize: 100 }),
       ]);
       
@@ -31,7 +32,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [paymentStatusFilter]);
 
   const studentStats = useMemo(() => {
     return {
@@ -102,7 +103,15 @@ export default function PaymentsPage() {
 
       {/* Student Payments Tab */}
       {tab === 'received' && (
-        <StudentPaymentsTab payments={studentPayments} stats={studentStats} loading={loading} formatINR={formatINR} />
+        <StudentPaymentsTab 
+          payments={studentPayments} 
+          stats={studentStats} 
+          loading={loading} 
+          formatINR={formatINR}
+          statusFilter={paymentStatusFilter}
+          onStatusFilterChange={setPaymentStatusFilter}
+          onPaymentStatusUpdate={loadData}
+        />
       )}
 
       {/* Tutor Dues Tab */}
@@ -124,14 +133,21 @@ function StudentPaymentsTab({
   stats,
   loading,
   formatINR,
+  statusFilter,
+  onStatusFilterChange,
+  onPaymentStatusUpdate,
 }: {
   payments: StudentPayment[];
   stats: { totalReceived: number; totalPayments: number; bannedCount: number };
   loading: boolean;
   formatINR: (paise: number) => string;
+  statusFilter: 'successful' | 'failed' | 'pending' | 'all';
+  onStatusFilterChange: (status: 'successful' | 'failed' | 'pending' | 'all') => void;
+  onPaymentStatusUpdate: () => void;
 }) {
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
   const [viewingPayment, setViewingPayment] = useState<StudentPayment | null>(null);
+  const [markingSuccessful, setMarkingSuccessful] = useState<string | null>(null);
 
   const sorted = useMemo(() => {
     const copy = [...payments];
@@ -161,6 +177,24 @@ function StudentPaymentsTab({
         </div>
       </div>
 
+      {/* Status Filter */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-slate-600" />
+          <span className="text-sm font-medium text-slate-700">Filter by Status:</span>
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => onStatusFilterChange(e.target.value as any)}
+          className="text-sm border border-slate-200 rounded-lg px-3 py-2"
+        >
+          <option value="successful">Successful Payments</option>
+          <option value="failed">Failed Payments</option>
+          <option value="pending">Pending Payments</option>
+          <option value="all">All Payments</option>
+        </select>
+      </div>
+
       {/* Regular Payments */}
       {regularPayments.length > 0 && (
         <div>
@@ -185,6 +219,7 @@ function StudentPaymentsTab({
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Student</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-700">Amount</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-700">Tokens</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Paid Date</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-700">Actions</th>
                 </tr>
@@ -201,6 +236,16 @@ function StudentPaymentsTab({
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatINR(payment.amount)}</td>
                     <td className="px-4 py-3 text-center text-slate-700">{payment.tokensPurchased ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        payment.status === 'SUCCEEDED' ? 'bg-green-100 text-green-800' :
+                        payment.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                        payment.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {payment.status || 'SUCCEEDED'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-slate-600">
                       {new Date(payment.paidAt).toLocaleDateString('en-IN')}
                     </td>
@@ -213,6 +258,32 @@ function StudentPaymentsTab({
                         >
                           <Eye className="w-4 h-4 text-slate-600" />
                         </button>
+                        {(payment.status === 'FAILED' || payment.status === 'PENDING') && (
+                          <button
+                            onClick={async () => {
+                              if (window.confirm(`Mark this payment as successful? This will update the payment status and may credit tokens to the student.`)) {
+                                setMarkingSuccessful(payment.id);
+                                try {
+                                  await markPaymentSuccessful(payment.id);
+                                  onPaymentStatusUpdate();
+                                } catch (err: any) {
+                                  alert('Failed to mark payment as successful: ' + (err?.response?.data?.message || err.message));
+                                } finally {
+                                  setMarkingSuccessful(null);
+                                }
+                              }
+                            }}
+                            disabled={markingSuccessful === payment.id}
+                            title="Mark as Successful"
+                            className="p-1 rounded hover:bg-green-100 transition-colors disabled:opacity-50"
+                          >
+                            {markingSuccessful === payment.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-green-600" />
+                            ) : (
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -235,6 +306,7 @@ function StudentPaymentsTab({
                   <th className="px-4 py-3 text-left font-semibold text-rose-900">Student</th>
                   <th className="px-4 py-3 text-right font-semibold text-rose-900">Amount</th>
                   <th className="px-4 py-3 text-center font-semibold text-rose-900">Tokens</th>
+                  <th className="px-4 py-3 text-left font-semibold text-rose-900">Status</th>
                   <th className="px-4 py-3 text-left font-semibold text-rose-900">Paid Date</th>
                 </tr>
               </thead>
@@ -250,6 +322,16 @@ function StudentPaymentsTab({
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-rose-900">{formatINR(payment.amount)}</td>
                     <td className="px-4 py-3 text-center text-rose-700">{payment.tokensPurchased ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        payment.status === 'SUCCEEDED' ? 'bg-green-100 text-green-800' :
+                        payment.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                        payment.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {payment.status || 'SUCCEEDED'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-rose-600">
                       {new Date(payment.paidAt).toLocaleDateString('en-IN')}
                     </td>
@@ -343,12 +425,23 @@ function StudentPaymentsTab({
                   <p className="font-medium text-slate-900 mt-0.5">{viewingPayment.tokensPurchased ?? '—'}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Paid Date</p>
-                  <p className="font-medium text-slate-900 mt-0.5">{new Date(viewingPayment.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  <p className="text-xs text-slate-500">Status</p>
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-0.5 ${
+                    viewingPayment.status === 'SUCCEEDED' ? 'bg-green-100 text-green-800' :
+                    viewingPayment.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                    viewingPayment.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {viewingPayment.status || 'SUCCEEDED'}
+                  </span>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Provider</p>
                   <p className="font-medium text-slate-900 mt-0.5 capitalize">{viewingPayment.provider || 'Razorpay'}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-slate-500">Paid Date</p>
+                  <p className="font-medium text-slate-900 mt-0.5">{new Date(viewingPayment.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                 </div>
               </div>
             </div>
