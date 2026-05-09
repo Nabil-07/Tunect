@@ -239,7 +239,6 @@ export default function Cart() {
   const couponDiscount = appliedCoupon?.discount ?? 0;
   const finalPriceINR = Math.max(0, basePrice - packDiscount - couponDiscount);
   const tokens = isManualMode ? manualTokenCount : (selectedPack?.pack.tokenCount ?? 0);
-  const perClassINR = tokens > 0 ? finalPriceINR / tokens : 0;
 
   const fmt = (inr: number) => formatCurrency(Math.round(convertFromINR(inr) ?? inr), displayCurrency);
 

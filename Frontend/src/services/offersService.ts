@@ -44,6 +44,7 @@ export interface CurrencyConfig {
   symbol: string;
   name: string;
   exchangeRate: number;
+  isActive: boolean;
   isDefault: boolean;
 }
 
