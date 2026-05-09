@@ -337,6 +337,7 @@ export class AdminService implements OnApplicationBootstrap {
       if (q.q) {
         w.OR = [
           { user: { is: { email: { contains: q.q, mode: Prisma.QueryMode.insensitive }, deletedAt: null } } },
+          { user: { is: { name: { contains: q.q, mode: Prisma.QueryMode.insensitive }, deletedAt: null } } },
           { grade: { contains: q.q, mode: Prisma.QueryMode.insensitive } },
         ];
       }
@@ -355,16 +356,6 @@ export class AdminService implements OnApplicationBootstrap {
       this.prisma.student.count({ where }),
     ]);
 
-    const studentIds = items.map((s) => s.id);
-    const tokenSums = studentIds.length
-      ? await this.prisma.tokenLedger.groupBy({
-          by: ['studentId'],
-          where: { studentId: { in: studentIds } },
-          _sum: { delta: true },
-        })
-      : [];
-    const tokenSumMap = new Map(tokenSums.map((row) => [row.studentId, toNum(row._sum.delta)]));
-
     const studentUserIds = items.map((s) => s.user.id);
     const studentStrikeCounts = studentUserIds.length
       ? await this.prisma.piiViolationLog.groupBy({
@@ -380,7 +371,9 @@ export class AdminService implements OnApplicationBootstrap {
       const profileStatus = checkStudentProfileCompletion({ ...item, user: item.user });
       return {
         ...item,
-        tokens: tokenSumMap.get(item.id) ?? 0,
+        // Use the canonical live balance from Student.tokens. Ledger sums can
+        // include historical correction rows and may temporarily drift negative.
+        tokens: Math.max(0, Number(item.tokens ?? 0)),
         profileCompletion: profileStatus.completionPercentage,
         user: {
           ...item.user,
@@ -524,11 +517,8 @@ export class AdminService implements OnApplicationBootstrap {
       throw new NotFoundException('Student not found');
     }
 
-    const tokenTotal = await this.prisma.tokenLedger.aggregate({
-      where: { studentId },
-      _sum: { delta: true },
-    });
-    const liveTokens = toNum(tokenTotal._sum.delta);
+    // Student.tokens is the source-of-truth live balance.
+    const liveTokens = Math.max(0, Number(student.tokens ?? 0));
 
     const userId = student.user.id;
 
@@ -1711,15 +1701,35 @@ export class AdminService implements OnApplicationBootstrap {
       });
     }
 
+    // Sum the cash value of admin manual refunds (tokens zeroed out and cash
+    // returned to students). Each MANUAL_REFUND ledger entry carries a JSON
+    // description with { amountInPaise } that was recorded at refund time.
+    const manualRefundEntries = await this.prisma.tokenLedger.findMany({
+      where: {
+        reason: 'REFUND' as any,
+        description: { contains: 'MANUAL_REFUND' },
+        ...(dateFilter ? { createdAt: dateFilter } : {}),
+      },
+      select: { description: true },
+    });
+    let totalRefundedPaise = 0;
+    for (const entry of manualRefundEntries) {
+      try {
+        const meta = JSON.parse(entry.description ?? '{}');
+        totalRefundedPaise += Number(meta.amountInPaise ?? 0);
+      } catch { /* malformed description — skip */ }
+    }
+    const totalRefunded = totalRefundedPaise / 100;
+
     // Unearned student tokens — money paid in by students that hasn't yet
-    // flowed out to commission, tutor payouts, or accrued tutor payables.
-    // Defined so the five summary cards (companyProfit + tutorPayable +
-    // tutorPaid + studentTokenBalance) reconcile back to totalRevenue.
-    const accountedFor = companyProfit + tutorPayableTotal + tutorPaidTotal;
+    // flowed out to commission, tutor payouts, accrued tutor payables, or
+    // been returned via manual refund.
+    const accountedFor = companyProfit + tutorPayableTotal + tutorPaidTotal + totalRefunded;
     const studentTokenBalance = Math.max(0, totalRevenue - accountedFor);
 
     return {
       totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalRefunded: Math.round(totalRefunded * 100) / 100,
       companyProfit: Math.round(companyProfit * 100) / 100,
       tutorPayable: {
         total: Math.round(tutorPayableTotal * 100) / 100,

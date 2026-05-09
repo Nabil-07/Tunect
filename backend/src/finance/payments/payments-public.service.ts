@@ -3,9 +3,8 @@ import { Prisma, TokenReason } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { PricingEngineService } from '../../offers/pricing-engine.service';
 import * as crypto from 'node:crypto';
-
-const TOKENS_PER_HOUR = 1;
 
 @Injectable()
 export class PaymentsPublicService {
@@ -15,6 +14,7 @@ export class PaymentsPublicService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly pricingEngine: PricingEngineService,
   ) {}
 
   private getRazorpayClient() {
@@ -24,10 +24,6 @@ export class PaymentsPublicService {
       throw new Error('Razorpay credentials not configured');
     }
     return { keyId, keySecret };
-  }
-
-  private resolveTutorPricePerToken(hourlyRate: number): number {
-    return Math.ceil(hourlyRate / TOKENS_PER_HOUR);
   }
 
   private async resolveStudentId(userId: string): Promise<string> {
@@ -58,14 +54,9 @@ export class PaymentsPublicService {
 
   async createOrder(
     studentId: string,
-    dto: { tutorId: string; tokens: number; displayCurrency?: string },
+    dto: { tutorId: string; tokens?: number; packId?: string; couponCode?: string; displayCurrency?: string },
   ) {
-    const { tutorId, tokens, displayCurrency = 'INR' } = dto;
-
-    // Validate minimum tokens
-    if (tokens < 5) {
-      throw new BadRequestException('Minimum 5 tokens required');
-    }
+    const { tutorId, displayCurrency = 'INR', couponCode } = dto;
 
     // Find tutor
     let tutor = await this.prisma.tutor.findUnique({
@@ -73,19 +64,63 @@ export class PaymentsPublicService {
       select: { id: true, hourlyRate: true },
     });
 
-    // Fallback lookup if not found
     tutor ??= await this.prisma.tutor.findFirst({
       where: { id: { endsWith: tutorId } },
       select: { id: true, hourlyRate: true },
     });
 
-    if (!tutor) {
-      throw new NotFoundException('Tutor not found.');
+    if (!tutor) throw new NotFoundException('Tutor not found.');
+
+    let tokens: number;
+    let totalPriceINR: number;
+    let pricePerToken: number;
+    let appliedCouponId: string | null = null;
+    let packId: string | null = null;
+
+    if (dto.packId) {
+      // Dynamic pricing via pack selection
+      const pricing = await this.pricingEngine.computeCartPricing({
+        tutorId: tutor.id,
+        packId: dto.packId,
+        userId: studentId,
+        couponCode: couponCode || undefined,
+      });
+
+      tokens = pricing.pack.tokenCount;
+      totalPriceINR = pricing.totalPrice;
+      pricePerToken = tokens > 0 ? totalPriceINR / tokens : pricing.pricePerToken;
+      appliedCouponId = pricing.appliedCouponId;
+      packId = dto.packId;
+    } else {
+      // Manual token flow
+      const rawTokens = dto.tokens ?? 0;
+      if (rawTokens < 5) throw new BadRequestException('Minimum 5 tokens required');
+      tokens = rawTokens;
+      pricePerToken = Math.ceil(Number(tutor.hourlyRate || 0));
+      const baseTotal = pricePerToken * tokens;
+
+      // Apply coupon discount if provided
+      if (couponCode && studentId) {
+        try {
+          const bracket = await this.pricingEngine.resolveBracket(Number(tutor.hourlyRate ?? 0));
+          const couponResult = await this.pricingEngine.computeCouponDiscount(
+            couponCode,
+            studentId,
+            '',
+            bracket?.id ?? null,
+            baseTotal,
+          );
+          appliedCouponId = couponResult.couponId;
+          totalPriceINR = Math.max(0, baseTotal - couponResult.discount);
+        } catch {
+          totalPriceINR = baseTotal;
+        }
+      } else {
+        totalPriceINR = baseTotal;
+      }
     }
 
-    const pricePerToken = this.resolveTutorPricePerToken(Number(tutor.hourlyRate || 0));
-    const totalPriceINR = pricePerToken * tokens;
-    const amountInPaise = totalPriceINR * 100;
+    const amountInPaise = Math.round(totalPriceINR) * 100;
 
     // Create Payment record
     const payment = await this.prisma.payment.create({
@@ -100,6 +135,9 @@ export class PaymentsPublicService {
           tutorId: tutor.id,
           tokens,
           displayCurrency,
+          ...(packId && { packId }),
+          ...(appliedCouponId && { appliedCouponId }),
+          ...(couponCode && { couponCode }),
         },
       },
     });
@@ -214,6 +252,10 @@ export class PaymentsPublicService {
     const pricePerToken = tokensPurchased > 0
       ? amountInMinor / 100 / tokensPurchased
       : 0;
+
+    // Extract coupon info from metadata
+    const paymentMeta = payment.metadata as any;
+    const appliedCouponId = paymentMeta?.appliedCouponId as string | undefined;
 
     // Credit tokens to student via token ledger
     const expiryDate = new Date();
@@ -350,6 +392,12 @@ export class PaymentsPublicService {
       // Check tutor's upcoming availability — if < 2 slots, send low-availability reminder
       this.checkTutorAvailabilityAndRemind(tutorId, tutorUser.user.email, tutorUser.user.name)
         .catch((err) => this.logger.error(`Low-availability check failed: ${err?.message ?? err}`));
+    }
+
+    // Record coupon usage if a coupon was applied
+    if (appliedCouponId) {
+      this.pricingEngine.recordCouponUsage(appliedCouponId, userId, payment.id)
+        .catch((err) => this.logger.warn(`Coupon usage recording failed: ${err?.message ?? err}`));
     }
 
     return {

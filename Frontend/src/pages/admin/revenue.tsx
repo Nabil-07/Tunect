@@ -9,6 +9,7 @@ import {
   BadgeDollarSign,
   Building2,
   Crown,
+  RotateCcw,
 } from 'lucide-react';
 import {
   PieChart,
@@ -31,6 +32,7 @@ import { http as api } from '../../api/http';
 /* ═══════ Types ═══════ */
 interface RevenueData {
   totalRevenue: number;
+  totalRefunded: number;
   companyProfit: number;
   tutorPayable: {
     total: number;
@@ -77,7 +79,7 @@ const COLORS = {
   bracket18: '#10b981',
 };
 
-const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#94a3b8'];
+const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#94a3b8'];
 const BRACKET_COLORS = ['#ef4444', '#f59e0b', '#10b981'];
 
 export default function AdminRevenue() {
@@ -95,6 +97,7 @@ export default function AdminRevenue() {
       const { data: res } = await api.get('/admin/revenue', { params: m ? { month: m } : {} });
       const safe: RevenueData = {
         totalRevenue: Number(res?.totalRevenue ?? 0),
+        totalRefunded: Number(res?.totalRefunded ?? 0),
         companyProfit: Number(res?.companyProfit ?? 0),
         tutorPayable: {
           total: Number(res?.tutorPayable?.total ?? 0),
@@ -146,6 +149,7 @@ export default function AdminRevenue() {
     { name: "Tunect's Earnings", value: data.companyProfit },
     { name: 'Tutor Payable', value: data.tutorPayable.total },
     { name: 'Tutor Paid', value: data.tutorPaid.total },
+    { name: 'Refunded to Students', value: data.totalRefunded },
     { name: 'Student Tokens (Unearned)', value: data.studentTokenBalance },
   ].filter((d) => d.value > 0);
 
@@ -199,7 +203,7 @@ export default function AdminRevenue() {
       </div>
 
       {/* ═══════ Summary Cards ═══════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <SummaryCard
           icon={<BadgeDollarSign className="w-6 h-6 text-indigo-600" />}
           label="Total Revenue Collected"
@@ -227,6 +231,13 @@ export default function AdminRevenue() {
           value={fmt(data.companyProfit)}
           color="purple"
           subtitle="Platform commission"
+        />
+        <SummaryCard
+          icon={<RotateCcw className="w-6 h-6 text-rose-600" />}
+          label="Refunded to Students"
+          value={fmt(data.totalRefunded)}
+          color="rose"
+          subtitle="Manual cash refunds issued"
         />
         <SummaryCard
           icon={<BadgeDollarSign className="w-6 h-6 text-slate-500" />}
@@ -657,6 +668,7 @@ function SummaryCard({
     amber: 'bg-amber-50 border-amber-200',
     emerald: 'bg-emerald-50 border-emerald-200',
     purple: 'bg-purple-50 border-purple-200',
+    rose: 'bg-rose-50 border-rose-200',
     slate: 'bg-slate-50 border-slate-200',
   };
 

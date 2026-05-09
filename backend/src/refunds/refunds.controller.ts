@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Req, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Req, Query, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RefundsService } from './refunds.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -148,5 +148,48 @@ export class RefundsController {
       throw new Error('Student account not found');
     }
     return this.refundsService.getMyTransferRequests(studentId);
+  }
+
+  @ApiOperation({ summary: 'Get student token balances for manual refund preview (admin)' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('student/:studentId/balances')
+  async getStudentTokenBalances(@Param('studentId') studentId: string) {
+    return this.refundsService.getStudentTokenBalances(studentId);
+  }
+
+  @ApiOperation({ summary: 'Admin manual refund: zero-out all student tokens and record ledger entries' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('manual')
+  async processManualRefund(
+    @Req() req: any,
+    @Body() body: { studentId: string; reason: string; note?: string; tutorIds?: string[] },
+  ) {
+    const adminId = req.user.id;
+    if (!body.studentId || !body.reason?.trim()) {
+      throw new BadRequestException('studentId and reason are required');
+    }
+    return this.refundsService.processManualRefund(
+      body.studentId,
+      adminId,
+      body.reason.trim(),
+      body.note,
+      Array.isArray(body.tutorIds) && body.tutorIds.length ? body.tutorIds : undefined,
+    );
+  }
+
+  @ApiOperation({ summary: 'History of admin manual refunds (admin)' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('manual/history')
+  async getManualRefundHistory(
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '20',
+  ) {
+    return this.refundsService.getManualRefundHistory(Number(page) || 1, Number(pageSize) || 20);
   }
 }

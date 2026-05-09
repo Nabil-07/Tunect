@@ -954,6 +954,22 @@ export class TasksService {
                 }
               }
 
+              // Keep the aggregate student balance in sync too, never below zero.
+              const s = await tx.student.findUnique({
+                where: { id: lot.studentId },
+                select: { tokens: true },
+              });
+              if (s) {
+                const currentTokens = Number(s.tokens ?? 0);
+                const studentDecBy = Math.min(currentTokens, freshQty);
+                if (studentDecBy > 0) {
+                  await tx.student.update({
+                    where: { id: lot.studentId },
+                    data: { tokens: { decrement: studentDecBy } },
+                  });
+                }
+              }
+
               await tx.tokenLedger.create({
                 data: {
                   studentId: lot.studentId,

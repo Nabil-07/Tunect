@@ -30,13 +30,16 @@ export default function StudentCheckoutPaid() {
   const { user } = useAuth() as any;
   const tutorId = sp.get('tutorId') || '';
   const tokens = Number(sp.get('tokens') || '0');
+  const packId = sp.get('packId') || undefined;
+  const couponCode = sp.get('couponCode') || undefined;
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // canProceed: either packId or tokens must be present
   const canProceed = useMemo(
-    () => Boolean(tutorId) && Number.isFinite(tokens) && tokens > 0,
-    [tutorId, tokens]
+    () => Boolean(tutorId) && (Boolean(packId) || (Number.isFinite(tokens) && tokens > 0)),
+    [tutorId, tokens, packId],
   );
 
   useEffect(() => {
@@ -75,7 +78,11 @@ export default function StudentCheckoutPaid() {
         const displayCurrency = user?.preferredCurrency || 'INR';
 
         // 1) Ask backend for order (backend always uses INR for Razorpay)
-        const order = await createOrder({ tutorId, tokens, displayCurrency });
+        const order = await createOrder({
+          tutorId,
+          ...(packId ? { packId, ...(couponCode && { couponCode }) } : { tokens }),
+          displayCurrency,
+        });
 
         // 2) Ensure Razorpay is available
         await loadRazorpayScript();
@@ -115,7 +122,10 @@ export default function StudentCheckoutPaid() {
 
           modal: {
             ondismiss: () => {
-              navigate(`/student/cart?tutorId=${tutorId}&tokens=${tokens}`, { replace: true });
+              const params = new URLSearchParams({ tutorId });
+              if (packId) params.set('packId', packId);
+              else params.set('tokens', String(tokens));
+              navigate(`/student/cart?${params.toString()}`, { replace: true });
             },
           },
         };
@@ -134,7 +144,7 @@ export default function StudentCheckoutPaid() {
     return () => {
       mounted = false;
     };
-  }, [canProceed, tutorId, tokens, navigate]);
+  }, [canProceed, tutorId, tokens, packId, couponCode, navigate]);
 
   return (
     <main className="container mx-auto px-4 py-12" data-testid="student-checkout-paid-page">

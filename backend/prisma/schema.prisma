@@ -1108,6 +1108,8 @@ model User {
   auditLogs                        AuditLog[]        @relation("AuditLogAdmin")
   tokenTransferRequests            TokenTransferRequest[]
   refundRequests                   RefundRequest[]
+  couponUsages                     CouponUsage[]
+  couponUsers                      CouponUser[]
   adminBroadcasts                  AdminBroadcast[]        @relation("AdminBroadcasts")
   adminPrivateMessages             AdminPrivateMessage[]   @relation("AdminPrivateMessages")
   adminReceivedMessages            AdminPrivateMessage[]   @relation("AdminReceivedMessages")
@@ -1552,5 +1554,178 @@ enum SupportTicketStatus {
   ASSIGNED
   RESOLVED
   CLOSED
+}
+
+// ===== PRICING ENGINE ENUMS =====
+
+enum CouponUsageFrequency {
+  ONE_TIME
+  ONCE_PER_MONTH
+  ONCE_PER_QUARTER
+  ONCE_PER_YEAR
+  UNLIMITED
+  CUSTOM
+}
+
+enum PackRuleType {
+  MAX_PURCHASES_PER_PERIOD
+  ONE_PER_CALENDAR_MONTH
+  ONE_DISCOUNTED_AT_A_TIME
+  ALLOW_MULTIPLE
+  RESTRICT_DUPLICATE
+}
+
+// ===== PRICING ENGINE MODELS =====
+
+model FeeBracket {
+  id            String          @id @default(cuid())
+  name          String
+  minRate       Decimal         @db.Decimal(10, 2)
+  maxRate       Decimal?        @db.Decimal(10, 2)
+  commissionPct Decimal         @db.Decimal(5, 2)
+  isActive      Boolean         @default(true)
+  displayOrder  Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @default(now()) @updatedAt
+  packOffers    PackOffer[]
+  coupons       CouponBracket[]
+
+  @@index([isActive])
+  @@index([minRate])
+}
+
+model TokenPack {
+  id               String             @id @default(cuid())
+  name             String
+  displayLabel     String
+  tokenCount       Int
+  badgeLabel       String?
+  isHighlighted    Boolean            @default(false)
+  isActive         Boolean            @default(true)
+  isVisible        Boolean            @default(true)
+  displayOrder     Int                @default(0)
+  maxPurchaseLimit Int?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @default(now()) @updatedAt
+  packOffers       PackOffer[]
+  purchaseRules    PackPurchaseRule[]
+  couponPacks      CouponPack[]
+
+  @@index([isActive, isVisible])
+  @@index([displayOrder])
+}
+
+model PackOffer {
+  id            String       @id @default(cuid())
+  packId        String
+  bracketId     String
+  discountType  DiscountType
+  discountValue Decimal      @db.Decimal(10, 2)
+  discountCap   Decimal?     @db.Decimal(10, 2)
+  startDate     DateTime?
+  endDate       DateTime?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @default(now()) @updatedAt
+  pack          TokenPack    @relation(fields: [packId], references: [id], onDelete: Cascade)
+  bracket       FeeBracket   @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+
+  @@index([packId, bracketId])
+  @@index([isActive])
+}
+
+model Coupon {
+  id                   String               @id @default(cuid())
+  code                 String               @unique
+  description          String?
+  discountType         DiscountType
+  discountValue        Decimal              @db.Decimal(10, 2)
+  discountCap          Decimal?             @db.Decimal(10, 2)
+  minCartValue         Decimal?             @db.Decimal(10, 2)
+  startDate            DateTime?
+  endDate              DateTime?
+  isActive             Boolean              @default(true)
+  usageFrequency       CouponUsageFrequency @default(ONE_TIME)
+  customUsageLimit     Int?
+  totalRedemptionLimit Int?
+  perUserLimit         Int?
+  usedCount            Int                  @default(0)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @default(now()) @updatedAt
+  couponBrackets       CouponBracket[]
+  couponPacks          CouponPack[]
+  couponUsers          CouponUser[]
+  usages               CouponUsage[]
+
+  @@index([code, isActive])
+}
+
+model CouponUsage {
+  id        String   @id @default(cuid())
+  couponId  String
+  userId    String
+  usedAt    DateTime @default(now())
+  paymentId String?
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([couponId, userId])
+  @@index([userId])
+}
+
+model CouponBracket {
+  couponId  String
+  bracketId String
+  coupon    Coupon     @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  bracket   FeeBracket @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+
+  @@id([couponId, bracketId])
+}
+
+model CouponPack {
+  couponId String
+  packId   String
+  coupon   Coupon    @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  pack     TokenPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@id([couponId, packId])
+}
+
+model CouponUser {
+  couponId String
+  userId   String
+  coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([couponId, userId])
+}
+
+model PackPurchaseRule {
+  id          String       @id @default(cuid())
+  packId      String?
+  description String
+  ruleType    PackRuleType
+  value       Int?
+  periodDays  Int?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+  pack        TokenPack?   @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@index([packId, isActive])
+}
+
+model CurrencyConfig {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  symbol       String
+  name         String
+  exchangeRate Decimal  @db.Decimal(15, 6)
+  isActive     Boolean  @default(true)
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([isActive])
 }
 

@@ -700,20 +700,27 @@ export class BookingsService {
         },
       });
 
-      await tx.student.update({
-        where: { id: dto.studentId! },
-        data: { tokens: { decrement: cost } },
-      });
-
-      await tx.tutorTokenBalance.update({
+      const tutorDec = await tx.tutorTokenBalance.updateMany({
         where: {
-          studentId_tutorId: {
-            studentId,
-            tutorId: resolvedTutorId,
-          },
+          studentId,
+          tutorId: resolvedTutorId,
+          balance: { gte: cost },
         },
         data: { balance: { decrement: cost } },
       });
+      if (tutorDec.count === 0) {
+        throw new BadRequestException('Insufficient tutor tokens');
+      }
+
+      const studentDec = await tx.student.updateMany({
+        where: { id: dto.studentId!, tokens: { gte: cost } },
+        data: { tokens: { decrement: cost } },
+      });
+      if (studentDec.count === 0) {
+        throw new BadRequestException(
+          'You don\'t have enough tokens to book this session. Please purchase more tokens before booking.',
+        );
+      }
 
       await tx.tokenLedger.create({
         data: {
@@ -1968,21 +1975,30 @@ export class BookingsService {
             );
           }
 
-          await tx.tutorTokenBalance.update({
+          const tutorDec = await tx.tutorTokenBalance.updateMany({
             where: {
-              studentId_tutorId: {
-                studentId: booking.studentId,
-                tutorId: booking.tutorId,
-              },
+              studentId: booking.studentId,
+              tutorId: booking.tutorId,
+              balance: { gte: tokensToCharge },
             },
             data: { balance: { decrement: tokensToCharge } },
           });
+          if (tutorDec.count === 0) {
+            throw new BadRequestException(
+              `Insufficient tokens to confirm this booking. Need ${tokensToCharge}, available 0`,
+            );
+          }
 
           // Keep aggregate student tokens in sync for dashboards
-          await tx.student.update({
-            where: { id: booking.studentId },
+          const studentDec = await tx.student.updateMany({
+            where: { id: booking.studentId, tokens: { gte: tokensToCharge } },
             data: { tokens: { decrement: tokensToCharge } },
           });
+          if (studentDec.count === 0) {
+            throw new BadRequestException(
+              `Insufficient tokens to confirm this booking. Need ${tokensToCharge}, available 0`,
+            );
+          }
 
           await tx.tokenLedger.create({
             data: {

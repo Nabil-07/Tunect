@@ -237,6 +237,7 @@ const AdminControlsPage = lazy(() => import('./pages/admin/admin-controls'));
 const AdminManagement = lazy(() => import('./pages/admin/admins'));
 const AdminBookings = lazy(() => import('./pages/admin/bookings'));
 const AdminNotifications = lazy(() => import('./pages/admin/notifications'));
+const AdminOffersPacksPage = lazy(() => import('./pages/admin/offers-packs'));
 
 /** Role chooser */
 const ChooseRole = lazy(() => import('./pages/choose-role'));
@@ -500,6 +501,7 @@ function App() {
           <Route path="/admin/admins" element={<AdminManagement />} />
           <Route path="/admin/bookings" element={<AdminBookings />} />
           <Route path="/admin/notifications" element={<AdminNotifications />} />
+          <Route path="/admin/offers-packs" element={<AdminOffersPacksPage />} />
         </Route>
 
         {/* 404 Fallback */}

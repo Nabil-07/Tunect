@@ -16,6 +16,7 @@ import {
   ArrowRight,
   Settings,
   Receipt,
+  Tag,
 } from 'lucide-react';
 import { fetchDashboard, type AdminDashboard } from '../../services/adminService';
 
@@ -61,6 +62,7 @@ export default function AdminDashboard() {
     { icon: AlertCircle, label: 'KYC Verification', description: 'Review tutor documents', to: '/admin/kyc-verification', color: 'red', badge: stats.pendingKyc > 0 ? stats.pendingKyc : undefined },
     { icon: Headphones, label: 'Support', description: 'Customer support portal', to: '/support', color: 'cyan' },
     { icon: Receipt, label: 'Expense Tracker', description: 'Log & track company expenses', to: '/admin/finance/expenses', color: 'emerald' },
+    { icon: Tag, label: 'Offers & Packs', description: 'Token packs, coupons, fee brackets & pricing', to: '/admin/offers-packs', color: 'teal' },
   ];
 
   const getColorClasses = (color: string) => {
@@ -76,6 +78,7 @@ export default function AdminDashboard() {
       red: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: 'text-red-600' },
       cyan: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', icon: 'text-cyan-600' },
       emerald: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: 'text-emerald-600' },
+      teal: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', icon: 'text-teal-600' },
     };
     return colors[color] || colors.indigo;
   };

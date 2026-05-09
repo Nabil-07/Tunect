@@ -141,25 +141,7 @@ export class TutorWalletService {
             },
           });
         });
-      } else if (Math.abs(existing.delta - correctShare) >= 0.01) {
-        // Existing entry has wrong amount (e.g. tutor changed rate after booking) — correct it
-        const diff = correctShare - existing.delta;
-        await this.prisma.$transaction(async (tx) => {
-          await tx.tutorWalletLedger.update({
-            where: { id: existing.id },
-            data: {
-              delta: correctShare,
-              note: `Corrected: rate ₹${hourlyRate.toFixed(2)}/hr, fee ${fee}%, earned ₹${correctShare.toFixed(2)} (was ₹${existing.delta.toFixed(2)})`,
-            },
-          });
-          await tx.tutorWallet.upsert({
-            where: { tutorId },
-            update: { balance: { increment: diff } },
-            create: { tutorId, balance: correctShare },
-            select: { tutorId: true },
-          });
-        });
-      }
+      } 
     }
   }
 

@@ -65,6 +65,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { UploadsModule } from './uploads/uploads.module';
 import { PolicyConfigModule } from './policy-config/policy-config.module';
 import { AdminControlsModule } from './admin-controls/admin-controls.module';
+import { OffersModule } from './offers/offers.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { AdminControlsModule } from './admin-controls/admin-controls.module';
     UploadsModule,
     PolicyConfigModule,
     AdminControlsModule,
+    OffersModule,
     HealthModule,
     MetricsModule,
 

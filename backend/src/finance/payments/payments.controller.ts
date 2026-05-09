@@ -13,6 +13,16 @@ import { PaymentsService } from './payments.service';
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
+  @Get('tutor-due')
+  async getTutorPaymentsDue(
+    @Query('page') page: string = '1',
+    @Query('pageSize') pageSize: string = '100',
+  ) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const pageSizeNum = Math.max(1, parseInt(pageSize, 10) || 100);
+    return this.paymentsService.getTutorPaymentsDue(pageNum, pageSizeNum);
+  }
+
   @Get('student')
   async getStudentPayments(
     @Query('page') page: string = '1',

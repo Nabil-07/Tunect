@@ -11,7 +11,9 @@ export type CreateOrderResponse = {
 
 export async function createOrder(payload: {
   tutorId: string;
-  tokens: number;
+  tokens?: number;
+  packId?: string;
+  couponCode?: string;
   notes?: string;
   displayCurrency?: string;
 }) {

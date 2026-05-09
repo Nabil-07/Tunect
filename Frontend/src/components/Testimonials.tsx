@@ -76,10 +76,14 @@ const Testimonials: React.FC = () => {
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-3">
-          <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200 flex items-center justify-center">
             {t.studentAvatar ? (
               <img src={t.studentAvatar} alt={t.studentName} className="h-full w-full object-cover" />
-            ) : null}
+            ) : (
+              <span className="text-xs font-semibold text-slate-600">
+                {t.studentName.substring(0, 2).toUpperCase()}
+              </span>
+            )}
           </div>
           <div className="text-center">
             <div className="font-semibold text-slate-900">{t.studentName}</div>

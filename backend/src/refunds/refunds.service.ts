@@ -697,6 +697,210 @@ export class RefundsService {
   }
 
   /**
+   * Get current token balances for a student (for admin manual refund preview)
+   */
+  async getStudentTokenBalances(studentId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        user: { select: { name: true, email: true, avatarUrl: true } },
+        tutorTokenBalances: {
+          where: { balance: { gt: 0 } },
+          include: {
+            tutor: { include: { user: { select: { name: true, email: true } } } },
+          },
+        },
+      },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const totalAllocated = student.tutorTokenBalances.reduce((s, b) => s + Number(b.balance), 0);
+    // student.tokens is the grand total — do NOT add totalAllocated (already included)
+    const totalTokens = Number(student.tokens);
+    const trueUnallocated = Math.max(0, Number(student.tokens) - totalAllocated);
+    const estimatedValuePaise = student.tutorTokenBalances.reduce(
+      (s, b) => s + Math.round(Number(b.balance) * Number(b.pricePerToken) * 100),
+      0,
+    );
+
+    return {
+      studentId: student.id,
+      name: student.user.name,
+      email: student.user.email,
+      unallocatedTokens: trueUnallocated,
+      totalTokens,
+      estimatedValuePaise,
+      balancesByTutor: student.tutorTokenBalances.map((b) => ({
+        tutorId: b.tutorId,
+        tutorName: b.tutor.user?.name || b.tutor.user?.email || 'Unknown Tutor',
+        tokens: Number(b.balance),
+        pricePerToken: Number(b.pricePerToken),
+        valuePaise: Math.round(Number(b.balance) * Number(b.pricePerToken) * 100),
+      })),
+    };
+  }
+
+  /**
+   * Admin manual full refund: drain all student tokens → write REFUND ledger entries → notify
+   */
+  async processManualRefund(
+    studentId: string,
+    adminId: string,
+    reason: string,
+    note?: string,
+    tutorIds?: string[], // if provided, only refund tokens from these specific tutors
+  ) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+        tutorTokenBalances: {
+          where: { balance: { gt: 0 } },
+          include: {
+            tutor: { include: { user: { select: { name: true, email: true } } } },
+          },
+        },
+      },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    // Filter to selected tutors only (or all if not specified)
+    const balancesToRefund = tutorIds?.length
+      ? student.tutorTokenBalances.filter((b) => tutorIds.includes(b.tutorId))
+      : student.tutorTokenBalances;
+
+    if (balancesToRefund.length === 0) {
+      throw new BadRequestException('No matching tutor balances found to refund');
+    }
+
+    // student.tokens is the GRAND TOTAL (it mirrors the sum of all TutorTokenBalance entries).
+    // Truly unallocated = student.tokens − Σ ALL TutorTokenBalance.balance (not just selected).
+    const totalAllocated = student.tutorTokenBalances.reduce((s, b) => s + Number(b.balance), 0);
+    const selectedTokens = balancesToRefund.reduce((s, b) => s + Number(b.balance), 0);
+    // Only include unallocated portion in a full (non-filtered) refund
+    const isFullRefund = !tutorIds?.length;
+    const trueUnallocated = isFullRefund ? Math.max(0, Number(student.tokens) - totalAllocated) : 0;
+    const totalTokens = selectedTokens + trueUnallocated;
+    if (totalTokens <= 0) throw new BadRequestException('Student has no tokens to refund');
+
+    const estimatedValuePaise = student.tutorTokenBalances.reduce(
+      (s, b) => s + Math.round(Number(b.balance) * Number(b.pricePerToken) * 100),
+      0,
+    );
+
+    const refundMeta = (extra: object) =>
+      JSON.stringify({ type: 'MANUAL_REFUND', adminId, adminNote: note ?? '', reason, ...extra });
+
+    await this.prisma.$transaction(async (tx) => {
+      // Drain each selected tutor balance + lots.
+      // ONE ledger entry per tutor — mirrors the original PURCHASED credit for that tutor.
+      // student.tokens is NOT separately credited; it is the same pool viewed globally.
+      for (const bal of balancesToRefund) {
+        const qty = Number(bal.balance);
+        if (qty <= 0) continue;
+
+        await tx.tutorTokenBalance.update({
+          where: { studentId_tutorId: { studentId, tutorId: bal.tutorId } },
+          data: { balance: new Prisma.Decimal(0) },
+        });
+
+        await drainLotsWithoutConsumption(tx, { studentId, tutorId: bal.tutorId, qty });
+
+        await tx.tokenLedger.create({
+          data: {
+            studentId,
+            tutorId: bal.tutorId,
+            delta: new Prisma.Decimal(`-${qty}`),
+            reason: TokenReason.REFUND,
+            description: refundMeta({
+              pricePerToken: Number(bal.pricePerToken),
+              amountInPaise: Math.round(qty * Number(bal.pricePerToken) * 100),
+            }),
+          },
+        });
+      }
+
+      // Only add a ledger entry for tokens that are TRULY unallocated (full refund only).
+      if (trueUnallocated > 0) {
+        await tx.tokenLedger.create({
+          data: {
+            studentId,
+            delta: new Prisma.Decimal(`-${trueUnallocated}`),
+            reason: TokenReason.REFUND,
+            description: refundMeta({ pricePerToken: 0, amountInPaise: 0 }),
+          },
+        });
+      }
+
+      // Decrement student.tokens by the total being refunded (or set to 0 on full refund).
+      if (isFullRefund) {
+        await tx.student.update({ where: { id: studentId }, data: { tokens: 0 } });
+      } else {
+        await tx.student.update({
+          where: { id: studentId },
+          data: { tokens: { decrement: selectedTokens } },
+        });
+      }
+    });
+
+    await this.notifications.create({
+      userId: student.user.id,
+      type: NotificationType.SYSTEM,
+      title: 'Manual Refund Processed',
+      message: `An admin has processed a manual token refund on your account. All tokens have been cleared. Reason: ${reason}`,
+    });
+
+    this.audit.log({
+      adminId,
+      action: 'MANUAL_REFUND',
+      entityType: 'TOKEN' as any,
+      entityId: studentId,
+      beforeData: {
+        totalTokens,
+        balances: balancesToRefund.map((b) => ({
+          tutorId: b.tutorId,
+          balance: Number(b.balance),
+        })),
+      },
+      afterData: { totalTokens: 0, reason, note, estimatedValuePaise },
+    });
+
+    this.logger.log(`Manual refund processed for student ${studentId}: ${totalTokens} tokens by admin ${adminId}`);
+    return {
+      ok: true,
+      tokensRefunded: totalTokens,
+      estimatedValuePaise,
+      studentEmail: student.user.email,
+      studentName: student.user.name,
+    };
+  }
+
+  /**
+   * Admin: history of manual refunds (TokenLedger REFUND entries with MANUAL_REFUND metadata)
+   */
+  async getManualRefundHistory(page = 1, pageSize = 20) {
+    const skip = (page - 1) * pageSize;
+    const where = {
+      reason: TokenReason.REFUND,
+      description: { contains: 'MANUAL_REFUND' },
+    };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.tokenLedger.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        include: {
+          student: { include: { user: { select: { name: true, email: true } } } },
+          tutor: { include: { user: { select: { name: true, email: true } } } },
+        },
+      }),
+      this.prisma.tokenLedger.count({ where }),
+    ]);
+    return { items, total, page, pageSize };
+  }
+
+  /**
    * Get student's transfer requests
    */
   async getMyTransferRequests(studentId: string) {

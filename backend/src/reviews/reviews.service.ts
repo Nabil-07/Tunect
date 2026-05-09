@@ -195,7 +195,7 @@ export class ReviewsService {
           comment: true,
           createdAt: true,
           bookingId: true,
-          student: { select: { id: true, user: { select: { email: true } } } },
+          student: { select: { id: true, user: { select: { email: true, name: true, avatarUrl: true } } } },
         },
       }),
       this.prisma.review.count({ where: { tutorId: resolvedTutorId } }),

@@ -17,7 +17,7 @@ export class PaymentsPublicController {
   @Post('order')
   async createOrder(
     @Req() req: any,
-    @Body() dto: { tutorId: string; tokens: number; displayCurrency?: string },
+    @Body() dto: { tutorId: string; tokens?: number; packId?: string; couponCode?: string; displayCurrency?: string },
   ) {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;
     return this.paymentsService.createOrder(userId, dto);

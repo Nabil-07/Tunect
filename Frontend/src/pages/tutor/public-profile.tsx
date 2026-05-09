@@ -113,7 +113,7 @@ export default function TutorPublicProfile() { // NOSONAR
     rating: number;
     comment: string | null;
     createdAt: string;
-    student?: { id: string; user?: { email?: string } };
+    student?: { id: string; user?: { email?: string; name?: string | null; avatarUrl?: string | null } };
   }>>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsStats, setReviewsStats] = useState<{ avgRating?: number } | null>(null);
@@ -1400,16 +1400,22 @@ export default function TutorPublicProfile() { // NOSONAR
               <div className="space-y-4">
                 {reviews.map((review) => {
                   const reviewDate = new Date(review.createdAt);
-                  const studentEmail = review.student?.user?.email || 'Anonymous';
-                  const studentInitials = studentEmail.split('@')[0].substring(0, 2).toUpperCase();
+                  const studentEmail = review.student?.user?.email || '';
+                  const studentName = review.student?.user?.name || studentEmail.split('@')[0] || 'Student';
+                  const studentAvatar = review.student?.user?.avatarUrl;
+                  const studentInitials = studentName.substring(0, 2).toUpperCase();
                   
                   return (
                     <div key={review.id} className="border-t pt-4 first:border-t-0 first:pt-0">
                       <div className="flex items-start gap-4">
                         {/* Student Avatar */}
                         <div className="flex-shrink-0">
-                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
-                            {studentInitials}
+                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm overflow-hidden">
+                            {studentAvatar ? (
+                              <img src={studentAvatar} alt={studentName} className="h-full w-full object-cover" />
+                            ) : (
+                              studentInitials
+                            )}
                           </div>
                         </div>
                         
@@ -1433,7 +1439,7 @@ export default function TutorPublicProfile() { // NOSONAR
                               ))}
                             </div>
                             <span className="text-sm font-medium text-slate-900">
-                              {studentEmail.split('@')[0]}
+                              {studentName}
                             </span>
                             <span className="text-xs text-slate-500">
                               {reviewDate.toLocaleDateString('en-US', {

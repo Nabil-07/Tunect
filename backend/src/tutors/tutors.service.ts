@@ -610,6 +610,16 @@ export class TutorsService {
         include: {
           user: { select: { name: true, email: true, avatarUrl: true } },
           reviews: { select: { rating: true } },
+          _count: {
+            select: {
+              bookings: {
+                where: {
+                  isDemo: false,
+                  status: { in: ['COMPLETED', 'AUTO_CANCELLED_STUDENT_NO_SHOW'] },
+                },
+              },
+            },
+          },
         },
       }),
       this.prisma.tutor.count({ where }),
@@ -627,20 +637,24 @@ export class TutorsService {
         ...row,
         rating: avgRating,
         reviewCount,
+        bookingCount: (row as any)._count?.bookings ?? 0,
       };
     });
 
-    // Default sort: profile completeness first, then by rating
+    // Default sort: most booked → highest rating → longest on platform
     let sortedRows = rowsWithReviews;
     if (needsAppSort) {
       sortedRows = [...rowsWithReviews].sort((a, b) => {
-        const aComplete = this.isProfileComplete(a) ? 1 : 0;
-        const bComplete = this.isProfileComplete(b) ? 1 : 0;
-        if (bComplete !== aComplete) return bComplete - aComplete; // Complete profiles first
+        const aBookings = (a as any).bookingCount ?? 0;
+        const bBookings = (b as any).bookingCount ?? 0;
+        if (bBookings !== aBookings) return bBookings - aBookings;
         const aRating = a.rating ?? -1;
         const bRating = b.rating ?? -1;
-        if (bRating !== aRating) return bRating - aRating; // Higher rating first
-        return (b.reviewCount ?? 0) - (a.reviewCount ?? 0); // More reviews first
+        if (bRating !== aRating) return bRating - aRating;
+        // Older createdAt = longer on platform = ranked higher
+        const aDate = new Date(a.createdAt).getTime();
+        const bDate = new Date(b.createdAt).getTime();
+        return aDate - bDate;
       });
     }
 
@@ -1009,6 +1023,16 @@ export class TutorsService {
             include: {
               user: { select: { name: true, email: true, avatarUrl: true } },
               reviews: { select: { rating: true } },
+              _count: {
+                select: {
+                  bookings: {
+                    where: {
+                      isDemo: false,
+                      status: { in: ['COMPLETED', 'AUTO_CANCELLED_STUDENT_NO_SHOW'] },
+                    },
+                  },
+                },
+              },
             },
           }),
           this.prisma.tutor.count({ where }),
@@ -1160,19 +1184,22 @@ export class TutorsService {
           ...row,
           rating: avgRating,
           reviewCount,
+          bookingCount: (row as any)._count?.bookings ?? 0,
         };
       });
 
       const sortedRows = (shouldSortByRating || isDefaultSort)
         ? [...rowsWithReviews].sort((a, b) => {
-            // Complete profiles first, then by rating, then by review count
-            const aComplete = this.isProfileComplete(a) ? 1 : 0;
-            const bComplete = this.isProfileComplete(b) ? 1 : 0;
-            if (bComplete !== aComplete) return bComplete - aComplete;
+            // Most booked → highest rating → longest on platform
+            const aBookings = (a as any).bookingCount ?? 0;
+            const bBookings = (b as any).bookingCount ?? 0;
+            if (bBookings !== aBookings) return bBookings - aBookings;
             const ar = a.rating ?? -1;
             const br = b.rating ?? -1;
             if (br !== ar) return br - ar;
-            return (b.reviewCount ?? 0) - (a.reviewCount ?? 0);
+            const aDate = new Date(a.createdAt).getTime();
+            const bDate = new Date(b.createdAt).getTime();
+            return aDate - bDate;
           })
         : rowsWithReviews;
 
