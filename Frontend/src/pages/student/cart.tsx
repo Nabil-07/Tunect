@@ -1,6 +1,6 @@
 // src/pages/student/cart.tsx
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ShoppingCart, CreditCard, ShieldCheck, CheckCircle,
   Calendar, Clock, TrendingUp, Tag, X, Sparkles,
