@@ -972,7 +972,7 @@ export default function TutorPublicProfile() { // NOSONAR
                 Each token costs ₹{tutor.hourlyRate ?? '--'} (paid via Razorpay).
               </p>
               <BuyTokensButton
-                tutorId={id!}
+                tutorId={tutor.id}
                 defaultTokens={5}
                 onSuccess={() => setToast('Payment successful! Tokens credited.')}
               />

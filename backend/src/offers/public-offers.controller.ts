@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, UseGuards, Req, BadRequestException } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -80,18 +80,14 @@ export class PublicOffersController {
     // Manual token mode: compute cart value from tokens × pricePerToken
     const tokens = dto.tokens ?? 0;
     if (tokens < 1) {
-      throw new Error('Either packId or tokens must be provided');
+      throw new BadRequestException('Either packId or tokens must be provided');
     }
 
-    const tutor = await this.prisma.tutor.findUnique({
-      where: { id: dto.tutorId },
-      select: { hourlyRate: true },
-    });
-    if (!tutor) throw new Error('Tutor not found');
+    const { hourlyRate } = await this.pricingEngine.resolveTutorForPricing(dto.tutorId);
 
-    const pricePerToken = Math.ceil(Number(tutor.hourlyRate ?? 0));
+    const pricePerToken = Math.ceil(hourlyRate);
     const cartValue = pricePerToken * tokens;
-    const bracket = await this.pricingEngine.resolveBracket(Number(tutor.hourlyRate ?? 0));
+    const bracket = await this.pricingEngine.resolveBracket(hourlyRate);
 
     const { discount, couponId } = await this.pricingEngine.computeCouponDiscount(
       dto.code,

@@ -1,6 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Decimal } from '@prisma/client/runtime/library';
 
 export interface PricingContext {
   tutorId: string;
@@ -41,6 +40,25 @@ export interface CartPricing extends PackPricing {
 @Injectable()
 export class PricingEngineService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Resolve tutor by full Prisma id or by URL slug suffix (e.g. last segment of /tutors/name-6qqoxlpe).
+   * Matches behaviour in payments-public.service.
+   */
+  async resolveTutorForPricing(tutorId: string): Promise<{ id: string; hourlyRate: number }> {
+    let tutor = await this.prisma.tutor.findUnique({
+      where: { id: tutorId },
+      select: { id: true, hourlyRate: true },
+    });
+    if (!tutor) {
+      tutor = await this.prisma.tutor.findFirst({
+        where: { id: { endsWith: tutorId } },
+        select: { id: true, hourlyRate: true },
+      });
+    }
+    if (!tutor) throw new NotFoundException('Tutor not found');
+    return { id: tutor.id, hourlyRate: Number(tutor.hourlyRate ?? 0) };
+  }
 
   /** Find the fee bracket that applies to a given tutor hourly rate */
   async resolveBracket(hourlyRate: number) {
@@ -236,13 +254,7 @@ export class PricingEngineService {
 
   /** Get all active packs with pricing for a given tutor */
   async getPacksForTutor(tutorId: string): Promise<PackPricing[]> {
-    const tutor = await this.prisma.tutor.findUnique({
-      where: { id: tutorId },
-      select: { hourlyRate: true },
-    });
-    if (!tutor) throw new NotFoundException('Tutor not found');
-
-    const hourlyRate = Number(tutor.hourlyRate ?? 0);
+    const { hourlyRate } = await this.resolveTutorForPricing(tutorId);
 
     const packs = await this.prisma.tokenPack.findMany({
       where: { isActive: true, isVisible: true },
@@ -269,18 +281,13 @@ export class PricingEngineService {
 
   /** Full cart pricing with coupon */
   async computeCartPricing(ctx: PricingContext): Promise<CartPricing> {
-    const tutor = await this.prisma.tutor.findUnique({
-      where: { id: ctx.tutorId },
-      select: { hourlyRate: true },
-    });
-    if (!tutor) throw new NotFoundException('Tutor not found');
+    const { hourlyRate } = await this.resolveTutorForPricing(ctx.tutorId);
 
     const pack = await this.prisma.tokenPack.findFirst({
       where: { id: ctx.packId, isActive: true },
     });
     if (!pack) throw new NotFoundException('Token pack not found or inactive');
 
-    const hourlyRate = Number(tutor.hourlyRate ?? 0);
     const packPricing = await this.computePackPricing(
       {
         id: pack.id, name: pack.name, displayLabel: pack.displayLabel,

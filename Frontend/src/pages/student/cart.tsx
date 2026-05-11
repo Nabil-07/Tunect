@@ -30,6 +30,7 @@ type Tutor = {
 export default function Cart() {
   const [sp] = useSearchParams();
   const tutorId = sp.get('tutorId') || sp.get('tutorid') || '';
+  const tokensFromUrl = sp.get('tokens');
   const isDemo = sp.get('demo') === '1';
   const nav = useNavigate();
   const { user } = useAuth();
@@ -55,8 +56,11 @@ export default function Cart() {
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [packsLoading, setPacksLoading] = useState(false);
 
-  // Manual token state — null means pack mode, string allows empty typing
-  const [manualTokenInput, setManualTokenInput] = useState<string>('');
+  // Manual token state — empty string means pack mode; non-empty means custom amount
+  const [manualTokenInput, setManualTokenInput] = useState<string>(() => {
+    const n = Number(tokensFromUrl);
+    return Number.isFinite(n) && n >= 5 ? String(Math.floor(n)) : '';
+  });
   const isManualMode = manualTokenInput !== '';
 
   // Coupon state
@@ -139,16 +143,21 @@ export default function Cart() {
         setPacksLoading(true);
         const { packs: fetchedPacks } = await getPacksForTutor(tutorId);
         setPacks(fetchedPacks);
-        // Auto-select highlighted or first pack
-        const highlighted = fetchedPacks.find((p) => p.pack.isHighlighted);
-        setSelectedPackId((highlighted ?? fetchedPacks[0])?.pack.id ?? null);
+        const fromUrl = Number(tokensFromUrl);
+        if (Number.isFinite(fromUrl) && fromUrl >= 5) {
+          setManualTokenInput(String(Math.floor(fromUrl)));
+          setSelectedPackId(null);
+        } else {
+          const highlighted = fetchedPacks.find((p) => p.pack.isHighlighted);
+          setSelectedPackId((highlighted ?? fetchedPacks[0])?.pack.id ?? null);
+        }
       } catch (e) {
         console.error('Failed to load packs:', e);
       } finally {
         setPacksLoading(false);
       }
     })();
-  }, [tutorId, isDemo]);
+  }, [tutorId, isDemo, tokensFromUrl]);
 
   const selectedPack = useMemo(
     () => packs.find((p) => p.pack.id === selectedPackId) ?? null,
@@ -696,13 +705,7 @@ export default function Cart() {
 
           <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
             <ShieldCheck className="h-3.5 w-3.5" />
-            <span>Secure 256-bit SSL encrypted payment</span>
-          </div>
-          <div className="mt-1 text-center text-xs text-slate-400">
-            Refundable as per our{' '}
-            <Link to="/cancellation-policy" className="text-ocean-600 underline underline-offset-2">
-              cancellation policy
-            </Link>.
+            <span>Secure payment · Refundable as per policy</span>
           </div>
         </div>
       </div>

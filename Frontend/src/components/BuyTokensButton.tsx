@@ -10,14 +10,22 @@ type Props = {
 
 export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess }: Props) {
   const navigate = useNavigate();
-  const [tokens, setTokens] = useState<number>(defaultTokens);
+  const [tokenInput, setTokenInput] = useState(String(defaultTokens));
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const resolvedTokens = (() => {
+    if (tokenInput === "") return defaultTokens;
+    const n = parseInt(tokenInput, 10);
+    return Number.isFinite(n) && n >= 5 ? n : defaultTokens;
+  })();
 
   async function handlePay() {
     try {
       setLoading(true);
-      navigate(`/student/cart?tutorId=${tutorId}&tokens=${tokens}`);
+      const q = new URLSearchParams({ tutorId });
+      if (resolvedTokens >= 5) q.set("tokens", String(resolvedTokens));
+      navigate(`/student/cart?${q.toString()}`);
       onSuccess?.("cart");
     } catch (e: any) {
       setErrorMessage(e?.response?.data?.message || e?.message || "Unable to start payment");
@@ -30,11 +38,28 @@ export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess 
     <>
       <div className="flex items-center gap-2" data-testid="buy-tokens">
         <input
-          type="number"
-          min={5}
-          step={1}
-          value={tokens}
-          onChange={(e) => setTokens(Math.max(5, Number(e.target.value) || 5))}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="5"
+          value={tokenInput}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "") {
+              setTokenInput("");
+              return;
+            }
+            if (!/^\d+$/.test(v)) return;
+            setTokenInput(v);
+          }}
+          onBlur={() => {
+            if (tokenInput === "") {
+              setTokenInput(String(defaultTokens));
+              return;
+            }
+            const n = parseInt(tokenInput, 10);
+            if (!Number.isFinite(n) || n < 5) setTokenInput(String(defaultTokens));
+          }}
           className="w-24 border rounded px-2 py-1"
           data-testid="buy-tokens-amount-input"
         />
@@ -44,7 +69,7 @@ export default function BuyTokensButton({ tutorId, defaultTokens = 5, onSuccess 
           className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
           data-testid="buy-tokens-btn"
         >
-          {loading ? "Processing..." : `Buy ${tokens} tokens`}
+          {loading ? "Processing..." : "Buy tokens"}
         </button>
       </div>
 
