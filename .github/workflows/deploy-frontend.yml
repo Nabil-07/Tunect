@@ -63,7 +63,11 @@ jobs:
           cache: npm
           cache-dependency-path: Frontend/package-lock.json
 
-      - name: Install and build
+      - name: Install dependencies
+        working-directory: Frontend
+        run: npm ci
+
+      - name: Build frontend
         working-directory: Frontend
         env:
           VITE_API_URL: https://api.tunectnow.com
@@ -73,10 +77,11 @@ jobs:
           VITE_KYC_USE_PRESIGNED_UPLOADS: 'true'
           VITE_RAZORPAY_KEY_ID: ${{ secrets.VITE_RAZORPAY_KEY_ID }}
           VITE_ENCRYPTION_KEY: ${{ secrets.VITE_ENCRYPTION_KEY }}
-        run: |
-          npm ci
-          npm run build
-          test -d dist/index.html
+        run: npm run build
+
+      - name: Verify build output
+        working-directory: Frontend
+        run: test -f dist/index.html
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -87,10 +92,15 @@ jobs:
 
       - name: Sync to S3
         run: |
+          set -euxo pipefail
+          aws s3 ls "s3://${S3_BUCKET}/" | head -5
           aws s3 sync Frontend/dist/ "s3://${S3_BUCKET}/" --delete
+          echo "S3 sync complete"
 
       - name: Invalidate CloudFront cache
         run: |
+          set -euxo pipefail
           aws cloudfront create-invalidation \
             --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
             --paths "/*"
+          echo "CloudFront invalidation started"

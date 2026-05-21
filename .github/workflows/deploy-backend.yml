@@ -157,10 +157,26 @@ jobs:
 
           # Restart is not enough: old PM2 entries often still point at dist/src/main.js.
           pm2 delete tunect-backend 2>/dev/null || true
-          pm2 start ecosystem.config.cjs --only tunect-backend
+          if [ -f ecosystem.config.cjs ]; then
+            pm2 start ecosystem.config.cjs --only tunect-backend
+          else
+            pm2 start dist/main.js --name tunect-backend
+          fi
           pm2 save
-          sleep 3
-          curl -fsS http://127.0.0.1:${PORT:-3000}/health >/dev/null
+
+          APP_PORT="${PORT:-3000}"
+          echo "Waiting for API on port ${APP_PORT} (Nest can take 30–60s to boot)..."
+          for i in $(seq 1 40); do
+            if curl -fsS "http://127.0.0.1:${APP_PORT}/health" >/dev/null 2>&1; then
+              echo "Health check passed on port ${APP_PORT}"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::API did not respond on port ${APP_PORT}"
+          pm2 status
+          pm2 logs tunect-backend --lines 40 --nostream || true
+          exit 1
           REMOTE
 
       - name: Verify deployment
@@ -169,7 +185,7 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
           ssh ${SSH_OPTS} "${EC2_USER}@${EC2_HOST}" \
-            "pm2 list && pm2 describe tunect-backend | head -25 && curl -fsS http://127.0.0.1:3000/health | head -c 200"
+            'cd ~/Tunect/backend && pm2 list && pm2 describe tunect-backend | head -25 && curl -fsS "http://127.0.0.1:${PORT:-3000}/health" | head -c 200'
 
       - name: Remove SSH key
         if: always()
