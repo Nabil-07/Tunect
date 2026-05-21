@@ -1,40 +1,123 @@
+# Production backend deploy — runs ONLY on pushes to the prod branch.
+# Always checks out and deploys code from prod (never main).
+#
+# GitHub secrets (Settings → Secrets and variables → Actions):
+#   EC2_HOST, EC2_USER, EC2_SSH_KEY
+
 name: Deploy Backend to EC2
+
+env:
+  DEPLOY_BRANCH: prod
+  EC2_APP_DIR: Tunect/backend
 
 on:
   push:
-    branches: [ "prod" ]
+    branches: [prod]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
 
-env:
-  EC2_HOST: ${{ secrets.EC2_HOST }}
-  EC2_USER: ${{ secrets.EC2_USER }}
-  EC2_KEY: ${{ secrets.EC2_SSH_KEY }}
+concurrency:
+  group: deploy-backend-prod
+  cancel-in-progress: true
 
 jobs:
   deploy:
     name: Deploy Backend to EC2
     runs-on: ubuntu-latest
+    # Only run when the event is on prod (push) or manual deploy of prod code
+    if: github.ref == 'refs/heads/prod' || github.event_name == 'workflow_dispatch'
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Validate GitHub secrets
+        run: |
+          missing=0
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "Add secrets at: GitHub repo → Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
 
-    - name: Setup SSH key
-      run: |
-        echo "$EC2_KEY" > ec2_key
-        chmod 600 ec2_key
+      - name: Checkout prod branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_BRANCH }}
 
-    - name: Deploy backend to EC2
-      run: |
-        # Sync backend folder to EC2 (excluding node_modules, .env, and dist)
-        rsync -avz --exclude='node_modules' --exclude='.env*' --exclude='dist' --exclude='.git' \
-          -e "ssh -i ec2_key -o StrictHostKeyChecking=no" \
-          ./backend/ $EC2_USER@$EC2_HOST:/home/$EC2_USER/backend/
+      - name: Configure SSH key
+        run: |
+          install -m 600 /dev/null ec2_key
+          printf '%s\n' "$EC2_SSH_KEY" > ec2_key
+          chmod 600 ec2_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
 
-    - name: Install dependencies and restart service
-      run: |
-        ssh -i ec2_key -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
-          cd /home/$EC2_USER/backend
-          npm ci --production
-          pm2 restart tunect-backend || pm2 start npm --name tunect-backend -- start
+      - name: Sync backend to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_APP_DIR: ${{ env.EC2_APP_DIR }}
+        run: |
+          rsync -avz --delete \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            --exclude '.git' \
+            --exclude 'coverage' \
+            --exclude 'test' \
+            --exclude '*.log' \
+            -e "ssh -i ec2_key -o StrictHostKeyChecking=yes" \
+            ./backend/ "${EC2_USER}@${EC2_HOST}:~/${EC2_APP_DIR}/"
+
+      - name: Install, build, migrate, and restart
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_APP_DIR: ${{ env.EC2_APP_DIR }}
+        run: |
+          ssh -i ec2_key -o StrictHostKeyChecking=yes "${EC2_USER}@${EC2_HOST}" \
+            "EC2_APP_DIR=${EC2_APP_DIR}" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd ~/"${EC2_APP_DIR}"
+
+          if [ ! -f .env ]; then
+            echo "ERROR: ~/${EC2_APP_DIR}/.env is missing. Copy it once with scp (see DEPLOY_BACKEND.md)."
+            exit 1
+          fi
+
+          export NODE_ENV=production
+          npm ci
+          npm run build
+          npx prisma migrate deploy
+
+          if pm2 describe tunect-backend >/dev/null 2>&1; then
+            pm2 restart tunect-backend --update-env
+          else
+            pm2 start dist/src/main.js --name tunect-backend --time
+          fi
           pm2 save
-        EOF
+          REMOTE
+
+      - name: Verify deployment
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ec2_key -o StrictHostKeyChecking=yes "${EC2_USER}@${EC2_HOST}" \
+            "pm2 list && pm2 describe tunect-backend | head -20"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ec2_key
