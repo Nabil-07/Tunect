@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Bot, Send, User, Users, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { sendChatMessage, type BotMessage } from '../services/chatbotService';
+import { readToken } from '../lib/apiClient';
 import {
   addSupportMessage,
   assignSupportTicket,
@@ -22,23 +24,7 @@ import {
 import { searchTutors, type Tutor } from '../services/tutorService';
 import { useToast } from '../contexts/ToastContext';
 
-type BotMessage = { id: string; from: 'user' | 'bot'; text: string; createdAt: string };
-
 type TabKey = 'ai' | 'support' | 'admin' | 'refunds';
-
-const botReplies: Array<{ keywords: string[]; reply: string }> = [
-  { keywords: ['refund', 'cancel'], reply: 'Refunds depend on booking status. For confirmed sessions, you can cancel from Bookings and view the refund policy in-app.' },
-  { keywords: ['reschedule', 'schedule'], reply: 'You can reschedule from your Bookings page. If a slot is available, pick a new time and confirm.' },
-  { keywords: ['payout', 'earnings'], reply: 'Payouts happen on the 1st, 7th, 14th, and 21st. Check the Earnings page for your next payout date.' },
-  { keywords: ['verification', 'kyc'], reply: 'Complete KYC from the Tutor Profile page. Verification status updates within 1–2 business days.' },
-  { keywords: ['support', 'help'], reply: 'If you need more help, open a support ticket and our team will respond here.' },
-];
-
-function getBotReply(text: string) {
-  const q = text.toLowerCase();
-  const hit = botReplies.find((r) => r.keywords.some((k) => q.includes(k)));
-  return hit?.reply || 'Thanks for the message. Please share more details, or open a support ticket for a human response.';
-}
 
 export default function SupportPage() {
   const { user } = useAuth();
@@ -78,6 +64,7 @@ export default function SupportPage() {
       createdAt: new Date().toISOString(),
     },
   ]);
+  const [botThreadId, setBotThreadId] = useState<string | undefined>();
 
   // Support tickets state
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -284,22 +271,49 @@ export default function SupportPage() {
     return () => clearInterval(interval);
   }, [showSupport, tab, selectedTicket?.id, isAdmin]);
 
-  const handleBotSend = () => {
-    if (!botInput.trim()) return;
+  const [botLoading, setBotLoading] = useState(false);
+
+  const handleBotSend = async () => {
+    if (!botInput.trim() || botLoading) return;
     const userMsg: BotMessage = {
       id: `u-${Date.now()}`,
       from: 'user',
       text: botInput.trim(),
       createdAt: new Date().toISOString(),
     };
-    const botMsg: BotMessage = {
-      id: `b-${Date.now() + 1}`,
-      from: 'bot',
-      text: getBotReply(botInput.trim()),
-      createdAt: new Date().toISOString(),
-    };
-    setBotMessages((prev) => [...prev, userMsg, botMsg]);
+    setBotMessages((prev) => [...prev, userMsg]);
+    const inputText = botInput.trim();
     setBotInput('');
+    setBotLoading(true);
+
+    try {
+      const response = await sendChatMessage({
+        message: inputText,
+        role: user ? role.toLowerCase() : 'guest',
+        jwt_token: readToken() ?? undefined,
+        thread_id: botThreadId,
+      });
+      if (response.thread_id) {
+        setBotThreadId(response.thread_id);
+      }
+      const botMsg: BotMessage = {
+        id: `b-${Date.now()}`,
+        from: 'bot',
+        text: response.answer,
+        createdAt: new Date().toISOString(),
+      };
+      setBotMessages((prev) => [...prev, botMsg]);
+    } catch (err) {
+      const errorMsg: BotMessage = {
+        id: `e-${Date.now()}`,
+        from: 'bot',
+        text: 'Sorry, something went wrong. Please try again.',
+        createdAt: new Date().toISOString(),
+      };
+      setBotMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setBotLoading(false);
+    }
   };
 
   const handleCreateTicket = async () => {
@@ -487,10 +501,16 @@ export default function SupportPage() {
                   />
                   <button
                     onClick={handleBotSend}
-                    className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-3 py-2 text-sm text-white"
+                    disabled={botLoading || !botInput.trim()}
+                    className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="support-bot-send-button"
                   >
-                    <Send className="h-4 w-4" /> Send
+                    {botLoading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    {botLoading ? 'Thinking...' : 'Send'}
                   </button>
                 </div>
               </div>

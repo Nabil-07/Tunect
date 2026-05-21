@@ -14,7 +14,7 @@ import * as bodyParser from 'body-parser';
 import { PrismaService } from './prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/node';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
+import type { Integration } from '@sentry/core';
 import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import compression from 'compression';
@@ -69,6 +69,22 @@ class CorsSocketIoAdapter extends IoAdapter {
   }
 }
 
+/** Sentry CPU profiling uses native binaries per Node ABI; skip if unavailable (e.g. Node 26). */
+function sentryIntegrations(): Integration[] {
+  if (process.env.SENTRY_PROFILING === 'false') return [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { nodeProfilingIntegration } = require('@sentry/profiling-node') as {
+      nodeProfilingIntegration: () => Integration;
+    };
+    return [nodeProfilingIntegration()];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[Sentry] CPU profiling disabled: ${msg}`);
+    return [];
+  }
+}
+
 /* =========================
    BOOTSTRAP
 ========================= */
@@ -78,7 +94,7 @@ async function bootstrap() {
       dsn: process.env.SENTRY_DSN,
       environment: process.env.NODE_ENV || 'development',
       tracesSampleRate: 0.2,
-      integrations: [nodeProfilingIntegration()],
+      integrations: sentryIntegrations(),
     });
 
     process.on('unhandledRejection', (r) => Sentry.captureException(r));

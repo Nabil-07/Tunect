@@ -66,6 +66,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { PolicyConfigModule } from './policy-config/policy-config.module';
 import { AdminControlsModule } from './admin-controls/admin-controls.module';
 import { OffersModule } from './offers/offers.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -126,6 +127,7 @@ import { OffersModule } from './offers/offers.module';
     ReconModule,
     LivekitModule,
     TasksModule,
+    ChatbotModule,
   ],
   controllers: [AppController, ReadyController],
   providers: [

@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Breadcrumbs from '../components/Breadcrumbs';
 import Footer from '../components/Footer';
+import ChatWidget from '../components/ChatWidget';
 
 export default function MainLayout() {
   // Always use the single Navbar; it decides what to show (public / student / etc.)
@@ -14,6 +15,7 @@ export default function MainLayout() {
         <Outlet />
       </main>
       <Footer />
+      <ChatWidget />
     </div>
   );
 }

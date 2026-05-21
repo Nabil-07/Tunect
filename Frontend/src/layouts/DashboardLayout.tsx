@@ -1,6 +1,7 @@
 // src/layouts/DashboardLayout.tsx
 import { Outlet } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import ChatWidget from '../components/ChatWidget';
 
 interface DashboardLayoutProps {
   role: 'student' | 'tutor' | 'admin';
@@ -16,6 +17,8 @@ export default function DashboardLayout({ role }: DashboardLayoutProps) {
           <Outlet />
         </main>
       </div>
+
+      <ChatWidget />
     </div>
   );
 }
