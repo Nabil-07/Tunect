@@ -55,20 +55,36 @@ jobs:
 
       - name: Configure SSH key
         run: |
+          set -euo pipefail
+          HOST="$(printf '%s' "$EC2_HOST" | tr -d '[:space:]')"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          touch ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
           install -m 600 /dev/null ec2_key
           printf '%s\n' "$EC2_SSH_KEY" > ec2_key
           chmod 600 ec2_key
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # EC2 presents ED25519; keyscan must succeed or rsync fails with "Host key verification failed"
+          ssh-keyscan -T 20 -t ed25519,ecdsa,rsa -H "$HOST" >> ~/.ssh/known_hosts
+          if ! ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null 2>&1; then
+            echo "::error::ssh-keyscan did not add a host key for $HOST (check EC2_HOST secret and port 22)"
+            exit 1
+          fi
+          echo "SSH_OPTS=-i ec2_key -o UserKnownHostsFile=${HOME}/.ssh/known_hosts -o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
+          echo "EC2_HOST=$HOST" >> "$GITHUB_ENV"
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           EC2_HOST: ${{ secrets.EC2_HOST }}
 
       - name: Sync backend to EC2
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_HOST: ${{ env.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_APP_DIR: ${{ env.EC2_APP_DIR }}
         run: |
+          set -euo pipefail
           rsync -avz --delete \
             --exclude 'node_modules' \
             --exclude 'dist' \
@@ -78,16 +94,16 @@ jobs:
             --exclude 'coverage' \
             --exclude 'test' \
             --exclude '*.log' \
-            -e "ssh -i ec2_key -o StrictHostKeyChecking=yes" \
+            -e "ssh ${SSH_OPTS}" \
             ./backend/ "${EC2_USER}@${EC2_HOST}:~/${EC2_APP_DIR}/"
 
       - name: Install, build, migrate, and restart
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_HOST: ${{ env.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_APP_DIR: ${{ env.EC2_APP_DIR }}
         run: |
-          ssh -i ec2_key -o StrictHostKeyChecking=yes "${EC2_USER}@${EC2_HOST}" \
+          ssh ${SSH_OPTS} "${EC2_USER}@${EC2_HOST}" \
             "EC2_APP_DIR=${EC2_APP_DIR}" bash -s <<'REMOTE'
           set -euo pipefail
           cd ~/"${EC2_APP_DIR}"
@@ -112,10 +128,10 @@ jobs:
 
       - name: Verify deployment
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_HOST: ${{ env.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          ssh -i ec2_key -o StrictHostKeyChecking=yes "${EC2_USER}@${EC2_HOST}" \
+          ssh ${SSH_OPTS} "${EC2_USER}@${EC2_HOST}" \
             "pm2 list && pm2 describe tunect-backend | head -20"
 
       - name: Remove SSH key
