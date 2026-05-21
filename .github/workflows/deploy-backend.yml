@@ -118,9 +118,12 @@ jobs:
             exit 1
           fi
 
-          export NODE_ENV=production
+          # Install ALL deps (incl. devDependencies) for nest build / tsc.
+          # NODE_ENV=production before npm ci skips devDeps → missing @types/* and TS errors.
           npm ci
           npm run build
+
+          export NODE_ENV=production
           npx prisma migrate deploy
 
           if pm2 describe tunect-backend >/dev/null 2>&1; then
