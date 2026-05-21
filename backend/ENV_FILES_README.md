@@ -33,26 +33,22 @@ We have **THREE** environment files for different deployment scenarios:
 
 ### For Local Development:
 ```bash
-cp .env.local .env
+cp ../.env.sample .env
+# Edit .env — keep only backend variables (see .env.sample header)
 ```
 
-### For Railway Testing:
-```bash
-cp .env.test .env
-```
-
-### For Production Deployment:
-```bash
-cp .env.prod .env
-```
+### For Railway Testing / PreProd / Production:
+Use your deployment platform's secret store (AWS Secrets Manager, Railway variables, etc.).
+Do not commit `.env.test`, `.env.preprod`, or `.env.prod`.
 
 ---
 
 ## 🚨 Security Guidelines
 
 ### Local Development
-- ✅ Can commit `.env.local` (no sensitive data)
-- ✅ Use test API keys
+- ❌ Never commit `.env`, `.env.local`, or any environment-specific file
+- ✅ Copy from repo root `.env.sample` → `backend/.env` and `Frontend/.env`
+- ✅ Use test API keys only
 - ✅ Mock S3 and OpenAI
 
 ### Test Environment

@@ -1,0 +1,40 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches: [ "prod" ]
+
+env:
+  EC2_HOST: ${{ secrets.EC2_HOST }}
+  EC2_USER: ${{ secrets.EC2_USER }}
+  EC2_KEY: ${{ secrets.EC2_SSH_KEY }}
+
+jobs:
+  deploy:
+    name: Deploy Backend to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup SSH key
+      run: |
+        echo "$EC2_KEY" > ec2_key
+        chmod 600 ec2_key
+
+    - name: Deploy backend to EC2
+      run: |
+        # Sync backend folder to EC2 (excluding node_modules, .env, and dist)
+        rsync -avz --exclude='node_modules' --exclude='.env*' --exclude='dist' --exclude='.git' \
+          -e "ssh -i ec2_key -o StrictHostKeyChecking=no" \
+          ./backend/ $EC2_USER@$EC2_HOST:/home/$EC2_USER/backend/
+
+    - name: Install dependencies and restart service
+      run: |
+        ssh -i ec2_key -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
+          cd /home/$EC2_USER/backend
+          npm ci --production
+          pm2 restart tunect-backend || pm2 start npm --name tunect-backend -- start
+          pm2 save
+        EOF
