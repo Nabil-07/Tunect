@@ -49,7 +49,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          test -f dist/src/main.js
+          test -f dist/main.js
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -120,7 +120,7 @@ jobs:
           EC2_APP_DIR: ${{ env.EC2_APP_DIR }}
         run: |
           set -euo pipefail
-          test -f backend/dist/src/main.js
+          test -f backend/dist/main.js
           rsync -avz --delete \
             --exclude 'node_modules' \
             --exclude '.env' \
@@ -143,7 +143,7 @@ jobs:
             "EC2_APP_DIR=${EC2_APP_DIR}" bash -s <<'REMOTE'
           set -euo pipefail
           cd ~/"${EC2_APP_DIR}"
-          test -f dist/src/main.js
+          test -f dist/main.js
           test ! -f src/main.ts || echo "WARN: src/ present; deploy should use prebuilt dist only"
 
           unset NODE_ENV
@@ -157,7 +157,7 @@ jobs:
           if pm2 describe tunect-backend >/dev/null 2>&1; then
             pm2 restart tunect-backend --update-env
           else
-            pm2 start dist/src/main.js --name tunect-backend --time
+            pm2 start dist/main.js --name tunect-backend --time
           fi
           pm2 save
           REMOTE
