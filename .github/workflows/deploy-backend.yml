@@ -63,8 +63,13 @@ jobs:
           chmod 644 ~/.ssh/known_hosts
 
           install -m 600 /dev/null ec2_key
-          printf '%s\n' "$EC2_SSH_KEY" > ec2_key
+          # Do not append an extra newline — corrupts PEM and causes "error in libcrypto"
+          printf '%s' "$EC2_SSH_KEY" | tr -d '\r' > ec2_key
           chmod 600 ec2_key
+          if ! ssh-keygen -y -f ec2_key >/dev/null 2>&1; then
+            echo "::error::EC2_SSH_KEY secret is invalid. Re-paste the full .pem from tunect-prod-key.pem."
+            exit 1
+          fi
 
           # EC2 presents ED25519; keyscan must succeed or rsync fails with "Host key verification failed"
           ssh-keyscan -T 20 -t ed25519,ecdsa,rsa -H "$HOST" >> ~/.ssh/known_hosts
