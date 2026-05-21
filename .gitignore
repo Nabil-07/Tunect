@@ -1,9 +1,14 @@
 # Node.js dependencies
 node_modules/
 dist/
+
+# Environment files (never commit secrets — use .env.sample as template)
 .env
-.env.test
-.env.prod
+.env.*
+!.env.sample
+**/.env
+**/.env.*
+!**/.env.sample
 
 # Build and cache
 .next/
