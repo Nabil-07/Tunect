@@ -60,6 +60,7 @@ jobs:
             backend/package.json
             backend/package-lock.json
             backend/prisma
+            backend/ecosystem.config.cjs
           retention-days: 1
 
   deploy:
@@ -154,12 +155,12 @@ jobs:
           set +a
           npx prisma migrate deploy
 
-          if pm2 describe tunect-backend >/dev/null 2>&1; then
-            pm2 restart tunect-backend --update-env
-          else
-            pm2 start dist/main.js --name tunect-backend --time
-          fi
+          # Restart is not enough: old PM2 entries often still point at dist/src/main.js.
+          pm2 delete tunect-backend 2>/dev/null || true
+          pm2 start ecosystem.config.cjs --only tunect-backend
           pm2 save
+          sleep 3
+          curl -fsS http://127.0.0.1:${PORT:-3000}/health >/dev/null
           REMOTE
 
       - name: Verify deployment
@@ -168,7 +169,7 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
           ssh ${SSH_OPTS} "${EC2_USER}@${EC2_HOST}" \
-            "pm2 list && pm2 describe tunect-backend | head -20"
+            "pm2 list && pm2 describe tunect-backend | head -25 && curl -fsS http://127.0.0.1:3000/health | head -c 200"
 
       - name: Remove SSH key
         if: always()
