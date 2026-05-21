@@ -44,7 +44,7 @@ export class EmailService {
         .then(() => {
           this.logger.log('[EmailService] SMTP transporter verified successfully.');
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           this.logger.error('[EmailService] SMTP verification failed:', error);
         });
     }

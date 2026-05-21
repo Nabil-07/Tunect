@@ -53,6 +53,19 @@ jobs:
         with:
           ref: ${{ env.DEPLOY_BRANCH }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Build backend (GitHub runner)
+        working-directory: backend
+        run: |
+          npm ci
+          npm run build
+
       - name: Configure SSH key
         run: |
           set -euo pipefail
@@ -92,7 +105,6 @@ jobs:
           set -euo pipefail
           rsync -avz --delete \
             --exclude 'node_modules' \
-            --exclude 'dist' \
             --exclude '.env' \
             --exclude '.env.*' \
             --exclude '.git' \
@@ -102,7 +114,7 @@ jobs:
             -e "ssh ${SSH_OPTS}" \
             ./backend/ "${EC2_USER}@${EC2_HOST}:~/${EC2_APP_DIR}/"
 
-      - name: Install, build, migrate, and restart
+      - name: Install runtime deps, migrate, and restart
         env:
           EC2_HOST: ${{ env.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -117,13 +129,20 @@ jobs:
             echo "ERROR: ~/${EC2_APP_DIR}/.env is missing. Copy it once with scp (see DEPLOY_BACKEND.md)."
             exit 1
           fi
+          if [ ! -f dist/src/main.js ]; then
+            echo "ERROR: dist/src/main.js missing — build must run on GitHub Actions before rsync."
+            exit 1
+          fi
 
-          # Install ALL deps (incl. devDependencies) for nest build / tsc.
-          # NODE_ENV=production before npm ci skips devDeps → missing @types/* and TS errors.
-          npm ci
-          npm run build
+          # Server .env often sets NODE_ENV=production, which makes npm ci skip devDependencies.
+          # Build runs on GitHub; EC2 only installs runtime deps.
+          unset NODE_ENV
+          export NPM_CONFIG_PRODUCTION=true
+          npm ci --omit=dev
 
-          export NODE_ENV=production
+          set -a
+          source .env
+          set +a
           npx prisma migrate deploy
 
           if pm2 describe tunect-backend >/dev/null 2>&1; then
