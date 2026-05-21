@@ -92,14 +92,13 @@ jobs:
 
       - name: Sync to S3
         run: |
-          set -euxo pipefail
-          aws s3 ls "s3://${S3_BUCKET}/" | head -5
+          set -eu
           aws s3 sync Frontend/dist/ "s3://${S3_BUCKET}/" --delete
           echo "S3 sync complete"
 
       - name: Invalidate CloudFront cache
         run: |
-          set -euxo pipefail
+          set -eu
           aws cloudfront create-invalidation \
             --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
             --paths "/*"
