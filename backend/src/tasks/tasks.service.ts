@@ -9,6 +9,7 @@ import { fromUtc } from '../common/time.util';
 import { addMinutes } from 'date-fns';
 import { BookingStatus, Prisma, TokenReason } from '@prisma/client';
 import { restoreTutorTokenLotsForBooking } from '../tutors/token-lots.helper';
+import { computeBookingEarnings, platformFeePercent } from '../common/earnings';
 
 // Config: how many minutes before session we remind
 const REMIND_BEFORE_MIN = 30;
@@ -74,13 +75,79 @@ export class TasksService {
     }
   }
 
-  private platformFeePercent(hourlyRate?: number | null): number {
-    const rate = Number(hourlyRate ?? 0);
-    if (!Number.isFinite(rate) || rate <= 0) return 20; // Default fallback
-    // Commission rates: 0-399=25%, 400-699=22%, 700+=18%
-    if (rate < 400) return 25;
-    if (rate < 700) return 22;
-    return 18;
+  private getBookingHours(
+    startTime?: Date | null,
+    endTime?: Date | null,
+    fallbackTokens?: number | null,
+  ): number {
+    if (startTime && endTime) {
+      const diffMs = endTime.getTime() - startTime.getTime();
+      if (Number.isFinite(diffMs) && diffMs > 0) return diffMs / 3_600_000;
+    }
+    const fallback = Number(fallbackTokens ?? 0);
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+
+  /**
+   * Credit tutor wallet for a completed / student-no-show booking.
+   * Uses FIFO lot consumption → priceAtBooking fallback. Never tutor.hourlyRate.
+   */
+  private async creditTutorForBooking(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    booking: {
+      id: string;
+      tutorId: string;
+      isDemo: boolean;
+      startTime: Date | null;
+      endTime: Date | null;
+      tokensCharged: Prisma.Decimal | number | null;
+      priceAtBooking: Prisma.Decimal | number | null;
+    },
+    note: string,
+  ): Promise<void> {
+    if (booking.isDemo) return;
+
+    const existingLedger = await tx.tutorWalletLedger.findFirst({
+      where: { bookingId: booking.id, reason: 'BOOKING_EARNED' },
+      select: { id: true },
+    });
+    if (existingLedger) return;
+
+    const consumptions = await tx.bookingLotConsumption.findMany({
+      where: { bookingId: booking.id, reversed: false },
+      select: { qty: true, pricePerToken: true, reversed: true },
+    });
+    const hours = this.getBookingHours(
+      booking.startTime,
+      booking.endTime,
+      Number(booking.tokensCharged ?? 0),
+    );
+    const earnings = computeBookingEarnings({
+      consumptions,
+      fallbackPriceAtBooking: Number(booking.priceAtBooking ?? 0),
+      hours,
+      tokensCharged: Number(booking.tokensCharged ?? 0),
+    });
+    if (earnings.tutorShare <= 0) return;
+
+    const tutorShare = earnings.tutorShare;
+    const effectiveRate = earnings.effectiveRate;
+    const feePercent = platformFeePercent(effectiveRate);
+
+    await tx.tutorWallet.upsert({
+      where: { tutorId: booking.tutorId },
+      update: { balance: { increment: tutorShare } },
+      create: { tutorId: booking.tutorId, balance: tutorShare },
+    });
+    await tx.tutorWalletLedger.create({
+      data: {
+        tutorId: booking.tutorId,
+        bookingId: booking.id,
+        delta: tutorShare,
+        reason: 'BOOKING_EARNED',
+        note: `${note} (rate: ₹${effectiveRate.toFixed(2)}/hr, fee: ${feePercent}%, earned: ₹${tutorShare.toFixed(2)}${earnings.usedConsumptionRows ? ', source: lots' : ''})`,
+      },
+    });
   }
 
   private parseAttendance(
@@ -192,9 +259,18 @@ export class TasksService {
         status: { in: [BookingStatus.CONFIRMED, BookingStatus.LIVE, BookingStatus.WAITING_ROOM] },
         endTime: { not: null, lt: now },
       },
-      include: {
-        tutor: { select: { id: true, hourlyRate: true } },
-        student: { select: { id: true } },
+      select: {
+        id: true,
+        tutorId: true,
+        studentId: true,
+        isDemo: true,
+        status: true,
+        startTime: true,
+        endTime: true,
+        tokensCharged: true,
+        priceAtBooking: true,
+        noShowCheckAt: true,
+        refundProcessed: true,
         attendance: true,
         whiteboardSessions: { select: { data: true } },
       },
@@ -210,12 +286,6 @@ export class TasksService {
         const studentJoined = !!attendance.studentJoinedAt;
 
         await this.prisma.$transaction(async (tx) => {
-          // Duplicate-prevention for wallet credits
-          const existingLedger = await tx.tutorWalletLedger.findFirst({
-            where: { bookingId: booking.id, reason: 'BOOKING_EARNED' },
-            select: { id: true },
-          });
-
           if (tutorJoined && studentJoined) {
             // Both attended → COMPLETED + pay tutor
             await tx.booking.update({
@@ -223,34 +293,11 @@ export class TasksService {
               data: { status: BookingStatus.COMPLETED },
             });
 
-            if (!booking.isDemo && !existingLedger) {
-              const hourlyRate = Number(booking.tutor?.hourlyRate ?? 0);
-              const hours = booking.startTime && booking.endTime
-                ? Math.max(0, (booking.endTime.getTime() - booking.startTime.getTime()) / 3_600_000)
-                : Number(booking.tokensCharged || 0);
-              if (hours > 0) {
-                const bookingAmount = hours * hourlyRate;
-                const feePercent = this.platformFeePercent(hourlyRate);
-                const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
-
-                if (tutorShare > 0) {
-                  await tx.tutorWallet.upsert({
-                    where: { tutorId: booking.tutorId },
-                    update: { balance: { increment: tutorShare } },
-                    create: { tutorId: booking.tutorId, balance: tutorShare },
-                  });
-                  await tx.tutorWalletLedger.create({
-                    data: {
-                      tutorId: booking.tutorId,
-                      bookingId: booking.id,
-                      delta: tutorShare,
-                      reason: 'BOOKING_EARNED',
-                      note: `Nightly auto-complete for booking ${booking.id}`,
-                    },
-                  });
-                }
-              }
-            }
+            await this.creditTutorForBooking(
+              tx,
+              booking,
+              `Nightly auto-complete for booking ${booking.id}`,
+            );
           } else if (tutorJoined && !studentJoined) {
             // Student no-show → AUTO_CANCELLED_STUDENT_NO_SHOW + pay tutor
             noShowType = 'STUDENT_NO_SHOW';
@@ -263,32 +310,11 @@ export class TasksService {
               },
             });
 
-            if (!booking.isDemo && !existingLedger) {
-              const start = booking.startTime!;
-              const end = booking.endTime ?? addMinutes(start, 60);
-              const hours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
-              const hourlyRate = Number(booking.tutor?.hourlyRate ?? 0);
-              const bookingAmount = hours * hourlyRate;
-              const feePercent = this.platformFeePercent(hourlyRate);
-              const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
-
-              if (tutorShare > 0) {
-                await tx.tutorWallet.upsert({
-                  where: { tutorId: booking.tutorId },
-                  update: { balance: { increment: tutorShare } },
-                  create: { tutorId: booking.tutorId, balance: tutorShare },
-                });
-                await tx.tutorWalletLedger.create({
-                  data: {
-                    tutorId: booking.tutorId,
-                    bookingId: booking.id,
-                    delta: tutorShare,
-                    reason: 'BOOKING_EARNED',
-                    note: `Nightly student-no-show payout for booking ${booking.id}`,
-                  },
-                });
-              }
-            }
+            await this.creditTutorForBooking(
+              tx,
+              booking,
+              `Nightly student-no-show payout for booking ${booking.id}`,
+            );
           } else if (!tutorJoined && studentJoined) {
             // Tutor no-show safety net → AUTO_CANCELLED_TUTOR_NO_SHOW + refund + demerit
             noShowType = 'TUTOR_NO_SHOW';
@@ -577,9 +603,18 @@ export class TasksService {
         status: { in: [BookingStatus.CONFIRMED, BookingStatus.WAITING_ROOM, BookingStatus.LIVE] },
         endTime: { not: null, lt: gracePeriodEnd },
       },
-      include: {
-        tutor: { select: { id: true, hourlyRate: true } },
-        student: { select: { id: true } },
+      select: {
+        id: true,
+        tutorId: true,
+        studentId: true,
+        isDemo: true,
+        status: true,
+        startTime: true,
+        endTime: true,
+        tokensCharged: true,
+        priceAtBooking: true,
+        noShowCheckAt: true,
+        refundProcessed: true,
         attendance: true,
         whiteboardSessions: { select: { data: true } },
       },
@@ -596,43 +631,16 @@ export class TasksService {
           // Both joined, class ended — complete the booking + pay tutor
           // (safety net if frontend POST /bookings/:id/complete didn't fire)
           await this.prisma.$transaction(async (tx) => {
-            // Duplicate-prevention: check if wallet ledger entry already exists
-            const existingLedger = await tx.tutorWalletLedger.findFirst({
-              where: { bookingId: booking.id, reason: 'BOOKING_EARNED' },
-              select: { id: true },
-            });
-
             await tx.booking.update({
               where: { id: booking.id },
               data: { status: BookingStatus.COMPLETED, noShowCheckAt: now },
             });
 
-            if (!booking.isDemo && !existingLedger) {
-              const start = booking.startTime!;
-              const end = booking.endTime ?? addMinutes(start, 60);
-              const hours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
-              const hourlyRate = Number(booking.tutor?.hourlyRate ?? 0);
-              const bookingAmount = hours * hourlyRate;
-              const feePercent = this.platformFeePercent(hourlyRate);
-              const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
-
-              if (tutorShare > 0) {
-                await tx.tutorWallet.upsert({
-                  where: { tutorId: booking.tutorId },
-                  update: { balance: { increment: tutorShare } },
-                  create: { tutorId: booking.tutorId, balance: tutorShare },
-                });
-                await tx.tutorWalletLedger.create({
-                  data: {
-                    tutorId: booking.tutorId,
-                    bookingId: booking.id,
-                    delta: tutorShare,
-                    reason: 'BOOKING_EARNED',
-                    note: `Post-class auto-complete for booking ${booking.id}`,
-                  },
-                });
-              }
-            }
+            await this.creditTutorForBooking(
+              tx,
+              booking,
+              `Post-class auto-complete for booking ${booking.id}`,
+            );
 
             this.logger.log(
               `Post-class auto-complete: both attended, completed booking ${booking.id}`,
@@ -641,11 +649,6 @@ export class TasksService {
         } else if (tutorJoined && !studentJoined) {
           // Student no-show, class has ended: pay tutor
           await this.prisma.$transaction(async (tx) => {
-            const existingLedger = await tx.tutorWalletLedger.findFirst({
-              where: { bookingId: booking.id, reason: 'BOOKING_EARNED' },
-              select: { id: true },
-            });
-
             await tx.booking.update({
               where: { id: booking.id },
               data: {
@@ -655,34 +658,11 @@ export class TasksService {
               },
             });
 
-            if (!booking.isDemo && !existingLedger) {
-              const start = booking.startTime!;
-              const end = booking.endTime ?? addMinutes(start, 60);
-              const hours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
-              const hourlyRate = Number(booking.tutor?.hourlyRate ?? 0);
-              const bookingAmount = hours * hourlyRate;
-
-              const feePercent = this.platformFeePercent(hourlyRate);
-              const tutorShare = Math.max(0, (bookingAmount * (100 - feePercent)) / 100);
-
-              if (tutorShare > 0) {
-                await tx.tutorWallet.upsert({
-                  where: { tutorId: booking.tutorId },
-                  update: { balance: { increment: tutorShare } },
-                  create: { tutorId: booking.tutorId, balance: tutorShare },
-                });
-
-                await tx.tutorWalletLedger.create({
-                  data: {
-                    tutorId: booking.tutorId,
-                    bookingId: booking.id,
-                    delta: tutorShare,
-                    reason: 'BOOKING_EARNED',
-                    note: `Student no-show payout for booking ${booking.id}`,
-                  },
-                });
-              }
-            }
+            await this.creditTutorForBooking(
+              tx,
+              booking,
+              `Student no-show payout for booking ${booking.id}`,
+            );
 
             this.logger.log(
               `Student no-show (post-class): paid tutor for booking ${booking.id}`,
