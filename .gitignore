@@ -32,6 +32,9 @@ pnpm-debug.log*
 # Prisma - generated client only (migrations MUST be version-controlled)
 # prisma/migrations/ — DO NOT ignore, Prisma requires migration history in VCS
 
+# Separate AI repo (clone locally; tracked on AI-_Integration branch only)
+Tunect-AI/
+
 # Temporary files
 tmp/
 *.tmp
