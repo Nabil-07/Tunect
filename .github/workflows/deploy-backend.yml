@@ -1,8 +1,8 @@
-# Production backend deploy — runs ONLY on pushes to the prod branch.
-# Always checks out and deploys code from prod (never main).
+# Production backend deploy — prod branch only.
+# Job 1: build on GitHub (full devDependencies).
+# Job 2: rsync dist + runtime install on EC2 (no nest build on server).
 #
-# GitHub secrets (Settings → Secrets and variables → Actions):
-#   EC2_HOST, EC2_USER, EC2_SSH_KEY
+# Secrets: EC2_HOST, EC2_USER, EC2_SSH_KEY
 
 name: Deploy Backend to EC2
 
@@ -23,31 +23,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Deploy Backend to EC2
+  build:
+    name: Build backend (GitHub)
     runs-on: ubuntu-latest
-    # Only run when the event is on prod (push) or manual deploy of prod code
     if: github.ref == 'refs/heads/prod' || github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Validate GitHub secrets
-        run: |
-          missing=0
-          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing repository secret: $name"
-              missing=1
-            fi
-          done
-          if [ "$missing" -eq 1 ]; then
-            echo "Add secrets at: GitHub repo → Settings → Secrets and variables → Actions"
-            exit 1
-          fi
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-
       - name: Checkout prod branch
         uses: actions/checkout@v4
         with:
@@ -60,36 +41,72 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Build backend (GitHub runner)
+      - name: Install and compile
         working-directory: backend
+        env:
+          # prisma generate only needs a valid URL shape on CI
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci?schema=public
         run: |
           npm ci
           npm run build
+          test -f dist/src/main.js
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: |
+            backend/dist
+            backend/package.json
+            backend/package-lock.json
+            backend/prisma
+          retention-days: 1
+
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/prod' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Validate GitHub secrets
+        run: |
+          missing=0
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret: $name"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Checkout prod branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_BRANCH }}
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-dist
+          path: backend
 
       - name: Configure SSH key
         run: |
           set -euo pipefail
           HOST="$(printf '%s' "$EC2_HOST" | tr -d '[:space:]')"
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          touch ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          touch ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
           install -m 600 /dev/null ec2_key
-          # Do not append an extra newline — corrupts PEM and causes "error in libcrypto"
           printf '%s' "$EC2_SSH_KEY" | tr -d '\r' > ec2_key
           chmod 600 ec2_key
-          if ! ssh-keygen -y -f ec2_key >/dev/null 2>&1; then
-            echo "::error::EC2_SSH_KEY secret is invalid. Re-paste the full .pem from tunect-prod-key.pem."
-            exit 1
-          fi
-
-          # EC2 presents ED25519; keyscan must succeed or rsync fails with "Host key verification failed"
+          ssh-keygen -y -f ec2_key >/dev/null
           ssh-keyscan -T 20 -t ed25519,ecdsa,rsa -H "$HOST" >> ~/.ssh/known_hosts
-          if ! ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null 2>&1; then
-            echo "::error::ssh-keyscan did not add a host key for $HOST (check EC2_HOST secret and port 22)"
-            exit 1
-          fi
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           echo "SSH_OPTS=-i ec2_key -o UserKnownHostsFile=${HOME}/.ssh/known_hosts -o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
           echo "EC2_HOST=$HOST" >> "$GITHUB_ENV"
         env:
@@ -103,6 +120,7 @@ jobs:
           EC2_APP_DIR: ${{ env.EC2_APP_DIR }}
         run: |
           set -euo pipefail
+          test -f backend/dist/src/main.js
           rsync -avz --delete \
             --exclude 'node_modules' \
             --exclude '.env' \
@@ -110,11 +128,12 @@ jobs:
             --exclude '.git' \
             --exclude 'coverage' \
             --exclude 'test' \
+            --exclude 'src' \
             --exclude '*.log' \
             -e "ssh ${SSH_OPTS}" \
             ./backend/ "${EC2_USER}@${EC2_HOST}:~/${EC2_APP_DIR}/"
 
-      - name: Install runtime deps, migrate, and restart
+      - name: Install runtime deps, migrate, restart (no build on EC2)
         env:
           EC2_HOST: ${{ env.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -124,20 +143,10 @@ jobs:
             "EC2_APP_DIR=${EC2_APP_DIR}" bash -s <<'REMOTE'
           set -euo pipefail
           cd ~/"${EC2_APP_DIR}"
+          test -f dist/src/main.js
+          test ! -f src/main.ts || echo "WARN: src/ present; deploy should use prebuilt dist only"
 
-          if [ ! -f .env ]; then
-            echo "ERROR: ~/${EC2_APP_DIR}/.env is missing. Copy it once with scp (see DEPLOY_BACKEND.md)."
-            exit 1
-          fi
-          if [ ! -f dist/src/main.js ]; then
-            echo "ERROR: dist/src/main.js missing — build must run on GitHub Actions before rsync."
-            exit 1
-          fi
-
-          # Server .env often sets NODE_ENV=production, which makes npm ci skip devDependencies.
-          # Build runs on GitHub; EC2 only installs runtime deps.
           unset NODE_ENV
-          export NPM_CONFIG_PRODUCTION=true
           npm ci --omit=dev
 
           set -a
