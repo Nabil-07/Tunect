@@ -42,8 +42,7 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     'address',
     'avatarUrl',
     'avatar',
-    'access_token',
-    'refresh_token',
+    // Never encrypt JWTs — clients must send them verbatim in Authorization / refresh body.
     'user.email',
     'user.phone',
     'user.avatarUrl',
@@ -76,6 +75,15 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     '/tutors/me',
   ];
 
+  // Auth endpoints return JWTs; encrypting them breaks login when the client cannot decrypt.
+  private readonly authEndpoints = [
+    '/auth/login',
+    '/auth/refresh',
+    '/auth/register',
+    '/auth/google',
+    '/auth/google/callback',
+  ];
+
   constructor(
     private readonly encryptionService: EncryptionService,
     private readonly config: ConfigService,
@@ -95,6 +103,10 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     // Skip encryption for binary/stream endpoints (e.g. file downloads)
     const url: string = request.url || '';
     if (url.startsWith('/uploads/open/') || url.startsWith('/uploads/direct')) {
+      return next.handle();
+    }
+
+    if (this.isAuthRoute(url)) {
       return next.handle();
     }
 
@@ -226,6 +238,13 @@ export class EncryptResponseInterceptor implements NestInterceptor {
   private isSelfProfileRoute(url: string): boolean {
     const path = url.split('?')[0];
     return this.selfProfileEndpoints.some(route => path === route || path === `${route}/`);
+  }
+
+  private isAuthRoute(url: string): boolean {
+    const path = url.split('?')[0];
+    return this.authEndpoints.some(
+      (route) => path === route || path.startsWith(`${route}/`),
+    );
   }
 
   /**

@@ -162,3 +162,23 @@ export async function decryptObject(obj: any, fieldsToDecrypt: string[]): Promis
 export function isDecryptionEnabled(): boolean {
   return !!ENCRYPTION_KEY;
 }
+
+/** True when value is a three-part JWT (header.payload.signature). */
+export function looksLikeJwt(value: string): boolean {
+  const parts = value.split('.');
+  return parts.length === 3 && parts.every((part) => part.length > 0);
+}
+
+/**
+ * Normalize an access/refresh token from the API (plain JWT or AES-encrypted).
+ * Never returns ciphertext — avoids sending encrypted blobs as Bearer tokens.
+ */
+export async function unwrapAuthToken(
+  raw: string | null | undefined,
+): Promise<string | null> {
+  if (!raw?.trim()) return null;
+  if (looksLikeJwt(raw)) return raw;
+  const decrypted = await decryptField(raw);
+  if (decrypted && looksLikeJwt(decrypted)) return decrypted;
+  return null;
+}

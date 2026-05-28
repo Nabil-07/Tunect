@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { http as api } from '../api/http';
 import { setTokens } from '../lib/auth';
-import { decryptField } from '../utils/decryption';
+import { unwrapAuthToken } from '../utils/decryption';
 
 type RoleApi = 'STUDENT' | 'TUTOR' | 'ADMIN';
 
@@ -48,9 +48,11 @@ export default function AuthCallback() {
 
         // ---- tokens - store using new auth utility (decrypt if encrypted) ----
         if (access) {
-          const decryptedAccess = (await decryptField(access)) || access;
-          const decryptedRefresh = refresh ? ((await decryptField(refresh)) || refresh) : undefined;
-          setTokens({ accessToken: decryptedAccess, refreshToken: decryptedRefresh });
+          const decryptedAccess = await unwrapAuthToken(access);
+          const decryptedRefresh = await unwrapAuthToken(refresh);
+          if (decryptedAccess) {
+            setTokens({ accessToken: decryptedAccess, refreshToken: decryptedRefresh ?? undefined });
+          }
         }
 
         // ---- hydrate current user ----

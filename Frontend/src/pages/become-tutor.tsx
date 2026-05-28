@@ -17,7 +17,7 @@ import { Link, useNavigate } from "react-router-dom";
 import SEO from "../components/SEO";
 import { http } from "../api/http";
 import { getAccessToken, setTokens } from "../lib/auth";
-import { decryptField } from '../utils/decryption';
+import { unwrapAuthToken } from '../utils/decryption';
 import Loader from "../components/common/Loader";
 import api from "../lib/apiClient";
 
@@ -114,8 +114,8 @@ export default function BecomeTutor() {
       const response = await http.post("/profiles/choose-role", { role: "TUTOR" });
       // Store the new JWT token with updated role using the proper auth utility
       if (response?.data?.access_token) {
-        const decrypted = (await decryptField(response.data.access_token)) || response.data.access_token;
-        setTokens({ accessToken: decrypted });
+        const decrypted = await unwrapAuthToken(response.data.access_token);
+        if (decrypted) setTokens({ accessToken: decrypted });
       }
       localStorage.setItem("role", "TUTOR");
       navigate("/tutor/kyc", { replace: true });
@@ -125,8 +125,8 @@ export default function BecomeTutor() {
         try {
           const fallbackResponse = await http.post("/auth/choose-role", { role: "TUTOR" });
           if (fallbackResponse?.data?.access_token) {
-            const decrypted = (await decryptField(fallbackResponse.data.access_token)) || fallbackResponse.data.access_token;
-            setTokens({ accessToken: decrypted });
+            const decrypted = await unwrapAuthToken(fallbackResponse.data.access_token);
+            if (decrypted) setTokens({ accessToken: decrypted });
           }
           localStorage.setItem("role", "TUTOR");
           navigate("/tutor/kyc", { replace: true });

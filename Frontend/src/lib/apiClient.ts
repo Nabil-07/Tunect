@@ -3,7 +3,7 @@ import axios, {
   type AxiosInstance,
   type InternalAxiosRequestConfig,
 } from "axios";
-import { decryptField } from '../utils/decryption';
+import { unwrapAuthToken } from '../utils/decryption';
 import { resolveApiBaseUrl } from './runtimeApi';
 
 /* ------------------------------------------------------------------
@@ -220,9 +220,8 @@ async function doRefreshToken(): Promise<string | null> {
       res.data?.refresh_token || res.data?.refreshToken;
     const userData = res.data?.user;
 
-    // Decrypt tokens if they were encrypted by the backend
-    const access = rawAccess ? ((await decryptField(rawAccess)) || rawAccess) : undefined;
-    const newRefresh = rawRefresh ? ((await decryptField(rawRefresh)) || rawRefresh) : undefined;
+    const access = await unwrapAuthToken(rawAccess);
+    const newRefresh = await unwrapAuthToken(rawRefresh);
 
     if (access) writeToken(access);
     if (newRefresh) writeRefreshToken(newRefresh);

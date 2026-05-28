@@ -27,7 +27,7 @@ import React, {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { me as fetchMe, logout as doLogout } from '../services/authService';
 import { readToken, setAuthHeader, getTimeLeftSec, refreshAccessToken, writeToken, writeRefreshToken } from '../lib/apiClient';
-// Note: decryptField from '../utils/decryption' is used in the commented-out switchAccount
+// Note: unwrapAuthToken from '../utils/decryption' is used in the commented-out switchAccount
 // multi-account code below. Import it when uncommenting that section.
 import { getKycStatus, getMyProfile } from '../services/tutorService';
 // TODO: Next Release - Multi-account imports
@@ -700,8 +700,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('✅ Token refreshed successfully');
             const rawAccess = refreshResponse.data.access_token;
             const rawRefresh = refreshResponse.data.refresh_token || account.refreshToken;
-            const newAccessToken = (await decryptField(rawAccess)) || rawAccess;
-            const newRefreshToken = (await decryptField(rawRefresh)) || rawRefresh;
+            const newAccessToken = await unwrapAuthToken(rawAccess);
+            const newRefreshToken = await unwrapAuthToken(rawRefresh);
             
             // Update tokens
             setTokens({ 
@@ -857,8 +857,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('✅ Token refreshed successfully');
             const rawAccess = refreshResponse.data.access_token;
             const rawRefresh = refreshResponse.data.refresh_token || account.refreshToken;
-            const newAccessToken = (await decryptField(rawAccess)) || rawAccess;
-            const newRefreshToken = (await decryptField(rawRefresh)) || rawRefresh;
+            const newAccessToken = await unwrapAuthToken(rawAccess);
+            const newRefreshToken = await unwrapAuthToken(rawRefresh);
             
             // Update tokens
             setTokens({ 

@@ -2,7 +2,7 @@
 import { http as api } from '../api/http';
 import { getAccessToken, clearTokens } from '../lib/auth';
 import { writeToken, writeRefreshToken } from '../lib/apiClient';
-import { decryptObject, decryptField } from '../utils/decryption';
+import { decryptObject, unwrapAuthToken } from '../utils/decryption';
 
 export type RoleApi = "STUDENT" | "TUTOR" | "ADMIN";
 export type SignupRoleUi = "student" | "tutor";
@@ -52,10 +52,10 @@ async function persistAuth(data: LoginResponse) {
   const rawAccess = pickAccess(data);
   const rawRefresh = pickRefresh(data);
 
-  const access = (await decryptField(rawAccess)) || rawAccess;
+  const access = await unwrapAuthToken(rawAccess);
   if (!access) throw new Error("Login succeeded but no access token returned.");
 
-  const refresh = (await decryptField(rawRefresh)) || rawRefresh;
+  const refresh = await unwrapAuthToken(rawRefresh);
 
   // Save tokens using the proper auth utility that respects storage preference
   writeToken(access);
