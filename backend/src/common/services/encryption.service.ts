@@ -15,6 +15,14 @@ import * as crypto from 'crypto';
  * - Configurable encryption key via environment variable
  * - Automatic IV (Initialization Vector) generation for each encryption
  */
+/** JWT / session fields — must never be AES-encrypted (clients send them as Bearer tokens). */
+const NEVER_ENCRYPT_FIELD_NAMES = new Set([
+  'access_token',
+  'refresh_token',
+  'accessToken',
+  'refreshToken',
+]);
+
 @Injectable()
 export class EncryptionService {
   private readonly logger = new Logger(EncryptionService.name);
@@ -144,6 +152,9 @@ export class EncryptionService {
       
       // Encrypt the field if it exists
       const fieldName = parts[parts.length - 1];
+      if (NEVER_ENCRYPT_FIELD_NAMES.has(fieldName)) {
+        continue;
+      }
       if (current && typeof current === 'object' && fieldName in current) {
         const value = current[fieldName];
         if (typeof value === 'string' && value.trim() !== '') {

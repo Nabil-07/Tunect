@@ -65,6 +65,10 @@ http.interceptors.response.use(
     if (response.data && import.meta.env.VITE_ENCRYPTION_KEY) {
       try {
         const fieldsToDecrypt = [
+          'access_token',
+          'refresh_token',
+          'accessToken',
+          'refreshToken',
           'email',
           'phone',
           'avatarUrl',

@@ -289,6 +289,10 @@ api.interceptors.response.use(
         const { decryptObject } = await import('../utils/decryption');
         // Note: Names are NOT decrypted - only email and phone are decrypted
         const fieldsToDecrypt = [
+          'access_token',
+          'refresh_token',
+          'accessToken',
+          'refreshToken',
           'email',
           'phone',
           'avatarUrl',

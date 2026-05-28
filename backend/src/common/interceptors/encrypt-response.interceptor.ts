@@ -107,6 +107,7 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     }
 
     if (this.isAuthRoute(url)) {
+      this.logger.debug(`[EncryptResponse] Auth route — skip encryption for ${url}`);
       return next.handle();
     }
 
@@ -240,8 +241,16 @@ export class EncryptResponseInterceptor implements NestInterceptor {
     return this.selfProfileEndpoints.some(route => path === route || path === `${route}/`);
   }
 
+  private normalizePath(url: string): string {
+    const path = (url || '').split('?')[0].replace(/\/+$/, '') || '/';
+    return path;
+  }
+
   private isAuthRoute(url: string): boolean {
-    const path = url.split('?')[0];
+    const path = this.normalizePath(url);
+    if (path === '/auth' || path.includes('/auth/')) {
+      return true;
+    }
     return this.authEndpoints.some(
       (route) => path === route || path.startsWith(`${route}/`),
     );

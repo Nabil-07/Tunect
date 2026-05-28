@@ -2,7 +2,7 @@
 import { http as api } from '../api/http';
 import { getAccessToken, clearTokens } from '../lib/auth';
 import { writeToken, writeRefreshToken } from '../lib/apiClient';
-import { decryptObject, unwrapAuthToken } from '../utils/decryption';
+import { decryptObject, looksLikeJwt, unwrapAuthToken } from '../utils/decryption';
 
 export type RoleApi = "STUDENT" | "TUTOR" | "ADMIN";
 export type SignupRoleUi = "student" | "tutor";
@@ -53,7 +53,15 @@ async function persistAuth(data: LoginResponse) {
   const rawRefresh = pickRefresh(data);
 
   const access = await unwrapAuthToken(rawAccess);
-  if (!access) throw new Error("Login succeeded but no access token returned.");
+  if (!access) {
+    const looksEncrypted =
+      !!rawAccess && rawAccess.length >= 64 && !looksLikeJwt(rawAccess);
+    throw new Error(
+      looksEncrypted
+        ? 'Login succeeded but the access token could not be decrypted. Set VITE_ENCRYPTION_KEY on Vercel to match backend ENCRYPTION_KEY, or redeploy the latest backend.'
+        : 'Login succeeded but no access token returned.',
+    );
+  }
 
   const refresh = await unwrapAuthToken(rawRefresh);
 
