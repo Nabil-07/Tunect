@@ -1,19 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { computeBookingEarnings } from '../../common/earnings';
+import {
+  PAYABLE_BOOKING_STATUSES,
+  tutorShareForBooking,
+} from '../../common/tutor-lifetime-earnings';
+import { BookingStatus } from '@prisma/client';
 
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private getBookingHours(startTime?: Date | null, endTime?: Date | null, fallbackTokens?: number | null): number {
-    if (startTime && endTime) {
-      const diffMs = endTime.getTime() - startTime.getTime();
-      if (Number.isFinite(diffMs) && diffMs > 0) return diffMs / 3_600_000;
-    }
-    const fallback = Number(fallbackTokens ?? 0);
-    return Number.isFinite(fallback) ? fallback : 0;
-  }
 
   async getStudentPayments(page: number = 1, pageSize: number = 100, status?: string) {
     const skip = (page - 1) * pageSize;
@@ -213,21 +208,15 @@ export class PaymentsService {
   }
 
   async getTutorPaymentsDue(page: number = 1, pageSize: number = 100) {
-    const now = new Date();
-
-    // Get all tutors with their completed/ended bookings (non-demo)
-    // CONFIRMED bookings only included if endTime is in the past (class ended, cron hasn't flipped status yet)
+    // Same payable sessions as tutor dashboard: COMPLETED, non-demo, tokens charged
     const tutors = await this.prisma.tutor.findMany({
       include: {
         user: true,
         bookings: {
           where: {
+            status: { in: PAYABLE_BOOKING_STATUSES },
             isDemo: false,
             tokensCharged: { gt: 0 },
-            OR: [
-              { status: { in: ['COMPLETED', 'AUTO_CANCELLED_STUDENT_NO_SHOW'] } },
-              { status: 'CONFIRMED', endTime: { lt: now } },
-            ],
           },
           include: {
             student: { include: { user: true } },
@@ -248,7 +237,7 @@ export class PaymentsService {
         walletLedger: {
           where: {
             delta: { lt: 0 },
-            reason: { in: ['DEMERIT_PENALTY', 'ADJUSTMENT'] },
+            reason: 'DEMERIT_PENALTY',
           },
           select: { id: true, delta: true, reason: true, note: true, createdAt: true },
         },
@@ -277,21 +266,18 @@ export class PaymentsService {
       let penaltiesDeducted = 0; // paise
 
       for (const booking of tutor.bookings) {
-        const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
-        // Earnings precedence: BookingLotConsumption rows → priceAtBooking fallback.
-        // NEVER use tutor.hourlyRate — it may have changed since booking.
-        const earn = computeBookingEarnings({
-          consumptions: (booking as any).lotConsumptions,
-          fallbackPriceAtBooking: Number(booking.priceAtBooking ?? 0),
-          hours,
-          tokensCharged: Number(booking.tokensCharged ?? 0),
+        const tutorPaymentINR = tutorShareForBooking({
+          id: booking.id,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          tokensCharged: booking.tokensCharged,
+          priceAtBooking: booking.priceAtBooking,
+          lotConsumptions: (booking as any).lotConsumptions,
         });
-        if (earn.tutorShare <= 0) continue;
-        const hourlyRate = earn.effectiveRate;
-        const bookingAmount = earn.gross;
-        const commissionRate = this.getCommissionRate(hourlyRate);
-        const tutorPaymentINR = earn.tutorShare; // in INR
-        const tutorPayment = Math.round(tutorPaymentINR * 100); // Convert to paise for API
+        if (tutorPaymentINR <= 0) continue;
+
+        const tutorPayment = Math.round(tutorPaymentINR * 100); // paise
+        const hourlyRate = Number(booking.priceAtBooking ?? 0);
 
         const dueDate = this.calculatePaymentDueDate(booking.endTime || booking.createdAt);
         const isBanned =

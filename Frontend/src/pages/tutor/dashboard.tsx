@@ -37,11 +37,14 @@ export default function TutorDashboard() {
   const profileStatusNeedsFallbackRef = useRef(false);
   const [stats, setStats] = useState({
     totalEarnings: 0,
+    totalPaidOut: 0,
+    penaltiesDeducted: 0,
+    unpaidAmount: 0,
     sessionsCompleted: 0,
     averageRating: 0,
     totalReviews: 0,
     monthlyEarnings: 0,
-    activeStudents: 0
+    activeStudents: 0,
   });
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsSubmitting, setTermsSubmitting] = useState(false);
@@ -106,12 +109,15 @@ export default function TutorDashboard() {
         const res = await api.get('/tutors/me');
         if (isMounted && res.data) {
           setStats({
-            totalEarnings: res.data.totalEarnings || 0,
+            totalEarnings: res.data.totalEarnings ?? 0,
+            totalPaidOut: res.data.totalPaidOut ?? 0,
+            penaltiesDeducted: res.data.penaltiesDeducted ?? 0,
+            unpaidAmount: res.data.unpaidAmount ?? res.data.walletBalance ?? 0,
             sessionsCompleted: res.data.sessionsCompleted || 0,
             averageRating: res.data.rating || 0,
             totalReviews: res.data.reviews || 0,
-            monthlyEarnings: res.data.monthlyEarnings || 0,
-            activeStudents: res.data.activeStudents || 0
+            monthlyEarnings: res.data.monthlyEarnings ?? 0,
+            activeStudents: res.data.activeStudents || 0,
           });
           if (profileStatusNeedsFallbackRef.current) {
             setProfileStatus(computeTutorProfileStatus(res.data));
@@ -129,48 +135,6 @@ export default function TutorDashboard() {
         }
       } finally {
         if (isMounted) setLoadingStats(false);
-      }
-    })();
-
-    // ✅ Load wallet + payouts to align dashboard earnings with Earnings page
-    (async () => {
-      try {
-        const [walletRes, ledgerRes, payoutsRes] = await Promise.all([
-          api.get('/tutors/me/wallet'),
-          api.get('/tutors/me/ledger', { params: { limit: 200 } }),
-          api.get('/tutors/me/payouts', { params: { limit: 200 } }),
-        ]);
-
-        const unpaidAmount = Number(walletRes?.data?.balance || 0);
-        const payouts = Array.isArray(payoutsRes?.data?.items) ? payoutsRes.data.items : [];
-        const totalPaidOut = payouts.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
-        const totalEarnings = unpaidAmount + totalPaidOut;
-
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const monthlyPaidOut = payouts
-          .filter((p: any) => {
-            const paidAt = p.paidAt || p.createdAt;
-            return paidAt && new Date(paidAt) >= startOfMonth;
-          })
-          .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
-
-        const ledgerItems = Array.isArray(ledgerRes?.data?.items) ? ledgerRes.data.items : [];
-        const monthlyLedgerSum = ledgerItems
-          .filter((e: any) => e?.createdAt && new Date(e.createdAt) >= startOfMonth)
-          .reduce((sum: number, e: any) => sum + Number(e.delta || 0), 0);
-
-        const monthlyEarnings = monthlyLedgerSum + monthlyPaidOut;
-
-        if (isMounted) {
-          setStats((prev) => ({
-            ...prev,
-            totalEarnings,
-            monthlyEarnings,
-          }));
-        }
-      } catch (error) {
-        console.error('Failed to load earnings summary:', error);
       }
     })();
 
@@ -333,14 +297,14 @@ export default function TutorDashboard() {
             <>
               <StatCard
                 title="Total Earnings"
-                value={`₹${stats.totalEarnings.toLocaleString()}`}
+                value={`₹${formatInr(stats.totalEarnings)}`}
                 icon={<DollarSign className="h-6 w-6 text-emerald-600" />}
                 bgColor="bg-emerald-50"
                 testId="tutor-dashboard-total-earnings-card"
               />
               <StatCard
                 title="Monthly Earnings"
-                value={`₹${stats.monthlyEarnings.toLocaleString()}`}
+                value={`₹${formatInr(stats.monthlyEarnings)}`}
                 icon={<TrendingUp className="h-6 w-6 text-blue-600" />}
                 bgColor="bg-blue-50"
                 testId="tutor-dashboard-monthly-earnings-card"
@@ -561,6 +525,10 @@ export default function TutorDashboard() {
 }
 
 // Helper Components
+function formatInr(value: number): string {
+  return value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function StatCard({ 
   title, 
   value, 

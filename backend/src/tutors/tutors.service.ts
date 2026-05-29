@@ -4,7 +4,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { TrendingTutorDto, TrendingTutorsResponse } from './dto/trending-tutor.dto';
 import { Cacheable } from '../common/cache.decorator';
 import { computeBookingEarnings } from '../common/earnings';
+import {
+  payableBookingWhere,
+  sumTutorShareFromBookings,
+} from '../common/tutor-lifetime-earnings';
 import { UploadsService } from '../uploads/uploads.service';
+import { TutorWalletService } from './tutor-wallet.service';
 
 export type TutorPublic = {
   id: string;
@@ -368,6 +373,7 @@ export class TutorsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploadsService: UploadsService,
+    private readonly tutorWallet: TutorWalletService,
   ) {}
 
   private normalizeValue(value?: string | null): string {
@@ -1613,86 +1619,33 @@ export class TutorsService {
         .map((b) => b.studentId),
     ).size;
 
-    // completedBookings query removed — sessionsCompleted below uses prisma.booking.count directly
     const completedBookingsForEarnings = await this.prisma.booking.findMany({
-      where: {
-        tutorId,
-        status: BookingStatus.COMPLETED,
-        isDemo: false,
-      },
+      where: payableBookingWhere(tutorId),
       select: {
         id: true,
         startTime: true,
         endTime: true,
-        isDemo: true,
         tokensCharged: true,
         priceAtBooking: true,
-        tutor: { select: { hourlyRate: true } },
         lotConsumptions: {
           where: { reversed: false },
           select: { qty: true, pricePerToken: true, reversed: true },
         },
-        attendance: {
-          select: {
-            tutorJoinCount: true,
-            studentJoinCount: true,
-            tutorFirstJoinedAt: true,
-            studentFirstJoinedAt: true,
-          },
-        },
-        whiteboardSessions: {
-          take: 1,
-          select: { data: true },
-        },
       },
     });
 
-    // Sessions completed: count ALL completed bookings (including demos)
-    const sessionsCompleted = await this.prisma.booking.count({
-      where: {
-        tutorId,
-        status: BookingStatus.COMPLETED,
-      },
+    const sessionsCompleted = completedBookingsForEarnings.length;
+
+    const { totalEarnings } = sumTutorShareFromBookings(completedBookingsForEarnings);
+    const { totalEarnings: monthlyEarnings } = sumTutorShareFromBookings(
+      completedBookingsForEarnings,
+      { since: startOfMonth },
+    );
+
+    const earningsSummary = await this.tutorWallet.getEarningsSummary(tutorId, {
+      totalEarnings,
+      monthlyEarnings,
     });
-
-    // ✅ Compute earnings from booking source data using priceAtBooking (locked at booking time).
-    // This is accurate even if the tutor later changes their hourly rate.
-    const bookingHours = (b: typeof completedBookingsForEarnings[0]): number => {
-      if (b.startTime && b.endTime) {
-        const ms = b.endTime.getTime() - b.startTime.getTime();
-        if (ms > 0) return ms / 3_600_000;
-      }
-      return Number(b.tokensCharged ?? 0);
-    };
-
-    let totalEarnings = 0;
-    let monthlyEarnings = 0;
-    for (const b of completedBookingsForEarnings) {
-      if (!hasVerifiedAttendanceCombined(b.attendance, b.whiteboardSessions?.[0]?.data)) continue;
-      const hours = bookingHours(b);
-      // Earnings precedence: BookingLotConsumption rows → priceAtBooking fallback.
-      // NEVER use tutor.hourlyRate — it may have changed since booking.
-      const earnings = computeBookingEarnings({
-        consumptions: (b as any).lotConsumptions,
-        fallbackPriceAtBooking: Number(b.priceAtBooking ?? 0),
-        hours,
-        tokensCharged: Number(b.tokensCharged ?? 0),
-      });
-      const tutorEarning = earnings.tutorShare;
-      if (tutorEarning <= 0) continue;
-      totalEarnings += tutorEarning;
-      if (b.endTime && b.endTime >= startOfMonth) {
-        monthlyEarnings += tutorEarning;
-      }
-    }
-
-    // Add already-paid-out amounts (payouts already disbursed to tutor)
-    const payouts = await this.prisma.payout.findMany({
-      where: { tutorId },
-    });
-    const totalPaidOut = payouts.reduce((sum, p) => sum + Number(p.amount), 0);
-    const unpaidAmount = Math.max(0, totalEarnings - totalPaidOut);
-    // Note: totalEarnings already represents total earned; payouts are a subset of it
 
     // Get rating and reviews
     const reviews = await this.prisma.review.findMany({
@@ -1734,11 +1687,15 @@ export class TutorsService {
       country: t.country ?? null,
       // Dashboard stats
       activeStudents: activeStudentsCount,
-      totalEarnings,
       sessionsCompleted,
-      monthlyEarnings,
       rating: Number.parseFloat(averageRating.toFixed(1)),
       reviews: reviews.length,
+      totalEarnings: earningsSummary.totalEarnings,
+      totalPaidOut: earningsSummary.totalPaidOut,
+      penaltiesDeducted: earningsSummary.penaltiesDeducted,
+      unpaidAmount: earningsSummary.unpaidAmount,
+      walletBalance: earningsSummary.unpaidAmount,
+      monthlyEarnings: earningsSummary.monthlyEarnings,
     };
   }
 

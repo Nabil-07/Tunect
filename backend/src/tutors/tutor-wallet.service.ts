@@ -3,6 +3,19 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingStatus, PayoutStatus } from '@prisma/client';
 import { computeBookingEarnings } from '../common/earnings';
+import { roundMoney, payableBookingWhere } from '../common/tutor-lifetime-earnings';
+
+export type TutorEarningsSummary = {
+  /** Sum of tutor share from completed attended sessions. */
+  totalEarnings: number;
+  /** Lifetime amount paid out to the tutor. */
+  totalPaidOut: number;
+  /** Sum of demerit penalties and manual adjustments. */
+  penaltiesDeducted: number;
+  /** totalEarnings − totalPaidOut − penaltiesDeducted */
+  unpaidAmount: number;
+  monthlyEarnings: number;
+};
 
 @Injectable()
 export class TutorWalletService {
@@ -55,9 +68,8 @@ export class TutorWalletService {
     const now = new Date();
     const bookings = await this.prisma.booking.findMany({
       where: {
-        tutorId,
+        ...payableBookingWhere(tutorId),
         endTime: { not: null, lt: now },
-        status: BookingStatus.COMPLETED,
       },
       select: {
         id: true,
@@ -103,7 +115,15 @@ export class TutorWalletService {
 
     for (const booking of bookings) {
       if (booking.isDemo) continue;
-      if (!this.hasVerifiedAttendance(booking.attendance, booking.whiteboardSessions?.[0]?.data)) continue;
+      const isStudentNoShow = booking.status === BookingStatus.AUTO_CANCELLED_STUDENT_NO_SHOW;
+      const tutorJoined =
+        !!booking.attendance?.tutorFirstJoinedAt ||
+        Number(booking.attendance?.tutorJoinCount ?? 0) > 0;
+      if (isStudentNoShow) {
+        if (!tutorJoined) continue;
+      } else if (!this.hasVerifiedAttendance(booking.attendance, booking.whiteboardSessions?.[0]?.data)) {
+        continue;
+      }
       const hours = this.getBookingHours(booking.startTime, booking.endTime, Number(booking.tokensCharged || 0));
       if (!hours) continue;
 
@@ -235,6 +255,60 @@ export class TutorWalletService {
     const nextCursor = hasMore ? items.at(-1)?.createdAt.toISOString() ?? null : null;
 
     return { items, nextCursor };
+  }
+
+  /**
+   * Earnings summary for dashboard / earnings page.
+   * totalEarnings comes from completed booking calculations (source of truth).
+   * unpaidAmount = totalEarnings − totalPaidOut − penaltiesDeducted.
+   * Wallet balance is reconciled when it drifts from unpaidAmount.
+   */
+  async getEarningsSummary(
+    tutorId: string,
+    bookingTotals: { totalEarnings: number; monthlyEarnings: number },
+  ): Promise<TutorEarningsSummary> {
+    await this.ensureCompletedBookingsCredited(tutorId);
+
+    const totalEarnings = roundMoney(bookingTotals.totalEarnings);
+    const monthlyEarnings = roundMoney(bookingTotals.monthlyEarnings);
+
+    const payouts = await this.prisma.payout.findMany({
+      where: { tutorId },
+      select: { amount: true },
+    });
+    const totalPaidOut = roundMoney(
+      payouts.reduce((sum, p) => sum + Number(p.amount), 0),
+    );
+
+    const penaltyRows = await this.prisma.tutorWalletLedger.findMany({
+      where: {
+        tutorId,
+        delta: { lt: 0 },
+        reason: 'DEMERIT_PENALTY',
+      },
+      select: { delta: true },
+    });
+    const penaltiesDeducted = roundMoney(
+      penaltyRows.reduce((sum, e) => sum + Math.abs(Number(e.delta)), 0),
+    );
+
+    const unpaidAmount = roundMoney(
+      Math.max(0, totalEarnings - totalPaidOut - penaltiesDeducted),
+    );
+
+    await this.prisma.tutorWallet.upsert({
+      where: { tutorId },
+      update: { balance: unpaidAmount },
+      create: { tutorId, balance: unpaidAmount },
+    });
+
+    return {
+      totalEarnings,
+      totalPaidOut,
+      penaltiesDeducted,
+      unpaidAmount,
+      monthlyEarnings,
+    };
   }
 
   /** Admin: reconcile all tutor wallets by re-checking every BOOKING_EARNED entry

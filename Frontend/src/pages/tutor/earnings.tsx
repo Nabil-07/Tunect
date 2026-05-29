@@ -5,8 +5,16 @@ type Wallet = { tutorId: string; balance: number; updatedAt: string };
 type LedgerItem = { id: string; bookingId?: string; delta: string; reason: string; note?: string; createdAt: string; booking?: { id: string; startTime: string; endTime: string } };
 type Payout = { id: string; amount: string; status: string; reference?: string; transactionId?: string; paymentMethod?: string; createdAt: string; paidAt?: string };
 type Receipt = { receiptId: string; tutorName: string; tutorEmail: string; amount: number; status: string; transactionId?: string; paymentMethod?: string; reference?: string; createdAt: string; paidAt?: string; companyName: string; generatedAt: string };
+type EarningsSummary = {
+  totalEarnings: number;
+  totalPaidOut: number;
+  penaltiesDeducted: number;
+  unpaidAmount: number;
+};
 
 export default function TutorEarnings() {
+  const [summary, setSummary] = useState<EarningsSummary | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(true);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [ledger, setLedger] = useState<LedgerItem[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
@@ -33,14 +41,28 @@ export default function TutorEarnings() {
     return target;
   })();
 
-  const totalPayout = payouts.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const unpaidAmount = Number(wallet?.balance || 0);
-  const totalEarnings = totalPayout + unpaidAmount;
+  const totalPayout = summary?.totalPaidOut ?? payouts.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const unpaidAmount = summary?.unpaidAmount ?? Number(wallet?.balance || 0);
+  const totalEarnings = summary?.totalEarnings ?? totalPayout + unpaidAmount + (summary?.penaltiesDeducted ?? 0);
+  const penaltiesDeducted = summary?.penaltiesDeducted ?? 0;
   const recentTransfer = payouts
     .slice()
     .sort((a, b) => new Date(b.paidAt || b.createdAt).getTime() - new Date(a.paidAt || a.createdAt).getTime())[0];
 
   useEffect(() => {
+    api.get('/tutors/me')
+      .then((r) => {
+        const d = r.data ?? {};
+        setSummary({
+          totalEarnings: d.totalEarnings ?? 0,
+          totalPaidOut: d.totalPaidOut ?? 0,
+          penaltiesDeducted: d.penaltiesDeducted ?? 0,
+          unpaidAmount: d.unpaidAmount ?? d.walletBalance ?? 0,
+        });
+      })
+      .catch((e) => console.error('Failed to load earnings summary:', e))
+      .finally(() => setLoadingSummary(false));
+
     // ✅ Load wallet independently
     api.get('/tutors/me/wallet')
       .then(r => setWallet(r.data))
@@ -115,13 +137,13 @@ ${r.paidAt ? `<div class="row"><span class="label">Paid On</span><span class="va
         <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-total-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Total earnings</div>
           <div className="text-xl font-bold mt-2">
-            {loadingWallet || loadingPayouts ? '—' : formatCurrency(totalEarnings)}
+            {loadingSummary ? '—' : formatCurrency(totalEarnings)}
           </div>
         </div>
         <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-unpaid-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Unpaid amount</div>
           <div className="text-xl font-bold mt-2">
-            {loadingWallet ? '—' : formatCurrency(unpaidAmount)}
+            {loadingSummary ? '—' : formatCurrency(unpaidAmount)}
           </div>
         </div>
         <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-next-payout-card">
@@ -133,9 +155,17 @@ ${r.paidAt ? `<div class="row"><span class="label">Paid On</span><span class="va
         <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-total-payout-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Total payout</div>
           <div className="text-xl font-bold mt-2">
-            {loadingPayouts ? '—' : formatCurrency(totalPayout)}
+            {loadingSummary ? '—' : formatCurrency(totalPayout)}
           </div>
         </div>
+        {penaltiesDeducted > 0 && (
+          <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-penalties-card">
+            <div className="text-xs uppercase tracking-wide text-slate-500">Penalties deducted</div>
+            <div className="text-xl font-bold mt-2 text-rose-700">
+              {loadingSummary ? '—' : formatCurrency(penaltiesDeducted)}
+            </div>
+          </div>
+        )}
         <div className="rounded-2xl border bg-white shadow-sm p-4" data-testid="tutor-earnings-recent-transfer-card">
           <div className="text-xs uppercase tracking-wide text-slate-500">Recent transfer</div>
           <div className="text-sm font-semibold mt-2">
@@ -153,7 +183,7 @@ ${r.paidAt ? `<div class="row"><span class="label">Paid On</span><span class="va
           <div className="h-12 mt-1 rounded animate-pulse bg-slate-100" />
         ) : (
           <>
-            <div className="text-3xl font-bold mt-1">{wallet ? formatCurrency(Number(wallet.balance)) : '—'}</div>
+            <div className="text-3xl font-bold mt-1">{summary ? formatCurrency(unpaidAmount) : wallet ? formatCurrency(Number(wallet.balance)) : '—'}</div>
             <div className="text-xs text-slate-500 mt-1">Updated {wallet ? new Date(wallet.updatedAt).toLocaleString() : ''}</div>
           </>
         )}
