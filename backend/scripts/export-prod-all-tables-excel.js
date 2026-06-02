@@ -34,6 +34,9 @@ const SKIP = new Set(
 );
 const CSV_ONLY = process.env.CSV_ONLY === '1';
 const XLSX_ONLY = process.env.XLSX_ONLY === '1';
+/** Excel cell limit; large JSON (e.g. WhiteboardSession.data) must be truncated */
+const EXCEL_CELL_MAX =
+  Number(process.env.EXCEL_CELL_MAX || 32000) || 32000;
 
 const prisma = new PrismaClient({
   datasources: { db: { url: DATABASE_URL } },
@@ -61,11 +64,21 @@ function serializeCell(value) {
   return value;
 }
 
-function rowsToAoA(columns, rows) {
+function fitExcelCell(text) {
+  const s = String(text ?? '');
+  if (s.length <= EXCEL_CELL_MAX) return s;
+  const note = `… [truncated for Excel, ${s.length} chars total]`;
+  return s.slice(0, Math.max(0, EXCEL_CELL_MAX - note.length)) + note;
+}
+
+function serializeCellForExcel(value) {
+  return fitExcelCell(serializeCell(value));
+}
+
+function rowsToAoA(columns, rows, forExcel = false) {
   const header = columns.map((c) => c.column_name);
-  const data = rows.map((row) =>
-    columns.map((c) => serializeCell(row[c.column_name])),
-  );
+  const ser = forExcel ? serializeCellForExcel : serializeCell;
+  const data = rows.map((row) => columns.map((c) => ser(row[c.column_name])));
   return [header, ...data];
 }
 
@@ -129,6 +142,7 @@ async function main() {
 
   const workbook = XLSX.utils.book_new();
   const schemaRows = [];
+  const xlsxSkipped = [];
 
   let exported = 0;
   for (const table of tableNames) {
@@ -149,29 +163,29 @@ async function main() {
     }
 
     const rows = await fetchTableData(table, columns);
-    const aoa = rowsToAoA(columns, rows);
 
     if (!XLSX_ONLY) {
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      const csv = XLSX.utils.sheet_to_csv(ws);
+      const aoaCsv = rowsToAoA(columns, rows, false);
+      const wsCsv = XLSX.utils.aoa_to_sheet(aoaCsv);
+      const csv = XLSX.utils.sheet_to_csv(wsCsv);
       fs.writeFileSync(path.join(csvDir, `${table}.csv`), csv, 'utf8');
     }
 
     if (!CSV_ONLY) {
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      XLSX.utils.book_append_sheet(workbook, ws, safeSheetName(table));
+      try {
+        const aoaXlsx = rowsToAoA(columns, rows, true);
+        const ws = XLSX.utils.aoa_to_sheet(aoaXlsx);
+        XLSX.utils.book_append_sheet(workbook, ws, safeSheetName(table));
+      } catch (err) {
+        xlsxSkipped.push({ table, reason: err.message });
+        console.log(`${rows.length} rows (csv ok, xlsx sheet skipped: ${err.message})`);
+        exported += 1;
+        continue;
+      }
     }
 
     exported += 1;
     console.log(`${rows.length} rows`);
-  }
-
-  if (!CSV_ONLY) {
-    const schemaWs = XLSX.utils.json_to_sheet(schemaRows);
-    XLSX.utils.book_append_sheet(workbook, schemaWs, '_Table_Schema');
-    XLSX.writeFile(workbook, xlsxPath);
-    console.log(`\nExcel: ${xlsxPath}`);
-    console.log(`Sheets: ${workbook.SheetNames.length} (includes _Table_Schema)`);
   }
 
   if (!XLSX_ONLY) {
@@ -181,6 +195,26 @@ async function main() {
       'utf8',
     );
     console.log(`CSV folder: ${csvDir} (${exported} tables + _schema.csv)`);
+  }
+
+  if (!CSV_ONLY) {
+    const schemaWs = XLSX.utils.json_to_sheet(schemaRows);
+    XLSX.utils.book_append_sheet(workbook, schemaWs, '_Table_Schema');
+    try {
+      XLSX.writeFile(workbook, xlsxPath);
+      console.log(`\nExcel: ${xlsxPath}`);
+      console.log(`Sheets: ${workbook.SheetNames.length} (includes _Table_Schema)`);
+      if (xlsxSkipped.length) {
+        console.log(
+          `Warning: ${xlsxSkipped.length} sheet(s) skipped in xlsx:`,
+          xlsxSkipped.map((s) => s.table).join(', '),
+        );
+      }
+    } catch (err) {
+      console.error(`\nExcel write failed: ${err.message}`);
+      console.error('CSV exports are complete. Use CSV_ONLY=1 or open files in', csvDir);
+      process.exit(1);
+    }
   }
 
   console.log('Done.');
