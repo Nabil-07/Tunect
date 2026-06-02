@@ -18,7 +18,14 @@
     "prisma:seed:test": "dotenv -e .env.test -- npx prisma db seed",
     "prisma:seed:prod": "dotenv -e .env.prod -- npx prisma db seed",
     "start:test": "dotenv -e .env.test -- npm run start:dev",
-    "start:prodlocal": "dotenv -e .env.prod -- node dist/main.js"
+    "start:prodlocal": "dotenv -e .env.prod -- node dist/main.js",
+    "export:finance": "dotenv -e .env.prod -- node scripts/export-prod-finance-excel.js",
+    "export:finance:env": "node scripts/export-prod-finance-excel.js",
+    "export:finance:tunnel": "bash scripts/export-prod-finance-tunnel.sh",
+    "backup:prod": "bash scripts/backup-prod-db.sh",
+    "backup:prod:tunnel": "bash scripts/backup-prod-db-tunnel.sh",
+    "export:tables": "dotenv -e .env.prod -- node scripts/export-prod-all-tables-excel.js",
+    "export:tables:tunnel": "bash scripts/export-prod-all-tables-tunnel.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.958.0",

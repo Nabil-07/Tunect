@@ -38,6 +38,10 @@ Tunect-AI/
 # Temporary files
 tmp/
 *.tmp
+
+# Local data exports (may contain PII)
+exports/
+*.dump
 *.swp
 
 # --- AL Project Template (from remote) ---
