@@ -10,6 +10,11 @@ import type { Tutor, TutorSearchHistoryEntry } from '../services/tutorService';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
 import { getDemoStatusesForTutors, getDemoStatusForTutor } from '../services/bookingsService';
 import { useAuth } from '../contexts/AuthContext';
+import DummyDataNotice from '../components/DummyDataNotice';
+import {
+  DUMMY_FIND_TUTORS,
+  shouldUseDummyTutors,
+} from '../config/siteShutdown';
 
 // simple debounce hook
 function useDebounced<T>(value: T, ms = 350) {
@@ -113,6 +118,7 @@ export default function FindTutors() {
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [usingDummy, setUsingDummy] = useState(false);
   const [items, setItems] = useState<TutorWithDemo[]>([]);
   const [total, setTotal] = useState(0);
   
@@ -168,36 +174,38 @@ export default function FindTutors() {
 
         if (!mounted) return;
 
-        // Use backend results directly - backend handles all filtering and pagination
-        // Store backend total for pagination BEFORE any client-side modifications
         const backendTotal = res.total ?? 0;
         let list: TutorWithDemo[] = (res.items ?? []) as TutorWithDemo[];
 
-        // Note: Backend already handles filtering (subject, language, classTeach, price, etc.)
-        // Client-side filtering after pagination breaks pagination, so we trust the backend
-        
-        // Only apply client-side sorting if backend doesn't handle it
-        // (Backend should handle sorting, but keeping this as fallback)
         if (sort === 'price_asc') list = [...list].sort((a, b) => (a.hourlyRate ?? 0) - (b.hourlyRate ?? 0));
         if (sort === 'price_desc') list = [...list].sort((a, b) => (b.hourlyRate ?? 0) - (a.hourlyRate ?? 0));
         if (sort === 'rating_desc') list = [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
 
-        // 3) render immediately without demo flags (avoids flicker)
-        setItems(list);
-        // Use backend total for pagination (not filtered count)
-        setTotal(backendTotal);
+        const useDummy = shouldUseDummyTutors(false, list.length);
+        if (useDummy) {
+          list = DUMMY_FIND_TUTORS as TutorWithDemo[];
+          setUsingDummy(true);
+          setItems(list);
+          setTotal(list.length);
+        } else {
+          setUsingDummy(false);
+          setItems(list);
+          setTotal(backendTotal);
+        }
 
-        // 4) fetch demo-used statuses in parallel and merge into items
-        // Only fetch demo statuses if user is logged in (requires auth)
         const ids = list.map((t) => t.id).filter(Boolean);
-        if (ids.length && isLoggedIn) {
+        if (ids.length && isLoggedIn && !useDummy) {
           const map = await getDemoStatusesForTutors(ids);
           if (!mounted) return;
 
           setItems((prev) => applyDemoStatuses(prev, map));
         }
       } catch {
-        if (mounted) setErr('Could not load tutors.');
+        if (!mounted) return;
+        setUsingDummy(true);
+        setItems(DUMMY_FIND_TUTORS as TutorWithDemo[]);
+        setTotal(DUMMY_FIND_TUTORS.length);
+        setErr(null);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -326,6 +334,7 @@ export default function FindTutors() {
         url={findTutorsPath}
       />
       <h1 className="text-2xl font-bold">Find Tutors</h1>
+      <DummyDataNotice show={usingDummy} />
 
       {/* ── Search bar (always visible) ──────────────────────── */}
       <div className="mt-4 flex gap-2">

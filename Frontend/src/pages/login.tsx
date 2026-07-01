@@ -1,9 +1,13 @@
 // src/pages/login.tsx
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { login as doLogin } from '../services/authService';
 import { readToken, setAuthStorage } from '../lib/apiClient';
+import {
+  SITE_SHUTDOWN,
+  LOGIN_DISABLED_MESSAGE,
+} from '../config/siteShutdown';
 
 // Credential Management API types (not in all TS libs)
 declare global {
@@ -30,6 +34,7 @@ const apiBase = String(rawApiBase).replace(/\/+$/, '');
 
 function GoogleButton({ loading }: Readonly<{ loading: boolean }>) {
   const go = () => {
+    if (SITE_SHUTDOWN) return;
     try { localStorage.setItem('remember_intent', '1'); } catch {}
     const url = new URL(`${apiBase}/auth/google`);
     url.searchParams.set('remember', '1');
@@ -39,7 +44,7 @@ function GoogleButton({ loading }: Readonly<{ loading: boolean }>) {
     <button
       type="button"
       onClick={go}
-      disabled={loading}
+      disabled={loading || SITE_SHUTDOWN}
       className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-medium
                  hover:bg-slate-50 transition disabled:opacity-60"
       data-testid="login-google-btn"
@@ -132,7 +137,8 @@ export default function Login() {
       .catch(() => { /* credential manager unavailable or denied */ });
   }, []);
 
-  const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
+  const canSubmit =
+    !SITE_SHUTDOWN && email.trim().length > 0 && password.length > 0 && !loading;
 
   const fallbackRedirect = () => {
     const role = (localStorage.getItem('role')?.toUpperCase() as RoleApi) || 'STUDENT';
@@ -142,6 +148,10 @@ export default function Login() {
   };
 
   async function submit() {
+    if (SITE_SHUTDOWN) {
+      setErr(LOGIN_DISABLED_MESSAGE);
+      return;
+    }
     // Re-read from DOM in case browser autofill didn't fire onChange
     const emailVal = (emailRef.current?.value || email).trim().toLowerCase();
     const pwVal = passwordRef.current?.value || password;
@@ -212,7 +222,20 @@ export default function Login() {
           </div>
 
           <h1 className="text-3xl font-bold text-slate-900">Welcome back</h1>
-          <p className="mt-2 text-slate-600">Please enter your details</p>
+          <p className="mt-2 text-slate-600">
+            {SITE_SHUTDOWN ? 'Sign-in is not available on this reference site.' : 'Please enter your details'}
+          </p>
+
+          {SITE_SHUTDOWN && (
+            <div
+              className="mt-6 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+              role="alert"
+              data-testid="login-shutdown-alert"
+            >
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+              <p>{LOGIN_DISABLED_MESSAGE}</p>
+            </div>
+          )}
 
           <form onSubmit={onSubmit} className="mt-8 space-y-5" autoComplete="on" noValidate data-testid="login-form">
             {err && (
@@ -238,7 +261,7 @@ export default function Login() {
                            focus:outline-none focus:ring-2 focus:ring-ocean-300 disabled:opacity-60"
                 autoComplete="username"
                 inputMode="email"
-                disabled={loading}
+                disabled={loading || SITE_SHUTDOWN}
                 data-testid="login-email-input"
               />
             </div>
@@ -260,7 +283,7 @@ export default function Login() {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 text-sm
                              focus:outline-none focus:ring-2 focus:ring-ocean-300 disabled:opacity-60"
                   autoComplete="current-password"
-                  disabled={loading}
+                  disabled={loading || SITE_SHUTDOWN}
                   data-testid="login-password-input"
                 />
                 <button
@@ -269,7 +292,7 @@ export default function Login() {
                   aria-controls="current-password"
                   onClick={() => setShowPw((v) => !v)}
                   className="absolute inset-y-0 right-2 my-auto inline-flex items-center justify-center rounded-md p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-60"
-                  disabled={loading}
+                  disabled={loading || SITE_SHUTDOWN}
                   data-testid="login-toggle-password-btn"
                 >
                   {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -279,15 +302,19 @@ export default function Login() {
 
             {/* Forgot password */}
             <div className="mt-1 flex items-center justify-end">
-              <Link to="/forgot-password" className="text-sm text-ocean-700 hover:underline" data-testid="login-forgot-password-link">
-                Forgot password
-              </Link>
+              {SITE_SHUTDOWN ? (
+                <span className="text-sm text-slate-400">Forgot password (unavailable)</span>
+              ) : (
+                <Link to="/forgot-password" className="text-sm text-ocean-700 hover:underline" data-testid="login-forgot-password-link">
+                  Forgot password
+                </Link>
+              )}
             </div>
 
             {/* Sign in */}
             <button
               type="submit"
-              disabled={!canSubmit}
+              disabled={!canSubmit || SITE_SHUTDOWN}
               className={`w-full rounded-lg py-3 text-white font-medium shadow-sm
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-300
                 ${canSubmit ? 'bg-ocean-700 hover:bg-ocean-800' : 'bg-ocean-700/60'}`}

@@ -10,6 +10,7 @@ import NotificationBell from './NotificationBell';
 import { getUnreadCount } from '../services/messagesService';
 import { markAllThreadsRead } from '../services/chatService';
 import api from '../lib/apiClient';
+import { SITE_SHUTDOWN, LOGIN_DISABLED_MESSAGE, SIGNUP_DISABLED_MESSAGE } from '../config/siteShutdown';
 
 /* ---------------- helpers ---------------- */
 type RoleLower = 'student' | 'tutor' | 'admin';
@@ -489,12 +490,33 @@ export default function Navbar() {
             </div>
           ) : (
             <>
-              <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-ink" data-testid="navbar-login-link">
-                Login
-              </Link>
-              <Link to="/signup" className="text-sm font-medium text-ocean-600 hover:text-ocean-800" data-testid="navbar-signup-link">
-                Sign Up
-              </Link>
+              {SITE_SHUTDOWN ? (
+                <>
+                  <span
+                    className="text-sm font-medium text-slate-400 cursor-not-allowed"
+                    title={LOGIN_DISABLED_MESSAGE}
+                    data-testid="navbar-login-link"
+                  >
+                    Login (disabled)
+                  </span>
+                  <span
+                    className="text-sm font-medium text-slate-400 cursor-not-allowed"
+                    title={SIGNUP_DISABLED_MESSAGE}
+                    data-testid="navbar-signup-link"
+                  >
+                    Sign Up (disabled)
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-ink" data-testid="navbar-login-link">
+                    Login
+                  </Link>
+                  <Link to="/signup" className="text-sm font-medium text-ocean-600 hover:text-ocean-800" data-testid="navbar-signup-link">
+                    Sign Up
+                  </Link>
+                </>
+              )}
             </>
           )}
         </div>
@@ -652,6 +674,13 @@ export default function Navbar() {
               >
                 <LogOut size={18} /> Logout
               </button>
+            ) : SITE_SHUTDOWN ? (
+              <div className="flex flex-col gap-2 text-sm text-slate-500 px-1">
+                <p>Login and sign up are disabled — business shut down.</p>
+                <Link to="/login" className="btn-ghost flex-1" onClick={() => setOpen(false)}>
+                  <LogIn size={18} /> Why is login disabled?
+                </Link>
+              </div>
             ) : (
               <div className="flex gap-2">
                 <Link to="/login" className="btn-ghost flex-1" onClick={() => setOpen(false)}>

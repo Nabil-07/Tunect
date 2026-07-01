@@ -6,6 +6,12 @@ import { ChevronLeft, ChevronRight, Star, AlertCircle, Search, Sparkles } from '
 import api from '../lib/apiClient';
 import { useDisplayCurrency } from '../hooks/useDisplayCurrency';
 import { formatCurrency } from '../utils/currency';
+import {
+  SITE_SHUTDOWN,
+  OPERATIONS_DISABLED_MESSAGE,
+  DUMMY_TRENDING_TUTORS,
+  shouldUseDummyTutors,
+} from '../config/siteShutdown';
 import { useAuth } from '../contexts/AuthContext';
 
 let Motion: any = null;
@@ -61,6 +67,11 @@ const Card: FC<{ tutor: TrendingTutor; onBookDemo: (tutor: TrendingTutor) => voi
   const ImgWrap = useMemo(() => (Motion ? Motion.div : 'div'), []);
 
   const handleBookDemo = () => {
+    if (SITE_SHUTDOWN) {
+      setToast(OPERATIONS_DISABLED_MESSAGE);
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
     if (user?.role === 'TUTOR') {
       setToast('Tutor accounts cannot book demos with other tutors');
       setTimeout(() => setToast(null), 4000);
@@ -138,7 +149,7 @@ const HeroTrending: FC = () => {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [usingDummy, setUsingDummy] = useState(false);
   const intervalRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -146,8 +157,7 @@ const HeroTrending: FC = () => {
     (async () => {
       try {
         setLoading(true);
-        setError(null);
-        // Fetch paginated endpoint to get total count
+        setUsingDummy(false);
         const res = await api.get('/tutors/trending/all', { params: { page: 1, pageSize: 5 } });
         const responseData = res.data;
 
@@ -155,24 +165,30 @@ const HeroTrending: FC = () => {
         let total = 0;
 
         if (responseData && typeof responseData === 'object' && 'items' in responseData) {
-          // Paginated response
           const raw = Array.isArray(responseData.items) ? responseData.items : [];
           list = raw.map(normItem).filter(Boolean) as TrendingTutor[];
           total = responseData.total ?? list.length;
         } else {
-          // Legacy flat array response
           const raw = Array.isArray(responseData?.data) ? responseData.data : responseData;
           list = (Array.isArray(raw) ? raw : []).map(normItem).filter(Boolean) as TrendingTutor[];
           total = list.length;
         }
 
         if (!mounted) return;
-        setData(list.slice(0, 5)); // Show max 5 in carousel
+        if (shouldUseDummyTutors(false, list.length)) {
+          list = DUMMY_TRENDING_TUTORS;
+          total = list.length;
+          setUsingDummy(true);
+        }
+        setData(list.slice(0, 5));
         setTotalCount(total);
         setIndex(0);
       } catch {
         if (!mounted) return;
-        setError('Failed to load tutors');
+        setData(DUMMY_TRENDING_TUTORS.slice(0, 5));
+        setTotalCount(DUMMY_TRENDING_TUTORS.length);
+        setUsingDummy(true);
+        setIndex(0);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -191,9 +207,8 @@ const HeroTrending: FC = () => {
   const Wrap = useMemo(() => (Motion ? Motion.div : 'div'), []);
 
   if (loading) return <div className="card p-6 text-center">Loading tutors...</div>;
-  if (error) return <div className="card p-6 text-center text-red-600">{error}</div>;
 
-  if (data.length === 0)
+  if (data.length === 0) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-ocean-100">
@@ -201,8 +216,7 @@ const HeroTrending: FC = () => {
         </div>
         <h3 className="text-lg font-bold text-slate-900">Discover amazing tutors</h3>
         <p className="mt-2 text-sm text-slate-500 leading-relaxed">
-          Our trending section highlights top-rated tutors loved by students.
-          Browse all tutors to find your perfect match today.
+          Browse tutors to explore sample profiles on this reference site.
         </p>
         <button
           onClick={() => navigate('/find-tutors')}
@@ -213,12 +227,16 @@ const HeroTrending: FC = () => {
         </button>
       </div>
     );
+  }
 
   const activeItem = data[index]!;
   const canSlide = data.length > 1;
 
   return (
     <div className="relative" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      {usingDummy && (
+        <p className="mb-3 text-center text-xs text-slate-500">Sample profiles shown for reference.</p>
+      )}
       <Wrap key={activeItem.id || `idx-${index}`} initial={Motion ? { opacity: 0, y: 10 } : undefined} animate={Motion ? { opacity: 1, y: 0 } : undefined} transition={Motion ? { duration: 0.4 } : undefined} className="mx-auto max-w-lg">
         <Card tutor={activeItem} onBookDemo={(t) => navigate(`/student/demo-checkout?tutorId=${t.id}`)} />
       </Wrap>

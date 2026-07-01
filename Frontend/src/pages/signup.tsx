@@ -4,6 +4,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { signup, login } from '../services/authService';
 import { setAuthStorage } from '../lib/apiClient';
 import { http } from '../api/http';
+import { AlertTriangle } from 'lucide-react';
+import {
+  SITE_SHUTDOWN,
+  SIGNUP_DISABLED_MESSAGE,
+} from '../config/siteShutdown';
 
 type Role = 'student' | 'tutor';
 
@@ -40,6 +45,10 @@ export default function Signup() {
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (SITE_SHUTDOWN) {
+      setErr(SIGNUP_DISABLED_MESSAGE);
+      return;
+    }
     setErr(null);
     setEmailExists(false);
 
@@ -81,6 +90,10 @@ export default function Signup() {
 
   // Google sign-up preserves role + remember choice for callback
   const signUpWithGoogle = () => {
+    if (SITE_SHUTDOWN) {
+      setErr(SIGNUP_DISABLED_MESSAGE);
+      return;
+    }
     try {
       localStorage.setItem('pref_role', role.toUpperCase());
       localStorage.setItem('remember_intent', remember ? '1' : '0');
@@ -95,6 +108,17 @@ export default function Signup() {
     <main className="min-h-[70vh] flex items-center" data-testid="signup-page">
       <div className="container-px mx-auto max-w-md w-full">
         <h1 className="text-2xl font-extrabold text-center" data-testid="signup-title">Create your Tunect account</h1>
+
+        {SITE_SHUTDOWN && (
+          <div
+            className="mt-6 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            role="alert"
+            data-testid="signup-shutdown-alert"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+            <p>{SIGNUP_DISABLED_MESSAGE}</p>
+          </div>
+        )}
 
         {/* Role toggle */}
         <div className="mt-6 flex items-center justify-center">
@@ -135,7 +159,7 @@ export default function Signup() {
           <button
             type="button"
             onClick={signUpWithGoogle}
-            disabled={loading}
+            disabled={loading || SITE_SHUTDOWN}
             className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium
                        hover:bg-slate-50 transition disabled:opacity-60"
             data-testid="signup-google-btn"
@@ -179,6 +203,7 @@ export default function Signup() {
                          focus:outline-none focus:ring-2 focus:ring-ocean-300"
               required
               autoComplete="name"
+              disabled={loading || SITE_SHUTDOWN}
               data-testid="signup-name-input"
             />
           </div>
@@ -194,6 +219,7 @@ export default function Signup() {
                          focus:outline-none focus:ring-2 focus:ring-ocean-300"
               required
               autoComplete="email"
+              disabled={loading || SITE_SHUTDOWN}
               data-testid="signup-email-input"
             />
           </div>
@@ -210,6 +236,7 @@ export default function Signup() {
               required
               autoComplete="new-password"
               minLength={6}
+              disabled={loading || SITE_SHUTDOWN}
               data-testid="signup-password-input"
             />
             <p className="mt-1 text-xs text-slate-500">Minimum 6 characters.</p>
@@ -222,7 +249,7 @@ export default function Signup() {
               className="rounded border-slate-300"
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
-              disabled={loading}
+              disabled={loading || SITE_SHUTDOWN}
               data-testid="signup-remember-checkbox"
             />
             Remember for 30 days
@@ -230,7 +257,7 @@ export default function Signup() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || SITE_SHUTDOWN}
             className="w-full rounded-2xl bg-ocean-700 py-3 text-white font-medium shadow-soft
                        hover:bg-ocean-800 focus-visible:outline-none focus-visible:ring-2
                        focus-visible:ring-ocean-300 active:scale-[0.99] disabled:opacity-60"

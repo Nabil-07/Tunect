@@ -10,6 +10,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { getFilterOptions } from '../services/tutorService';
 import { getDemoStatusesForTutors } from '../services/bookingsService';
 import { generateTutorSlug } from '../utils/seo';
+import DummyDataNotice from '../components/DummyDataNotice';
+import {
+  DUMMY_TRENDING_TUTORS,
+  shouldUseDummyTutors,
+  SITE_SHUTDOWN,
+  OPERATIONS_DISABLED_MESSAGE,
+} from '../config/siteShutdown';
 
 type TrendingTutor = {
   id: string;
@@ -58,6 +65,11 @@ function TrendingTutorCard({ tutor }: { tutor: TrendingTutor }) {
   const stars = Math.max(0, Math.min(5, Math.round(tutor.rating ?? 0)));
 
   const handleBookDemo = () => {
+    if (SITE_SHUTDOWN) {
+      setToast(OPERATIONS_DISABLED_MESSAGE);
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
     if (!user) {
       navigate('/login', { state: { from: '/trending-tutors', message: 'Sign in to book a demo session' } });
       return;
@@ -257,6 +269,7 @@ export default function TrendingTutors() {
   const classTeach = sp.get('class') || '';
 
   const [loading, setLoading] = useState(true);
+  const [usingDummy, setUsingDummy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<TrendingTutor[]>([]);
   const [total, setTotal] = useState(0);
@@ -280,6 +293,7 @@ export default function TrendingTutors() {
       try {
         setLoading(true);
         setError(null);
+        setUsingDummy(false);
         const res = await api.get('/tutors/trending/all', {
           params: {
             page,
@@ -304,11 +318,18 @@ export default function TrendingTutors() {
           totalCount = list.length;
         }
 
+        let isDummy = false;
+        if (shouldUseDummyTutors(false, list.length)) {
+          list = DUMMY_TRENDING_TUTORS;
+          totalCount = list.length;
+          isDummy = true;
+        }
+
         setItems(list);
         setTotal(totalCount);
+        setUsingDummy(isDummy);
 
-        // Enrich with demo status (only when logged in — endpoint requires auth)
-        if (user) {
+        if (user && !isDummy) {
           const ids = list.map((t) => t.id).filter(Boolean);
           if (ids.length) {
             const map = await getDemoStatusesForTutors(ids);
@@ -318,7 +339,11 @@ export default function TrendingTutors() {
           }
         }
       } catch {
-        if (mounted) setError('Could not load trending tutors.');
+        if (!mounted) return;
+        setUsingDummy(true);
+        setItems(DUMMY_TRENDING_TUTORS);
+        setTotal(DUMMY_TRENDING_TUTORS.length);
+        setError(null);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -371,6 +396,8 @@ export default function TrendingTutors() {
           </button>
         )}
       </div>
+
+      <DummyDataNotice show={usingDummy} />
 
       {/* Filters */}
       <div className="mt-6 flex flex-wrap items-center gap-3">
