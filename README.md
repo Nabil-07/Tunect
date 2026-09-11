@@ -2,7 +2,7 @@
 
 A modern, full-stack online tutoring platform connecting verified tutors with students worldwide. Built with **TypeScript**, **React**, **NestJS**, and **PostgreSQL**.
 
-**Live Demo:** [https://tunectnow.com](https://tunectnow.com)
+**Live Demo:** [https://tunectnow.com](https://tunectnow.com) { currently decommissioned } 
 
 ---
 
@@ -576,7 +576,7 @@ npm run start:prodlocal
 npm run build:production
 ```
 
-**Deployed at**: [https://tunectnow.com](https://tunectnow.com)
+**Deployed at**: [https://tunectnow.com](https://tunectnow.com) { currently decommisioned }
 
 ### Backend Deployment
 ```bash
@@ -624,7 +624,7 @@ This software and all associated code, documentation, and assets are the **exclu
 
 #### Licensing Inquiries:
 For commercial licensing, partnership agreements, or permission to use portions of this code:  
-**Contact:** [nabil@tunect.com](mailto:nabil@tunect.com)
+**Contact:** [n.irshad106@gmail.com](mailto:n.irshad106@gmail.com)
 
 ---
 
@@ -657,25 +657,8 @@ For issues, questions, or feature requests:
 
 ---
 
-## 🎯 Future Roadmap
 
-- [ ] Mobile app (React Native)
-- [ ] AI-powered tutor recommendations
-- [ ] Advanced scheduling with calendar sync
-- [ ] Batch class management
-- [ ] Student progress AI insights
-- [ ] Multi-language support
-- [ ] Advanced analytics dashboard
-- [ ] Integration with LMS platforms
 
----
-
-## ⚖️ Legal & Compliance
-
-- **Data Privacy**: GDPR & CCPA compliant
-- **Financial Compliance**: PCI-DSS for payment processing
-- **Terms of Service**: Available at [tunectnow.com/terms](https://tunectnow.com/terms)
-- **Privacy Policy**: Available at [tunectnow.com/privacy](https://tunectnow.com/privacy)
 
 ---
 
@@ -683,4 +666,4 @@ For issues, questions, or feature requests:
 
 *Last Updated: September 11, 2025*  
 *Security Audit: ✅ Passed*  
-*Secrets Status: ✅ Clean (no credentials in git)*
+
