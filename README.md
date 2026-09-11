@@ -27,7 +27,7 @@ When reviewing this code:
 1. **Do NOT** fork or redistribute without explicit written permission
 2. **Do NOT** deploy or use the code in production without authorization
 3. **Do NOT** share credentials or environment variables
-4. Contact: [nabil@tunect.com](mailto:nabil@tunect.com) for licensing inquiries
+4. Contact: [n.irshad106@gmail.com](mailto:n.irshad106@gmail.com) for licensing inquiries
 
 ### Security Best Practices Implemented
 
