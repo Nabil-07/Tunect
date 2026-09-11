@@ -589,17 +589,4 @@ This project is **private** and proprietary.
 
 ---
 
-## 🎯 Future Roadmap
-
-- [ ] Mobile app (React Native)
-- [ ] AI-powered tutor recommendations
-- [ ] Advanced scheduling with calendar sync
-- [ ] Batch class management
-- [ ] Student progress AI insights
-- [ ] Multi-language support
-- [ ] Advanced analytics dashboard
-- [ ] Integration with LMS platforms
-
----
-
 **Built with ❤️ for online learning**
