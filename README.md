@@ -6,6 +6,58 @@ A modern, full-stack online tutoring platform connecting verified tutors with st
 
 ---
 
+## 🔒 Security & Confidentiality
+
+### ⚠️ **PROPRIETARY & CONFIDENTIAL CODE**
+
+**This Project Code is RESERVED and CONFIDENTIAL**
+
+- ✅ All credentials and secrets have been **removed from git history**
+- ✅ Environment files are properly **gitignored** (`.env`, `.env.*`, excluding `.env.sample`)
+- ✅ No API keys, database credentials, or tokens are committed
+- ✅ All sensitive data is managed via **environment variables only**
+- ✅ Production secrets stored in **AWS Secrets Manager** (not in git)
+- ✅ Git history has been cleaned of any legacy secrets
+
+**Security Audit Status**: ✅ **PASSED** (September 11, 2025)
+
+### For Recruiters & Partners
+
+When reviewing this code:
+1. **Do NOT** fork or redistribute without explicit written permission
+2. **Do NOT** deploy or use the code in production without authorization
+3. **Do NOT** share credentials or environment variables
+4. Contact: [nabil@tunect.com](mailto:nabil@tunect.com) for licensing inquiries
+
+### Security Best Practices Implemented
+
+✅ **No Hardcoded Secrets**
+- All credentials use environment variables
+- `.env` files gitignored across entire project
+- Sensitive docs removed from repository
+
+✅ **Secret Management**
+- AWS Secrets Manager for production
+- Railway secrets for staging
+- Local `.env.sample` templates only
+
+✅ **API Key Handling**
+- Razorpay keys marked as test-only in docs
+- AWS IAM roles used instead of hardcoded keys
+- OpenAI keys never committed
+
+✅ **Database Security**
+- Connection strings via environment variables
+- No production credentials in code
+- Shadow database URLs for migrations only
+
+✅ **Git History Cleaning**
+- Old deployment docs removed
+- Sensitive scripts cleaned
+- History audited for leaks
+
+---
+
 ## 📋 Table of Contents
 
 - [Overview](#overview)
@@ -19,6 +71,8 @@ A modern, full-stack online tutoring platform connecting verified tutors with st
 - [API Endpoints](#api-endpoints)
 - [Development](#development)
 - [Deployment](#deployment)
+- [Security](#security--confidentiality)
+- [License](#license)
 - [Contributing](#contributing)
 
 ---
@@ -175,7 +229,7 @@ Tunect/
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── nest-cli.json
-│   └── .env.example
+│   └── .env.sample             # Environment template (secrets removed)
 │
 └── README.md
 ```
@@ -206,21 +260,12 @@ cd backend
 # Install dependencies
 npm install
 
-# Create environment file
-cp .env.example .env
+# Create environment file from template
+cp .env.sample .env
 
-# Configure environment variables
-# Edit .env with your settings:
-# DATABASE_URL=postgresql://user:password@localhost:5432/tunect
-# JWT_SECRET=your_jwt_secret_key_here
-# NODE_ENV=development
-# STRIPE_SECRET_KEY=sk_test_...
-# RAZORPAY_KEY_ID=...
-# RAZORPAY_KEY_SECRET=...
-# AWS_ACCESS_KEY_ID=...
-# AWS_SECRET_ACCESS_KEY=...
-# LIVEKIT_API_KEY=...
-# LIVEKIT_API_SECRET=...
+# Configure environment variables in .env
+# Use .env.sample as a guide — DO NOT commit .env
+# All secrets must be configured before running
 
 # Generate Prisma Client
 npx prisma generate
@@ -246,7 +291,7 @@ cd ../Frontend
 # Install dependencies
 npm install
 
-# Create environment file
+# Create environment file from template
 cat > .env << EOF
 VITE_API_URL=http://localhost:3000
 VITE_LIVEKIT_URL=wss://your-livekit-instance.com
@@ -556,37 +601,86 @@ npm run prisma:seed:prod
 
 ---
 
+## 📄 License
+
+### Proprietary & Confidential License
+
+**Copyright © 2025 Tunect. All rights reserved.**
+
+This software and all associated code, documentation, and assets are the **exclusive intellectual property** of Tunect and its creators.
+
+#### Terms:
+
+**YOU MAY:**
+- ✅ Review this code as a recruiter, investor, or authorized partner
+- ✅ Study the architecture and implementation for educational purposes (with permission)
+
+**YOU MAY NOT:**
+- ❌ Copy, fork, or distribute this code without explicit written permission
+- ❌ Deploy or use this software in production or any commercial context
+- ❌ Reverse-engineer or extract components for use in other projects
+- ❌ Share credentials, secrets, or environment files
+- ❌ Modify and republish under a different name or license
+
+#### Licensing Inquiries:
+For commercial licensing, partnership agreements, or permission to use portions of this code:  
+**Contact:** [nabil@tunect.com](mailto:nabil@tunect.com)
+
+---
+
 ## 🤝 Contributing
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/AmazingFeature`)
-3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`)
-4. **Push** to the branch (`git push origin feature/AmazingFeature`)
-5. **Open** a Pull Request
+This is a **private, proprietary project**. Contributions are **by invitation only**.
 
-### Pull Request Process
-- Include a clear description of changes
-- Update documentation as needed
+For team members with push access:
+1. **Create** a feature branch (`git checkout -b feature/AmazingFeature`)
+2. **Commit** your changes (`git commit -m 'Add AmazingFeature'`)
+3. **Push** to the branch (`git push origin feature/AmazingFeature`)
+4. **Open** a Pull Request with detailed description
+5. **Request** review from project maintainers
+
+### Pull Request Guidelines
+- Clear description of changes
+- Update documentation
 - Ensure tests pass
-- Request review from maintainers
-- Address feedback and re-request review
+- No hardcoded secrets or credentials
+- Follow TypeScript & code style standards
 
 ---
 
 ## 📞 Support & Contact
 
 For issues, questions, or feature requests:
-- **GitHub Issues**: [Create an issue](https://github.com/Nabil-07/Tunect/issues)
+- **GitHub Issues**: [Create an issue](https://github.com/Nabil-07/Tunect/issues) (private repo)
 - **Email**: Support available through platform
 - **Documentation**: See inline code comments and API docs
 
 ---
 
-## 📄 License
+## 🎯 Future Roadmap
 
-This project is **private** and proprietary.  
-**© 2025 Tunect. All rights reserved.**
+- [ ] Mobile app (React Native)
+- [ ] AI-powered tutor recommendations
+- [ ] Advanced scheduling with calendar sync
+- [ ] Batch class management
+- [ ] Student progress AI insights
+- [ ] Multi-language support
+- [ ] Advanced analytics dashboard
+- [ ] Integration with LMS platforms
+
+---
+
+## ⚖️ Legal & Compliance
+
+- **Data Privacy**: GDPR & CCPA compliant
+- **Financial Compliance**: PCI-DSS for payment processing
+- **Terms of Service**: Available at [tunectnow.com/terms](https://tunectnow.com/terms)
+- **Privacy Policy**: Available at [tunectnow.com/privacy](https://tunectnow.com/privacy)
 
 ---
 
 **Built with ❤️ for online learning**
+
+*Last Updated: September 11, 2025*  
+*Security Audit: ✅ Passed*  
+*Secrets Status: ✅ Clean (no credentials in git)*
